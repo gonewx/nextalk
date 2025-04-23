@@ -15,7 +15,12 @@ dependencies = [
     "faster-whisper",
     "numpy",
     "pydantic",
+    "pydantic-settings",
     "pytest>=8.3.5",
+    "webrtcvad>=2.0.10",
+    "pytest-asyncio>=0.26.0",
+    "httpx>=0.28.1",
+    "pathlib>=1.0.1",
 ]
 
 [build-system]

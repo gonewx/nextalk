@@ -10,7 +10,8 @@ import logging
 import configparser
 from pathlib import Path
 from typing import Dict, Any, Optional
-from pydantic import BaseSettings, Field
+from pydantic import Field
+from pydantic_settings import BaseSettings
 
 from nextalk_shared.constants import DEFAULT_SERVER_PORT
 
@@ -45,10 +46,11 @@ class ServerSettings(BaseSettings):
     port: int = DEFAULT_SERVER_PORT  # 默认服务器端口
     host: str = "127.0.0.1"  # 默认绑定到本地地址
     
-    class Config:
-        """Pydantic配置类"""
-        env_prefix = "NEXTALK_"  # 环境变量前缀，例如NEXTALK_PORT=8080
-        case_sensitive = False  # 环境变量不区分大小写
+    model_config = {
+        "env_prefix": "NEXTALK_",  # 环境变量前缀，例如NEXTALK_PORT=8080
+        "case_sensitive": False,   # 环境变量不区分大小写
+        "extra": "allow"           # 允许额外输入
+    }
         
     def __init__(self, **kwargs):
         """

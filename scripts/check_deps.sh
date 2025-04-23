@@ -52,7 +52,32 @@ check_python_version() {
     
     if command -v python3 >/dev/null 2>&1; then
         python_version=$(python3 --version | cut -d ' ' -f 2)
-        if [[ $(echo "$python_version 3.10.4" | awk '{print ($1 >= $2)}') -eq 1 ]]; then
+        # 使用版本比较函数而不是简单的字符串比较
+        version_compare() {
+            # 将版本号分割为数组
+            IFS='.' read -ra VER1 <<< "$1"
+            IFS='.' read -ra VER2 <<< "$2"
+            
+            # 逐段比较版本号
+            for ((i=0; i<${#VER1[@]} || i<${#VER2[@]}; i++)); do
+                # 如果某个版本段不存在，视为0
+                v1=${VER1[i]:-0}
+                v2=${VER2[i]:-0}
+                
+                # 数字比较
+                if ((v1 > v2)); then
+                    echo 1
+                    return
+                elif ((v1 < v2)); then
+                    echo 0
+                    return
+                fi
+            done
+            # 版本相同
+            echo 1
+        }
+        
+        if [[ $(version_compare "$python_version" "3.10.4") -eq 1 ]]; then
             print_green "✓ Python 版本满足要求 ($python_version)"
         else
             print_red "✗ Python 版本过低: $python_version (需要 3.10.4 或更高)"
