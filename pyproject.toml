@@ -1,0 +1,32 @@
+[project]
+name = "nextalk"
+version = "0.1.0"
+description = "Lightweight real-time local speech recognition and input system"
+requires-python = ">=3.10.14"
+authors = [
+    {name = "NexTalk Contributors"}
+]
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "websockets",
+    "pyaudio",
+    "webrtcvad-wheels",
+    "faster-whisper",
+    "numpy",
+    "pydantic",
+    "pytest>=8.3.5",
+]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "W", "I", "B", "C4", "PIE"]
+ignore = []
+
+[tool.ruff.isort]
+known-first-party = ["nextalk_server", "nextalk_client", "nextalk_shared"] 
