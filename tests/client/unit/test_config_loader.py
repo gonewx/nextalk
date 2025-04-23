@@ -9,7 +9,7 @@ import os
 import pytest
 from unittest import mock
 from configparser import ConfigParser
-from pathlib import Path
+from pathlib import Path, PurePath
 
 # 导入被测试的模块
 from nextalk_client.config.loader import (
@@ -22,28 +22,42 @@ from nextalk_client.config.loader import (
 
 
 @pytest.fixture
-def mock_configparser():
-    """提供一个模拟的ConfigParser对象"""
-    with mock.patch('configparser.ConfigParser', autospec=True) as mock_config:
-        # 创建一个真实的ConfigParser实例
-        config_instance = mock.MagicMock()
-        mock_config.return_value = config_instance
-        
-        # 设置read方法的side_effect以返回文件列表
-        config_instance.read = mock.MagicMock()
-        
-        # 添加sections和配置项的支持
-        config_instance.__getitem__ = mock.MagicMock()
-        
-        yield mock_config
+def mock_config_parser():
+    """模拟配置解析器，用于测试配置加载"""
+    with mock.patch('configparser.ConfigParser') as mock_parser:
+        # 设置模拟的读取行为
+        mock_parser.return_value.read.return_value = ['mock_path']
+        # 设置模拟的sections返回值
+        mock_parser.return_value.sections.return_value = ['Client', 'Server']
+        # 设置模拟的get方法
+        mock_parser.return_value.get.side_effect = lambda section, option: {
+            ('Client', 'hotkey'): 'ctrl+alt+space',
+            ('Client', 'server_url'): 'ws://test.example.com/ws/stream',
+            ('Client', 'language'): 'zh',
+            ('Server', 'default_model'): 'test_model',
+            ('Server', 'vad_sensitivity'): '3',
+            ('Server', 'device'): 'cpu',
+            ('Server', 'compute_type'): 'float16',
+        }.get((section, option), '')
+        # 设置模拟的has_section和has_option方法
+        mock_parser.return_value.has_section.return_value = True
+        mock_parser.return_value.has_option.return_value = True
+        yield mock_parser
 
 
 @pytest.fixture
 def mock_file_system():
-    """模拟文件系统操作，包括os.path和文件读取"""
+    """模拟文件系统操作"""
     with mock.patch('os.path.exists') as mock_exists, \
-         mock.patch('os.path.expanduser', return_value='/mock/home/.config/nextalk/config.ini') as mock_expanduser, \
+         mock.patch('os.path.expanduser') as mock_expanduser, \
          mock.patch('os.makedirs') as mock_makedirs:
+        
+        # 设置模拟的expanduser返回值
+        mock_expanduser.return_value = '/mock/home/.config/nextalk/config.ini'
+        
+        # 默认情况下文件不存在
+        mock_exists.return_value = False
+        
         yield {
             'exists': mock_exists,
             'expanduser': mock_expanduser,
@@ -57,142 +71,102 @@ def mock_package_config_path():
     # 创建一个模拟的Path对象
     mock_path = mock.MagicMock(spec=Path)
     
-    # 设置parents属性
-    parents_mock = mock.MagicMock()
+    # 设置必要的属性和方法
     mock_path.parents = [mock.MagicMock(), mock.MagicMock(), mock.MagicMock(), '/mock/package']
-    
-    # 设置除法运算符的行为
     mock_path.__truediv__ = mock.MagicMock(return_value=Path('/mock/package/config/default_config.ini'))
     
-    with mock.patch('pathlib.Path', return_value=mock_path):
+    # 为Path类添加_flavour属性以满足pathlib内部需求
+    with mock.patch('pathlib.Path', return_value=mock_path) as mock_path_class:
+        # 确保Path类有_flavour属性
+        if not hasattr(PurePath, '_flavour'):
+            # 从系统中获取真实的PurePath._flavour
+            mock_path_class._flavour = PurePath()._flavour
         yield
 
 
 @pytest.fixture
 def mock_shutil():
-    """模拟shutil.copy2操作"""
-    with mock.patch('shutil.copy2') as mock_copy:
+    """模拟shutil模块操作"""
+    with mock.patch('shutil.copy') as mock_copy:
+        mock_copy.return_value = None
         yield mock_copy
 
 
-def test_load_config_user_config_exists(mock_configparser, mock_file_system, mock_package_config_path):
-    """测试当用户配置文件存在时加载配置"""
-    # 设置模拟文件存在
-    mock_file_system['exists'].return_value = True
-    
-    # 设置ConfigParser.read()的side_effect
-    mock_config_instance = mock_configparser.return_value
-    mock_config_instance.read.side_effect = lambda paths: ['/mock/home/.config/nextalk/config.ini']
-    
-    # 模拟配置项
-    config_data = {
-        'Client': {'hotkey': 'ctrl+alt+space', 'server_url': 'ws://127.0.0.1:8080/ws/stream'},
-        'Server': {'default_model': 'tiny.en', 'vad_sensitivity': '2', 'device': 'cuda', 'compute_type': 'int8'}
-    }
-    
-    # 模拟sections和配置项
-    mock_config_instance.__contains__ = lambda self, item: item in config_data
-    mock_config_instance.sections.return_value = config_data.keys()
-    mock_config_instance.__getitem__.side_effect = lambda key: config_data[key]
-    
-    # 添加has_section和get方法
-    mock_config_instance.has_section = lambda section: section in config_data
-    mock_config_instance.get = lambda section, option, fallback=None: config_data[section].get(option, fallback)
-    
-    # 调用被测试的函数
-    config = load_config()
-    
-    # 验证结果 - 我们不直接使用断言检查配置值，因为我们的mock不是真实的configparser
-    assert mock_config_instance.read.called
-    
-    # 确认调用了expanduser获取用户配置路径
-    mock_file_system['expanduser'].assert_called()
-
-
-def test_load_config_only_default_config(mock_configparser, mock_file_system, mock_package_config_path):
-    """测试当用户配置不存在但默认配置存在时加载配置"""
-    # 设置模拟用户配置不存在，但默认配置存在
-    mock_file_system['exists'].side_effect = lambda path: '/mock/package/config/default_config.ini' in path
-    
-    # 设置ConfigParser.read()的side_effect
-    mock_config_instance = mock_configparser.return_value
-    mock_config_instance.read.side_effect = lambda paths: ['/mock/package/config/default_config.ini']
-    
-    # 模拟配置项
-    config_data = {
-        'Client': {'hotkey': 'ctrl+shift+space', 'server_url': 'ws://127.0.0.1:8000/ws/stream', 'language': 'en'},
-        'Server': {'default_model': 'small.en-int8', 'vad_sensitivity': '2', 'device': 'cuda', 'compute_type': 'int8'}
-    }
-    
-    # 模拟sections和配置项
-    mock_config_instance.__contains__ = lambda self, item: item in config_data
-    mock_config_instance.sections.return_value = config_data.keys()
-    mock_config_instance.__getitem__.side_effect = lambda key: config_data[key]
-    
-    # 添加has_section和get方法
-    mock_config_instance.has_section = lambda section: section in config_data
-    mock_config_instance.get = lambda section, option, fallback=None: config_data[section].get(option, fallback)
-    
-    # 调用被测试的函数
-    config = load_config()
-    
-    # 验证结果
-    assert mock_config_instance.read.called
-
-
-def test_load_config_no_config_files(mock_configparser, mock_file_system, mock_package_config_path):
-    """测试当所有配置文件都不存在时使用内置默认值"""
-    # 设置模拟所有文件都不存在
+def test_load_config_with_default_values(mock_config_parser, mock_file_system, mock_package_config_path):
+    """测试加载配置时使用内置默认值"""
+    # 设置文件不存在，强制使用内置默认值
     mock_file_system['exists'].return_value = False
     
-    # ConfigParser.read()返回空列表
-    mock_config_instance = mock_configparser.return_value
-    mock_config_instance.read.side_effect = lambda paths: []
-    
-    # 模拟配置项
-    config_data = {
-        'Client': {'hotkey': 'ctrl+shift+space', 'server_url': 'ws://127.0.0.1:8000/ws/stream', 'language': 'en'},
-        'Server': {'default_model': 'small.en-int8', 'vad_sensitivity': '2', 'device': 'cuda', 'compute_type': 'int8'}
-    }
-    
-    # 模拟sections和配置项
-    mock_config_instance.__contains__ = lambda self, item: item in config_data
-    mock_config_instance.sections.return_value = config_data.keys()
-    mock_config_instance.__getitem__.side_effect = lambda key: config_data[key]
-    
-    # 添加has_section和get方法
-    mock_config_instance.has_section = lambda section: section in config_data
-    mock_config_instance.get = lambda section, option, fallback=None: config_data[section].get(option, fallback)
-    
-    # 调用被测试的函数
+    # 调用配置加载函数
     config = load_config()
     
-    # 验证结果
-    assert mock_config_instance.read.called
+    # 验证结果包含预期的默认值
+    assert config['Client']['hotkey'] == 'ctrl+shift+space'
+    assert config['Client']['server_url'] == 'ws://127.0.0.1:8000/ws/stream'
+    assert config['Server']['default_model'] == 'small.en-int8'
+
+
+def test_load_config_from_user_file(mock_config_parser, mock_file_system, mock_package_config_path):
+    """测试从用户配置文件加载配置"""
+    # 设置用户配置文件存在
+    mock_file_system['exists'].side_effect = lambda path: path == '/mock/home/.config/nextalk/config.ini'
+    
+    # 调用配置加载函数
+    config = load_config()
+    
+    # 验证结果使用了从文件加载的值
+    assert config['Client']['hotkey'] == 'ctrl+alt+space'
+    assert config['Client']['server_url'] == 'ws://test.example.com/ws/stream'
+    assert config['Server']['default_model'] == 'test_model'
+
+
+def test_load_config_with_custom_path(mock_config_parser, mock_file_system, mock_package_config_path):
+    """测试使用自定义路径加载配置"""
+    # 设置自定义配置文件路径
+    custom_path = '/custom/path/config.ini'
+    
+    # 设置自定义路径的文件存在
+    mock_file_system['exists'].side_effect = lambda path: path == custom_path
+    
+    # 调用配置加载函数，传入自定义路径
+    config = load_config(custom_path)
+    
+    # 验证使用了自定义路径
+    mock_config_parser.return_value.read.assert_called_with(custom_path)
 
 
 def test_ensure_config_directory(mock_file_system):
-    """测试确保配置目录存在的功能"""
-    # 设置expanduser返回带有目录的路径
-    config_dir = '/mock/home/.config/nextalk'
-    mock_file_system['expanduser'].side_effect = lambda path: config_dir + '/config.ini' if '.config/nextalk/config.ini' in path else path
+    """测试确保配置目录存在"""
+    # 设置目录不存在
+    mock_file_system['exists'].return_value = False
     
-    # 调用被测试的函数
+    # 调用函数
     result = ensure_config_directory()
     
     # 验证结果
     assert result is True
-    # 验证目录创建调用，而不是完整的路径
-    assert mock_file_system['makedirs'].called
-    # 不对具体参数做断言，因为实际实现可能与测试期望不同
+    mock_file_system['makedirs'].assert_called_once()
 
 
-def test_create_default_user_config_already_exists(mock_file_system):
-    """测试当用户配置已存在时的行为"""
-    # 设置模拟用户配置已存在
+def test_ensure_config_directory_already_exists(mock_file_system):
+    """测试当配置目录已存在时确保配置目录"""
+    # 设置目录已存在
     mock_file_system['exists'].return_value = True
     
-    # 调用被测试的函数
+    # 调用函数
+    result = ensure_config_directory()
+    
+    # 验证结果
+    assert result is True
+    mock_file_system['makedirs'].assert_not_called()
+
+
+def test_create_default_user_config_exists(mock_file_system):
+    """测试当用户配置文件已存在时创建默认用户配置"""
+    # 设置文件已存在
+    mock_file_system['exists'].return_value = True
+    
+    # 调用函数
     result = create_default_user_config()
     
     # 验证结果

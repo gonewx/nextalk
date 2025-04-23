@@ -26,7 +26,7 @@ class ASRRecognizer:
     
     def __init__(
         self,
-        model_size: str = "small.en-int8",
+        model_size: str = "small.en",
         model_path: str = "~/.cache/NexTalk/models",
         device: str = "cuda",
         compute_type: str = "int8"
@@ -35,7 +35,7 @@ class ASRRecognizer:
         初始化ASR识别器，加载Whisper模型。
         
         Args:
-            model_size: Whisper模型大小，如"tiny.en"、"small.en-int8"等
+            model_size: Whisper模型大小，如"tiny.en"、"small.en"等
             model_path: 模型文件存储路径
             device: 计算设备，"cuda"用于GPU，"cpu"用于CPU
             compute_type: 计算类型，如"int8"、"float16"等
@@ -56,7 +56,7 @@ class ASRRecognizer:
         try:
             # 加载Whisper模型
             self.model = WhisperModel(
-                model_size=self.model_size,
+                model_size_or_path=self.model_size,
                 device=self.device,
                 compute_type=self.compute_type,
                 download_root=self.model_path

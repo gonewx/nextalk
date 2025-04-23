@@ -74,7 +74,7 @@ class ModelManager:
             # 加载新模型
             logger.info(f"正在加载模型 {model_size}，设备={self.settings.device}，计算类型={self.settings.compute_type}")
             self.current_model = WhisperModel(
-                model_size=model_size,
+                model_size_or_path=model_size,
                 device=self.settings.device,
                 compute_type=self.settings.compute_type,
                 download_root=model_path
@@ -159,9 +159,9 @@ class ModelManager:
             "base", "base.en", 
             "small", "small.en", 
             "medium", "medium.en", 
-            "large-v1", "large-v2", "large-v3",
-            # 量化版本
-            "tiny.en-int8", "base.en-int8", "small.en-int8", "medium.en-int8"
+            "large-v1", "large-v2", "large-v3", "large", 
+            "distil-large-v2", "distil-medium.en", "distil-small.en", "distil-large-v3",
+            "large-v3-turbo", "turbo"
         ]
         
         if not any(new_model_size.startswith(model) for model in valid_models):

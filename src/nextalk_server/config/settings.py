@@ -29,7 +29,7 @@ class ServerSettings(BaseSettings):
     """
     
     # Whisper模型设置
-    model_size: str = "small.en-int8"  # 使用小型英语模型，8位量化
+    model_size: str = "small.en"  # 使用小型英语模型
     device: str = "cuda"  # 使用GPU加速("cuda")，如果没有GPU则用"cpu"
     compute_type: str = "int8"  # 计算类型，int8量化提供好的性能和准确性平衡
     

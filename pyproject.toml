@@ -20,7 +20,9 @@ dependencies = [
     "webrtcvad>=2.0.10",
     "pytest-asyncio>=0.26.0",
     "httpx>=0.28.1",
-    "pathlib>=1.0.1",
+    "pynput>=1.8.1",
+    "pillow>=11.2.1",
+    "pystray>=0.19.5",
 ]
 
 [build-system]
