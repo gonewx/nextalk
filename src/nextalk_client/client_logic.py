@@ -59,8 +59,11 @@ class NexTalkClient:
         self.server_config = self.config.get('Server', {})
         logger.info("已加载客户端配置")
         
+        # 获取音频后端设置
+        audio_backend = self.client_config.get('audio_backend', 'pulse')
+        
         # 初始化组件
-        self.audio_capturer = AudioCapturer()
+        self.audio_capturer = AudioCapturer(audio_backend=audio_backend)
         self.websocket_client = WebSocketClient()
         
         # 初始化文本注入器
@@ -342,17 +345,21 @@ class NexTalkClient:
             return
             
         logger.info(f"转录结果: {text}")
+        logger.info(f"转录结果字符数: {len(text)}, 类型: {type(text)}")
         print(f"语音识别结果: {text}")  # 在控制台打印转录结果
         
         # 调用文本注入器功能
         if self.injector:
+            logger.info(f"开始文本注入, 注入器类型: {type(self.injector).__name__}")
             success = self.injector.inject_text(text)
             if success:
-                logger.info("文本注入成功")
+                logger.info(f"文本注入成功, 内容: {text[:30]}...")
             else:
-                logger.error("文本注入失败")
+                logger.error(f"文本注入失败, 尝试注入内容: {text[:30]}...")
+                logger.error("请检查xdotool是否正确安装，或尝试在终端执行 'xdotool type \"test\"' 测试")
         else:
             logger.warning("文本注入器不可用，无法执行文本注入")
+            logger.error("请检查xdotool是否已安装，可使用命令: sudo apt install xdotool")
     
     def _handle_error(self, error_message: str):
         """

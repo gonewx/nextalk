@@ -23,6 +23,7 @@ dependencies = [
     "pynput>=1.8.1",
     "pillow>=11.2.1",
     "pystray>=0.19.5",
+    "huggingface-hub>=0.30.2",
 ]
 
 [build-system]

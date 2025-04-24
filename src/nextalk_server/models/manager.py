@@ -11,7 +11,6 @@ import gc
 from typing import Optional, Any
 
 from faster_whisper import WhisperModel
-from ..asr.recognizer import ASRRecognizer
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -38,7 +37,7 @@ class ModelManager:
         self.asr_instance = None
         
         logger.info(
-            f"初始化模型管理器: 默认模型大小={settings.model_size}, "
+            f"初始化模型管理器: 默认模型大小={settings.default_model}, "
             f"设备={settings.device}, 计算类型={settings.compute_type}"
         )
         
@@ -58,7 +57,7 @@ class ModelManager:
             加载是否成功
         """
         # 使用指定的模型大小或默认设置
-        model_size = model_size or self.settings.model_size
+        model_size = model_size or self.settings.default_model
         
         logger.info(f"请求加载模型: {model_size}")
         

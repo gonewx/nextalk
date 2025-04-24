@@ -8,9 +8,12 @@ NexTalk ASR (语音识别) 识别器模块。
 import logging
 import numpy as np
 import os
+import time
 from typing import Dict, Any, Optional, List, Union
 from pathlib import Path
 from faster_whisper import WhisperModel
+
+from ..config.settings import settings
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -93,28 +96,40 @@ class ASRRecognizer:
             f"std={audio_chunk.std():.4f}"
         )
         
+        # 记录音频波形的更多信息
+        logger.debug(f"音频波形: min={audio_chunk.min():.4f}, max={audio_chunk.max():.4f}, "
+                     f"非零元素数量={np.count_nonzero(audio_chunk)}/{audio_chunk.size} "
+                     f"({np.count_nonzero(audio_chunk)/audio_chunk.size*100:.2f}%)")
+        
         try:
             # 确保音频数据类型为float32
             if audio_chunk.dtype != np.float32:
                 logger.warning(f"音频数据类型不是float32，正在转换: {audio_chunk.dtype} -> float32")
                 audio_chunk = audio_chunk.astype(np.float32)
             
+            logger.debug(f"开始调用Whisper模型进行转录，使用设备: {self.device}, 计算类型: {self.compute_type}")
+            
             # 使用Whisper模型进行转录
             # beam_size: 搜索宽度，更大的值可能提高准确性，但会增加处理时间
             # language: 可以设置为None进行自动检测，或指定语言代码如"en"
             # task: 默认为"transcribe"，可以是"translate"将非英语音频翻译为英语
+            start_time = time.time()
             segments, info = self.model.transcribe(
                 audio_chunk,
                 beam_size=5,
-                language=None,  # 自动检测语言
+                language=settings.language,  # 自动检测语言
                 task="transcribe",
                 vad_filter=True,  # 使用VAD过滤静音部分
                 vad_parameters=dict(min_silence_duration_ms=500)  # VAD参数
             )
+            transcription_time = time.time() - start_time
+            logger.info(f"Whisper转录耗时: {transcription_time:.3f}秒")
             
             # 收集所有文本段落
             text_segments = []
-            for segment in segments:
+            logger.debug("开始处理转录段落:")
+            for i, segment in enumerate(segments):
+                logger.debug(f"段落 {i+1}: 开始={segment.start:.2f}s, 结束={segment.end:.2f}s, 文本='{segment.text}'")
                 text_segments.append(segment.text)
             
             # 合并所有文本段落
@@ -129,7 +144,9 @@ class ASRRecognizer:
             
         except Exception as e:
             error_msg = f"转录过程中出错: {str(e)}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
+            logger.error(f"音频数据统计: shape={audio_chunk.shape}, 总样本数={audio_chunk.size}, "
+                         f"非零样本比例={np.count_nonzero(audio_chunk)/audio_chunk.size*100:.2f}%")
             raise RuntimeError(error_msg)
     
     def unload_model(self) -> None:
@@ -137,11 +154,11 @@ class ASRRecognizer:
         卸载当前加载的模型，释放资源。
         在切换模型或应用程序关闭时调用。
         """
-        if self.model is not None:
+        if self.model_size is not None:
             # 注意：faster_whisper没有显式的卸载方法
             # 我们设置为None并触发垃圾回收来释放资源
             logger.info(f"卸载Whisper模型: {self.model_size}")
-            self.model = None
+            self.model_size = None
     
     def __del__(self):
         """析构函数，确保资源被释放"""

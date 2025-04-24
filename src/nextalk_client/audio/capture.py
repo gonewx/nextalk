@@ -7,6 +7,7 @@
 import logging
 import threading
 import time
+import os
 from typing import Callable, Optional
 
 import numpy as np
@@ -23,8 +24,12 @@ from nextalk_shared.constants import (
 class AudioCapturer:
     """音频捕获器，负责从麦克风捕获音频数据并通过回调函数传递。"""
 
-    def __init__(self):
-        """初始化音频捕获器。"""
+    def __init__(self, audio_backend: str = None):
+        """初始化音频捕获器。
+        
+        Args:
+            audio_backend: 音频后端('alsa', 'pulse', 'oss')，如为None则使用系统默认值
+        """
         self.logger = logging.getLogger(__name__)
         self._py_audio: Optional[pyaudio.PyAudio] = None
         self._stream: Optional[pyaudio.Stream] = None
@@ -32,6 +37,43 @@ class AudioCapturer:
         self._lock = threading.Lock()
         self._callback_fn = None
         self._device_index = None
+        
+        # 设置音频后端
+        self._set_audio_backend(audio_backend)
+
+    def _set_audio_backend(self, backend: str = None):
+        """设置PyAudio使用的音频后端。
+        
+        Args:
+            backend: 音频后端名称，可选值为'alsa', 'pulse', 'oss'等
+        """
+        if backend:
+            # 设置环境变量以影响PyAudio的行为
+            backend = backend.lower()
+            self.logger.info(f"设置音频后端为: {backend}")
+            if backend == 'pulse':
+                # 修改PulseAudio环境变量，使用系统默认音频设备
+                # 注意: PULSE_SOURCE应该设置为实际存在的音频输入设备
+                os.environ['PULSE_SINK'] = 'auto_null'
+                os.environ['PULSE_SOURCE'] = 'alsa_input.usb-Web_Camera_Web_Camera_202404120005-02.mono-fallback'
+                # 记录设置的环境变量，便于调试
+                self.logger.debug(f"PulseAudio设置 - PULSE_SOURCE: {os.environ['PULSE_SOURCE']}")
+            elif backend == 'alsa':
+                os.environ['ALSA_PCM_CARD'] = 'default'
+            elif backend == 'oss':
+                os.environ['OSS_AUDIODEV'] = '/dev/dsp'
+            
+            # 通过设置索引排序方式来确定优先使用的音频后端
+            backend_order = ""
+            if backend == 'pulse':
+                backend_order = 'pulse,alsa,oss,jack,coreaudio,mme,directsound,wdmks,wasapi'
+            elif backend == 'alsa':
+                backend_order = 'alsa,pulse,oss,jack,coreaudio,mme,directsound,wdmks,wasapi'
+            elif backend == 'oss':
+                backend_order = 'oss,pulse,alsa,jack,coreaudio,mme,directsound,wdmks,wasapi'
+            
+            if backend_order:
+                os.environ['PYAUDIO_BACKEND_ORDER'] = backend_order
 
     def list_devices(self) -> list[dict]:
         """列出可用的音频输入设备。

@@ -204,9 +204,14 @@ class WebSocketClient:
                                 try:
                                     response = TranscriptionResponse(**data)
                                     logger.debug(f"接收到转录: {response.text[:30]}...")
+                                    logger.info(f"接收到完整转录结果，长度: {len(response.text)}, 内容: {response.text}")
+                                    logger.debug(f"转录消息完整内容: {data}")
                                     self.message_callback(response)
+                                    logger.debug("转录消息回调函数已调用")
                                 except Exception as e:
                                     logger.error(f"处理转录消息失败: {str(e)}")
+                                    logger.error(f"转录消息处理异常详情: {e}", exc_info=True)
+                                    logger.error(f"原始数据: {data}")
                                 
                             elif message_type == 'error' and self.error_callback:
                                 # 错误消息

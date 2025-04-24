@@ -26,12 +26,18 @@
 
 基本使用步骤：
 
-1. 启动服务器：`python scripts/run_server.py`
-2. 启动客户端：`python scripts/run_client.py`
+1. 使用统一启动脚本：`python scripts/nextalk.py start`
+2. 或单独启动组件：
+   - 服务器：`python scripts/nextalk.py server`
+   - 客户端：`python scripts/nextalk.py client`
 3. 使用默认热键(Ctrl+Shift+Space)激活语音识别
 4. 开始讲话，识别的文本将自动输入到当前活动窗口
 
-查看[用户指南](docs/user_guide.md)获取更详细的使用说明、托盘图标状态解释和故障排除方法。
+调试模式启动：`python scripts/nextalk.py start --debug`
+
+查看帮助信息：`python scripts/nextalk.py --help`
+
+更多详细信息请查看[用户指南](docs/user_guide.md)获取使用说明、配置选项和故障排除方法。
 
 ## 贡献
 

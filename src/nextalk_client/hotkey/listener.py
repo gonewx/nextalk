@@ -26,7 +26,6 @@ class HotkeyListener:
     
     def __init__(self):
         """初始化热键监听器。"""
-        self.logger = logging.getLogger(__name__)
         self._listener: Optional[keyboard.Listener] = None
         self._is_listening = False
         
@@ -60,7 +59,7 @@ class HotkeyListener:
             bool: 是否成功启动监听
         """
         if self._is_listening:
-            self.logger.warning("热键监听器已在运行")
+            logger.warning("热键监听器已在运行")
             return False
         
         # 保存回调函数
@@ -70,9 +69,9 @@ class HotkeyListener:
         # 解析热键组合
         try:
             self._hotkey_combo = self._parse_hotkey(hotkey_combination)
-            self.logger.info(f"热键组合已配置: {hotkey_combination}")
+            logger.info(f"热键组合已配置: {hotkey_combination}")
         except Exception as e:
-            self.logger.error(f"解析热键组合失败: {e}")
+            logger.error(f"解析热键组合失败: {e}")
             return False
         
         # 启动键盘监听器
@@ -83,10 +82,10 @@ class HotkeyListener:
             )
             self._listener.start()
             self._is_listening = True
-            self.logger.info("热键监听器已启动")
+            logger.info("热键监听器已启动")
             return True
         except Exception as e:
-            self.logger.error(f"启动热键监听器失败: {e}")
+            logger.error(f"启动热键监听器失败: {e}")
             return False
     
     def stop(self) -> bool:
@@ -97,7 +96,7 @@ class HotkeyListener:
             bool: 是否成功停止监听
         """
         if not self._is_listening or self._listener is None:
-            self.logger.warning("热键监听器未运行")
+            logger.warning("热键监听器未运行")
             return False
         
         try:
@@ -106,10 +105,10 @@ class HotkeyListener:
             self._is_listening = False
             self._pressed_keys.clear()
             self._is_active = False
-            self.logger.info("热键监听器已停止")
+            logger.info("热键监听器已停止")
             return True
         except Exception as e:
-            self.logger.error(f"停止热键监听器失败: {e}")
+            logger.error(f"停止热键监听器失败: {e}")
             return False
     
     def _parse_hotkey(self, hotkey_combination: HotkeyCombination) -> List[keyboard.Key]:
@@ -172,7 +171,10 @@ class HotkeyListener:
             'shift_r': keyboard.Key.shift_r,
             'space': keyboard.Key.space,
             'tab': keyboard.Key.tab,
-            'up': keyboard.Key.up
+            'up': keyboard.Key.up,
+            'super': keyboard.Key.cmd,
+            'super_l': keyboard.Key.cmd_l,
+            'super_r': keyboard.Key.cmd_r,
         }
         
         result = []
@@ -183,22 +185,29 @@ class HotkeyListener:
         else:
             key_strings = [k.lower() for k in hotkey_combination]
         
+        logger.debug(f"解析热键组合: {hotkey_combination}, 分割后: {key_strings}")
+        
         # 解析每个键
         for key_str in key_strings:
             key_str = key_str.strip()
             
             # 检查是否是特殊键
             if key_str in special_keys:
+                logger.debug(f"解析特殊键: {key_str} -> {special_keys[key_str]}")
                 result.append(special_keys[key_str])
             # 检查是否是单个字符键
             elif len(key_str) == 1:
+                logger.debug(f"解析字符键: {key_str}")
                 result.append(keyboard.KeyCode.from_char(key_str))
             else:
+                logger.warning(f"无法解析键: {key_str}")
                 raise ValueError(f"无法解析键: {key_str}")
         
         if not result:
+            logger.warning("热键组合为空")
             raise ValueError("热键组合为空")
-            
+        
+        logger.debug(f"成功解析热键组合，结果: {result}")    
         return result
     
     def _on_key_press(self, key):
@@ -212,15 +221,16 @@ class HotkeyListener:
             try:
                 # 向按下的键集合中添加当前键
                 self._pressed_keys.add(key)
+                logger.debug(f"键被按下: {key}, 当前按下的键: {self._pressed_keys}")
                 
                 # 检查是否所有热键都被按下
                 if self._is_hotkey_matched() and not self._is_active:
                     self._is_active = True
-                    self.logger.debug("热键组合被按下，触发激活回调")
+                    logger.debug("热键组合被按下，触发激活回调")
                     if self._on_activate:
                         self._on_activate()
             except Exception as e:
-                self.logger.error(f"处理按键按下事件时出错: {e}")
+                logger.error(f"处理按键按下事件时出错: {e}")
     
     def _on_key_release(self, key):
         """
@@ -234,15 +244,16 @@ class HotkeyListener:
                 # 尝试从按下的键集合中移除当前键
                 if key in self._pressed_keys:
                     self._pressed_keys.remove(key)
+                    logger.debug(f"键被释放: {key}, 当前按下的键: {self._pressed_keys}")
                 
                 # 如果释放的键是热键组合中的一个，并且热键处于激活状态，触发停用回调
                 if key in self._hotkey_combo and self._is_active:
                     self._is_active = False
-                    self.logger.debug("热键组合被释放，触发停用回调")
+                    logger.debug("热键组合被释放，触发停用回调")
                     if self._on_deactivate:
                         self._on_deactivate()
             except Exception as e:
-                self.logger.error(f"处理按键释放事件时出错: {e}")
+                logger.error(f"处理按键释放事件时出错: {e}")
     
     def _is_hotkey_matched(self) -> bool:
         """
@@ -252,4 +263,6 @@ class HotkeyListener:
             bool: 是否匹配
         """
         # 检查热键组合中的每个键是否都在按下的键集合中
-        return all(k in self._pressed_keys for k in self._hotkey_combo) 
+        result = all(k in self._pressed_keys for k in self._hotkey_combo)
+        logger.debug(f"热键匹配检查: {result} (热键组合: {self._hotkey_combo}, 当前按下的键: {self._pressed_keys})")
+        return result 

@@ -29,9 +29,10 @@ class ServerSettings(BaseSettings):
     """
     
     # Whisper模型设置
-    model_size: str = "small.en"  # 使用小型英语模型
+    default_model: str = "small.en"  # 使用小型英语模型
     device: str = "cuda"  # 使用GPU加速("cuda")，如果没有GPU则用"cpu"
     compute_type: str = "int8"  # 计算类型，int8量化提供好的性能和准确性平衡
+    language: str = "en"  # 默认语言
     
     # 语音活动检测(VAD)设置
     vad_sensitivity: int = 2  # 灵敏度范围0-3，值越大越敏感
@@ -72,7 +73,7 @@ class ServerSettings(BaseSettings):
         # 调用父类初始化方法，处理环境变量等
         super().__init__(**merged_kwargs)
         
-        logger.info(f"服务器配置已加载: 端口={self.port}, 模型={self.model_size}, 设备={self.device}")
+        logger.info(f"服务器配置已加载: 端口={self.port}, 模型={self.default_model}, 设备={self.device}, 语言={self.language}")
     
     def _load_from_config_files(self) -> Dict[str, Any]:
         """

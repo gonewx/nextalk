@@ -127,12 +127,12 @@ class SettingsWindow:
         server_url_entry.insert(0, self.config_values.get('server_url', 'ws://127.0.0.1:8000/ws/stream'))
         
         # 语言设置
-        language_label = tk.Label(frame, text="语言:")
-        language_label.grid(row=2, column=0, sticky=tk.W, pady=10)
+        locale_label = tk.Label(frame, text="语言:")
+        locale_label.grid(row=2, column=0, sticky=tk.W, pady=10)
         
-        language_combo = ttk.Combobox(frame, values=["英语", "中文", "自动检测"])
-        language_combo.grid(row=2, column=1, sticky=tk.W+tk.E, padx=10)
-        language_combo.current(0)  # 默认选择英语
+        locale_combo = ttk.Combobox(frame, values=["英语", "中文", "自动检测"])
+        locale_combo.grid(row=2, column=1, sticky=tk.W+tk.E, padx=10)
+        locale_combo.current(0)  # 默认选择英语
         
         # 设置grid布局的列宽度
         frame.columnconfigure(1, weight=1)

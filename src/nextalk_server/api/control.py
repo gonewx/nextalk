@@ -1,141 +1,184 @@
 """
-NexTalk服务器控制API模块。
+控制API路由。
 
-该模块提供了用于控制服务器行为的API端点，包括：
-1. REST API端点，用于服务器的远程控制
-2. 处理WebSocket命令消息的工具函数
+此模块实现了用于控制服务器行为的API端点，如切换Whisper模型。
 """
 
 import logging
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, WebSocket, Depends, Response
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any
 
-from ..models.manager import ModelManager
 from ..config.settings import settings
 from nextalk_shared.data_models import CommandMessage, StatusUpdate
+from nextalk_shared.constants import STATUS_LISTENING, STATUS_ERROR
 
-# 创建日志记录器
+# 设置日志记录器
 logger = logging.getLogger(__name__)
 
 # 创建API路由器
-router = APIRouter(prefix="/control", tags=["control"])
+router = APIRouter(prefix="/api", tags=["control"])
 
+class ModelCommandResponse(BaseModel):
+    """模型命令响应模型"""
+    success: bool
+    message: str
+    model: Optional[str] = None
 
-# 定义REST API的请求模型
-class ModelSwitchRequest(BaseModel):
-    """模型切换请求。"""
-    model_size: str
+class SettingsResponse(BaseModel):
+    """服务器设置响应模型"""
+    default_model: str
+    device: str
+    compute_type: str
+    vad_sensitivity: int
+    port: int
+    host: str
+    language: str
 
+@router.get("/settings")
+async def get_settings() -> SettingsResponse:
+    """获取当前服务器设置"""
+    logger.info("收到请求：获取服务器设置")
+    return SettingsResponse(
+        default_model=settings.default_model,
+        device=settings.device,
+        compute_type=settings.compute_type,
+        vad_sensitivity=settings.vad_sensitivity,
+        port=settings.port,
+        host=settings.host,
+        language=settings.language
+    )
 
-# 定义可用的命令处理器映射
-command_handlers: Dict[str, Callable] = {}
-
-
-@router.post("/switch-model")
-async def switch_model(request: ModelSwitchRequest, background_tasks: BackgroundTasks):
-    """
-    切换语音识别模型的REST API端点。
-    
-    Args:
-        request: 包含新模型大小的请求
-        background_tasks: FastAPI的后台任务对象，用于异步执行模型切换
-        
-    Returns:
-        操作结果的字典
-    """
-    logger.info(f"收到模型切换请求: {request.model_size}")
-    
-    # 获取模型管理器实例
-    # 注意：在实际实现中，应该使用依赖注入或单例模式获取模型管理器
-    model_manager = ModelManager(settings)
-    
+@router.get("/models/available")
+async def get_available_models():
+    """获取可用的模型列表"""
+    logger.info("收到请求：获取可用模型列表")
     try:
-        # 在后台任务中执行模型切换
-        # 这样可以立即返回响应，而不需要等待模型加载完成
-        background_tasks.add_task(model_manager.switch_model, request.model_size)
-        
-        return {
-            "status": "success",
-            "message": f"正在切换到模型: {request.model_size}",
-            "model_size": request.model_size
-        }
-    except ValueError as ve:
-        # 处理无效模型名称等错误
-        logger.error(f"模型切换请求无效: {str(ve)}")
-        raise HTTPException(status_code=400, detail=str(ve))
+        from faster_whisper.utils import available_models
+        models = available_models()
+        return {"models": models}
     except Exception as e:
-        # 处理其他未预料的错误
-        logger.error(f"模型切换请求失败: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"模型切换失败: {str(e)}")
+        logger.error(f"获取可用模型列表时出错：{str(e)}")
+        return Response(
+            content=f"{{'error': '获取可用模型列表失败: {str(e)}'}}",
+            status_code=500,
+            media_type="application/json"
+        )
 
-
-async def handle_command(command_message: CommandMessage, model_manager: ModelManager, websocket = None):
+@router.post("/models/switch")
+async def switch_model(model_data: Dict[str, Any]) -> ModelCommandResponse:
     """
-    处理WebSocket命令消息。
+    切换到指定的模型
+
+    Args:
+        model_data: 包含model_size字段的字典
+    """
+    model_size = model_data.get("model_size")
+    if not model_size:
+        return ModelCommandResponse(
+            success=False,
+            message="无效的请求：缺少model_size字段"
+        )
     
-    该函数用于在WebSocket接收循环中处理命令消息，例如切换模型。
+    logger.info(f"收到请求：切换到模型 {model_size}")
+    
+    # 从应用状态获取模型管理器
+    from fastapi import Request
+    request = Request(scope={"type": "http"})
+    model_manager = request.app.state.model_manager
+    
+    # 切换模型
+    success = model_manager.switch_model(model_size)
+    
+    if success:
+        return ModelCommandResponse(
+            success=True,
+            message=f"已成功切换到模型: {model_size}",
+            model=model_size
+        )
+    else:
+        return ModelCommandResponse(
+            success=False,
+            message=f"切换到模型 {model_size} 失败",
+            model=model_manager.current_model_size
+        )
+
+# WebSocket命令处理函数
+async def handle_command(command: CommandMessage, model_manager, websocket: WebSocket) -> bool:
+    """
+    处理从WebSocket连接收到的命令。
     
     Args:
-        command_message: 客户端发送的命令消息
+        command: 命令消息
         model_manager: 模型管理器实例
-        websocket: WebSocket连接对象，用于发送响应消息
-        
+        websocket: WebSocket连接
+
     Returns:
-        操作是否成功
+        命令处理是否成功
     """
-    command = command_message.command
-    payload = command_message.payload
+    logger.info(f"收到WebSocket命令: {command.command}")
     
-    logger.info(f"收到WebSocket命令: {command}, 参数: {payload}")
-    
-    # 处理模型切换命令
-    if command == "switch_model":
-        try:
-            # 执行模型切换
-            success = model_manager.switch_model(payload)
+    if command.command == "switch_model":
+        # 模型切换命令
+        payload = command.payload
+        if payload and "model" in payload:
+            model_size = payload["model"]
+            logger.info(f"请求切换到模型: {model_size}")
             
-            # 如果提供了WebSocket，发送操作结果
-            if websocket:
-                if success:
-                    await websocket.send_json({
-                        "type": "command_result",
-                        "command": command,
-                        "status": "success",
-                        "message": f"已切换到模型: {payload}"
-                    })
-                else:
-                    await websocket.send_json({
-                        "type": "command_result",
-                        "command": command,
-                        "status": "error",
-                        "message": f"切换到模型 {payload} 失败"
-                    })
+            # 发送正在处理状态
+            await websocket.send_json(StatusUpdate(state="processing").dict())
             
-            return success
-        except Exception as e:
-            logger.error(f"执行命令 {command} 失败: {str(e)}", exc_info=True)
+            # 切换模型
+            success = model_manager.switch_model(model_size)
             
-            # 如果提供了WebSocket，发送错误消息
-            if websocket:
+            if success:
+                # 发送成功响应
                 await websocket.send_json({
                     "type": "command_result",
-                    "command": command,
-                    "status": "error",
-                    "message": f"命令执行错误: {str(e)}"
+                    "command": "switch_model",
+                    "success": True,
+                    "message": f"已切换到模型: {model_size}"
                 })
-            
-            return False
-    else:
-        logger.warning(f"未知命令: {command}")
-        
-        # 如果提供了WebSocket，发送错误消息
-        if websocket:
+                logger.info(f"成功切换到模型: {model_size}")
+                
+                # 恢复监听状态
+                await websocket.send_json(StatusUpdate(state=STATUS_LISTENING).dict())
+                return True
+            else:
+                # 发送失败响应
+                await websocket.send_json({
+                    "type": "command_result",
+                    "command": "switch_model",
+                    "success": False,
+                    "message": f"切换模型失败: {model_size}"
+                })
+                logger.error(f"切换到模型 {model_size} 失败")
+                
+                # 发送错误状态
+                await websocket.send_json(StatusUpdate(state=STATUS_ERROR).dict())
+                
+                # 短暂延迟后恢复监听状态
+                import asyncio
+                await asyncio.sleep(1.0)
+                await websocket.send_json(StatusUpdate(state=STATUS_LISTENING).dict())
+                return False
+        else:
+            # 缺少必要参数
+            logger.warning("切换模型命令缺少必要参数: model")
             await websocket.send_json({
                 "type": "command_result",
-                "command": command,
-                "status": "error",
-                "message": f"未知命令: {command}"
+                "command": "switch_model",
+                "success": False,
+                "message": "切换模型命令缺少必要参数: model"
             })
-        
+            return False
+    else:
+        # 未知命令
+        logger.warning(f"未知命令: {command.command}")
+        await websocket.send_json({
+            "type": "command_result",
+            "command": command.command,
+            "success": False,
+            "message": f"未知命令: {command.command}"
+        })
         return False 

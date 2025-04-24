@@ -102,6 +102,8 @@ hotkey=ctrl+shift+space
 server_url=ws://127.0.0.1:8000
 ; 默认语言设置
 language=en
+; 音频后端设置 (alsa, pulse, oss)
+audio_backend=pulse
 
 [Server]
 ; 默认语音识别模型
@@ -118,6 +120,10 @@ compute_type=int8
 
 - **hotkey**: 用于激活/停用语音识别的键盘组合
 - **server_url**: 服务器WebSocket地址，默认为本地端口8000
+- **audio_backend**: 音频后端，可选值包括：
+  - `pulse`: 使用PulseAudio（推荐，默认值）
+  - `alsa`: 使用ALSA
+  - `oss`: 使用OSS
 - **default_model**: Whisper模型大小，可选：
   - `tiny.en-int8`: 最小最快，准确度有限
   - `small.en-int8`: 平衡大小和准确度（推荐）
@@ -159,6 +165,16 @@ python scripts/run_client.py
 
 - 麦克风已正确连接并设置为默认输入设备
 - 用户有访问音频设备的权限: `sudo usermod -a -G audio $USER`（需要重新登录生效）
+- 如果遇到ALSA相关错误（如 "ALSA lib pcm_dmix.c:1032:(snd_pcm_dmix_open) unable to open slave"），尝试修改配置文件将音频后端改为PulseAudio:
+  ```ini
+  [Client]
+  audio_backend=pulse
+  ```
+- 如果PulseAudio也有问题，且您确认系统支持ALSA，可以尝试:
+  ```ini
+  [Client]
+  audio_backend=alsa
+  ```
 
 ### CUDA相关问题
 

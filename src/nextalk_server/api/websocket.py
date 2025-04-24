@@ -50,18 +50,25 @@ async def websocket_endpoint(websocket: WebSocket):
     audio_buffer = AudioBuffer(max_size=300)  # 300帧约等于9秒音频（每帧30ms）
     logger.info("音频缓冲区已初始化")
     
-    # 实例化ASR识别器
+    # 从应用状态获取预加载的模型管理器
+    model_manager = websocket.app.state.model_manager
+    logger.info("从应用状态获取模型管理器")
+    
+    # 获取当前加载的模型
+    current_model = model_manager.get_current_model()
+    if current_model is None:
+        logger.warning("当前没有加载模型，尝试加载默认模型")
+        model_manager.load_model(settings.default_model)
+        current_model = model_manager.get_current_model()
+    
+    # 实例化ASR识别器，使用预加载的模型
     asr_recognizer = ASRRecognizer(
-        model_size=settings.model_size,
+        model_size=model_manager.current_model_size or settings.default_model,
         model_path=settings.model_path,
         device=settings.device,
         compute_type=settings.compute_type
     )
-    logger.info(f"ASR识别器已初始化，模型：{settings.model_size}，设备：{settings.device}")
-    
-    # 创建模型管理器实例
-    model_manager = ModelManager(settings)
-    logger.info("模型管理器已初始化")
+    logger.info(f"ASR识别器已初始化，使用预加载的模型：{model_manager.current_model_size or settings.default_model}")
     
     # 发送初始状态消息
     status_update = StatusUpdate(state=STATUS_LISTENING)
@@ -171,33 +178,19 @@ async def websocket_endpoint(websocket: WebSocket):
     logger.debug("ASR处理任务已启动")
     
     try:
-        # 创建一个任务来处理文本消息
-        text_message_tasks = []
-        
         # 持续监听来自客户端的消息
         while True:
-            # 创建两个接收任务，一个用于二进制数据，一个用于文本数据
-            receive_bytes_task = asyncio.create_task(websocket.receive_bytes())
-            receive_text_task = asyncio.create_task(websocket.receive_text())
-            
-            # 等待任一任务完成
-            done, pending = await asyncio.wait(
-                [receive_bytes_task, receive_text_task],
-                return_when=asyncio.FIRST_COMPLETED
-            )
-            
-            # 取消未完成的任务
-            for task in pending:
-                task.cancel()
-            
-            # 处理完成的任务
-            for task in done:
-                try:
-                    result = task.result()
-                    
-                    if task == receive_bytes_task:
+            try:
+                # 尝试接收二进制数据（音频）或文本数据（命令）
+                # 使用单个任务和超时处理，避免创建多个可能导致竞态条件的任务
+                message = await websocket.receive()
+                message_type = message.get("type", "")
+                
+                if message_type == "websocket.receive":
+                    # 提取消息内容
+                    if "bytes" in message:
                         # 处理二进制数据（音频）
-                        data = result
+                        data = message["bytes"]
                         total_frames += 1
                         
                         # 使用VAD检测是否为语音
@@ -222,9 +215,9 @@ async def websocket_endpoint(websocket: WebSocket):
                                       f"缓冲区帧数 {buffer_status['current_size']}，"
                                       f"缓冲区音频时长 {buffer_status['duration_ms']}ms")
                     
-                    elif task == receive_text_task:
+                    elif "text" in message:
                         # 处理文本数据（命令）
-                        text_data = result
+                        text_data = message["text"]
                         logger.debug(f"收到文本消息：{text_data}")
                         
                         try:
@@ -249,11 +242,28 @@ async def websocket_endpoint(websocket: WebSocket):
                             logger.warning(f"无法解析接收到的文本消息为JSON：{text_data}")
                         except Exception as e:
                             logger.error(f"处理文本消息时出错：{str(e)}", exc_info=True)
-                except Exception as e:
-                    logger.error(f"处理WebSocket消息时出错：{str(e)}", exc_info=True)
+                
+                elif message_type == "websocket.disconnect":
+                    logger.info("接收到WebSocket断开连接消息")
+                    break
+                    
+            except WebSocketDisconnect:
+                logger.info("WebSocket连接已关闭")
+                break
+            except Exception as e:
+                logger.error(f"处理WebSocket消息时出错：{str(e)}", exc_info=True)
+                # 如果是致命错误，需要跳出循环
+                if "disconnect" in str(e).lower() or "closed" in str(e).lower():
+                    logger.warning("连接可能已关闭，跳出接收循环")
+                    break
 
     except WebSocketDisconnect:
-        logger.info("WebSocket连接已关闭")
+        logger.info("WebSocket连接已关闭（外部异常）")
+    except Exception as e:
+        logger.error(f"WebSocket错误：{str(e)}", exc_info=True)
+    finally:
+        # 无论如何都执行清理操作
+        logger.info("开始执行WebSocket连接清理")
         
         # 停止处理任务
         processing_active = False
@@ -261,30 +271,25 @@ async def websocket_endpoint(websocket: WebSocket):
         
         # 等待处理任务完成
         try:
-            await asyncio.wait_for(process_task, timeout=2.0)
+            if not process_task.done():
+                await asyncio.wait_for(process_task, timeout=2.0)
         except asyncio.TimeoutError:
-            process_task.cancel()
+            if not process_task.done():
+                process_task.cancel()
             logger.warning("ASR处理任务取消")
+        except Exception as e:
+            logger.error(f"取消处理任务时出错：{str(e)}")
         
         # 获取并记录最终的缓冲区状态
         final_buffer_status = audio_buffer.get_buffer_status()
         
         logger.info(f"连接汇总：总帧数 {total_frames}，语音帧数 {speech_frames}，"
-                   f"语音比例 {(speech_frames / max(1, total_frames)) * 100:.1f}%，"
-                   f"缓冲区帧数 {final_buffer_status['current_size']}，"
-                   f"缓冲区音频时长 {final_buffer_status['duration_ms']}ms")
+                  f"语音比例 {(speech_frames / max(1, total_frames)) * 100:.1f}%，"
+                  f"缓冲区帧数 {final_buffer_status['current_size']}，"
+                  f"缓冲区音频时长 {final_buffer_status['duration_ms']}ms")
         
         # 清空缓冲区
         audio_buffer.clear()
-    except Exception as e:
-        logger.error(f"WebSocket错误：{str(e)}", exc_info=True)
-        # 停止处理任务
-        processing_active = False
-        stop_processing.set()
-        
-        # 尝试取消处理任务
-        if not process_task.done():
-            process_task.cancel()
         
         # 尝试关闭连接
         try:
