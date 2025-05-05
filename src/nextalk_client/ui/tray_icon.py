@@ -11,8 +11,11 @@ NexTalk系统托盘图标实现。
 import os
 import logging
 import threading
+import platform
 from pathlib import Path
 from PIL import Image
+import cairosvg
+from io import BytesIO
 from pystray import Icon, Menu, MenuItem
 from typing import Callable, Dict, Optional, List
 
@@ -39,6 +42,12 @@ class SystemTrayIcon:
     # 可用的语音识别模型列表
     AVAILABLE_MODELS = ["tiny.en", "small.en", "base.en"]
     
+    # Ubuntu默认图标尺寸
+    ICON_SIZE = 22
+    
+    # 内部使用的实际图标尺寸
+    _INTERNAL_ICON_SIZE = 96  # 增大内部图标尺寸以确保足够清晰
+    
     def __init__(self, name: str = "NexTalk"):
         """
         初始化系统托盘图标。
@@ -52,9 +61,13 @@ class SystemTrayIcon:
         self._thread_stop_event = threading.Event()
         self._lock = threading.Lock()
         
-        # 图标路径
+        # 图标路径使用原来的路径
         self.icon_dir = Path(__file__).parent / "assets" / "icons"
         self.icons: Dict[str, Image.Image] = {}
+        
+        # 检测系统环境
+        self._is_ubuntu = 'ubuntu' in platform.platform().lower()
+        logger.debug(f"检测到操作系统: {platform.platform()}, 是否为Ubuntu: {self._is_ubuntu}")
         
         # 加载所有图标
         self._load_icons()
@@ -66,21 +79,37 @@ class SystemTrayIcon:
         self.current_model = "small.en"
     
     def _load_icons(self) -> None:
-        """加载所有状态图标。"""
+        """加载所有状态图标，支持SVG格式并处理尺寸问题。"""
         icon_files = {
-            STATUS_IDLE: "idle.png",
-            STATUS_LISTENING: "listening.png",
-            STATUS_PROCESSING: "processing.png",
-            STATUS_ERROR: "error.png"
+            STATUS_IDLE: "idle.svg",
+            STATUS_LISTENING: "listening.svg",
+            STATUS_PROCESSING: "processing.svg",
+            STATUS_ERROR: "error.svg"
         }
+        
+        # 在Ubuntu上pystray的AppIndicator后端可能会忽略图标的实际尺寸
+        # 使用更大的内部尺寸可以确保图标清晰
+        actual_size = self._INTERNAL_ICON_SIZE
+        logger.debug(f"使用图标尺寸: {actual_size}x{actual_size}")
         
         # 尝试加载所有图标
         for state, filename in icon_files.items():
             icon_path = self.icon_dir / filename
             try:
                 if icon_path.exists():
-                    self.icons[state] = Image.open(icon_path)
-                    logger.debug(f"已加载图标: {filename}")
+                    # 处理SVG格式图标
+                    if filename.lower().endswith('.svg'):
+                        png_data = cairosvg.svg2png(
+                            url=str(icon_path), 
+                            output_width=actual_size, 
+                            output_height=actual_size
+                        )
+                        self.icons[state] = Image.open(BytesIO(png_data))
+                    else:
+                        # 对于非SVG图标，加载后调整尺寸
+                        img = Image.open(icon_path)
+                        self.icons[state] = img.resize((actual_size, actual_size))
+                    logger.debug(f"已加载图标: {filename}, 尺寸: {self.icons[state].width}x{self.icons[state].height}")
                 else:
                     logger.warning(f"图标文件不存在: {icon_path}")
             except Exception as e:
@@ -147,11 +176,12 @@ class SystemTrayIcon:
                 if not icon_image:
                     logger.error("无法获取系统托盘图标图像")
                     return False
-                    
+                
+                # 创建pystray图标
                 self.icon = Icon(
                     name=self.name,
                     icon=icon_image,
-                    title=f"NexTalk - {self.current_state}",
+                    title=f"NexTalk - {self.current_state or 'idle'}",  # 确保空状态时显示为idle
                     menu=menu
                 )
             
@@ -260,35 +290,57 @@ class SystemTrayIcon:
         """
         # 记录状态变化
         old_state = self.current_state
+        
+        # 处理空状态情况
+        if not state:
+            logger.info(f"收到空状态，保持当前状态: {old_state}")
+            return
+        
         self.current_state = state
         
-        logger.debug(f"更新图标状态: {old_state} -> {state}")
+        logger.info(f"更新托盘图标状态: {old_state} -> {state}")
         
         # 如果图标还没有创建，就不需要更新
         if not self.icon:
+            logger.warning("托盘图标未创建，跳过状态更新")
             return
             
         # 确保状态有对应的图标
+        display_state = state
         if state not in self.icons:
             # 使用一些映射来处理没有专门图标的状态
             if state == STATUS_CONNECTED:
-                state = STATUS_IDLE
+                display_state = STATUS_IDLE
+                logger.debug(f"状态映射: {state} -> {display_state}")
             elif state == STATUS_DISCONNECTED:
-                state = STATUS_ERROR
+                display_state = STATUS_ERROR
+                logger.debug(f"状态映射: {state} -> {display_state}")
                 
             # 如果仍然没有对应的图标，使用IDLE状态的图标
-            if state not in self.icons:
-                state = STATUS_IDLE
+            if display_state not in self.icons:
+                display_state = STATUS_IDLE
+                logger.debug(f"状态映射(默认): {state} -> {display_state}")
+                
+        # 确认最终使用的图标状态
+        logger.info(f"最终托盘图标显示状态: {display_state}")
                 
         # 更新图标
         with self._lock:
             if self.icon:
                 try:
-                    self.icon.icon = self.icons[state]
-                    self.icon.title = f"NexTalk - {state}"
-                    # 注意：某些操作系统可能不支持动态更新图标或标题
+                    # 获取当前状态对应的图标
+                    new_icon = self.icons.get(display_state)
+                    if new_icon:
+                        # 更新图标和标题
+                        self.icon.icon = new_icon
+                        self.icon.title = f"NexTalk - {state}"
+                        logger.info(f"托盘图标和标题已更新: 图标={display_state}, 标题={state}")
+                    else:
+                        logger.error(f"未找到状态 {display_state} 对应的图标")
                 except Exception as e:
                     logger.error(f"更新图标状态时出错: {e}")
+            else:
+                logger.warning("托盘图标对象为空，无法更新状态")
     
     def update_current_model(self, model_name: str) -> None:
         """

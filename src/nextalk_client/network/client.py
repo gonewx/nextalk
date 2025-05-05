@@ -218,9 +218,15 @@ class WebSocketClient:
                                     self.error_callback(error)
                                     
                                 elif message_type == "status" and self.status_callback:
+                                    # 检查状态是否为空
+                                    state = data.get("state", "")
+                                    if not state:
+                                        logger.warning("收到空状态消息，跳过回调")
+                                        continue
+                                        
                                     # 创建状态更新对象
                                     status = StatusUpdate(
-                                        state=data.get("state", ""),
+                                        state=state,
                                         type="status"
                                     )
                                     self.status_callback(status)

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <title>NexTalk - Processing</title>
+  <!-- 圆形背景 -->
+  <circle cx="32" cy="32" r="30" fill="#e6f0ff" stroke="#2196F3" stroke-width="2"/>
+  
+  <!-- 麦克风图标 - 蓝色表示正在处理 -->
+  <g transform="translate(20, 15)" fill="#2196F3">
+    <!-- 麦克风主体 -->
+    <rect x="5" y="0" width="14" height="24" rx="7" ry="7" />
+    
+    <!-- 麦克风底座 -->
+    <path d="M0,22 C0,30 24,30 24,22 L24,18 L20,18 L20,22 C20,26 4,26 4,22 L4,18 L0,18 Z" />
+    
+    <!-- 处理中指示器 (环形旋转) -->
+    <g transform="translate(12, 12)">
+      <circle cx="0" cy="0" r="18" fill="none" stroke="#2196F3" stroke-width="2" stroke-dasharray="56.5 37.7" stroke-linecap="round">
+        <animateTransform 
+          attributeName="transform" 
+          attributeType="XML" 
+          type="rotate" 
+          from="0" 
+          to="360" 
+          dur="2s" 
+          repeatCount="indefinite" />
+      </circle>
+    </g>
+  </g>
+  
+  <!-- 状态文本 -->
+  <text x="32" y="55" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="#2196F3">处理中</text>
+</svg> 

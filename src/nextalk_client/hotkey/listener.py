@@ -8,7 +8,7 @@ import logging
 import threading
 import asyncio
 import time
-from typing import Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union, Any
 
 from pynput import keyboard
 
@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 # 定义热键组合类型
 HotkeyCombination = Union[List[str], str]
+
+# 尝试导入 LinuxInjector，用于检查文本是否正在注入
+try:
+    from nextalk_client.injection.injector_linux import LinuxInjector
+    HAS_LINUX_INJECTOR = True
+except ImportError:
+    HAS_LINUX_INJECTOR = False
 
 
 class HotkeyListener:
@@ -44,6 +51,9 @@ class HotkeyListener:
         # 热键当前状态
         self._is_active = False
         
+        # 文本注入标志
+        self._text_injector: Optional[Any] = None
+        
         # 线程锁，用于保护状态更新
         self._lock = threading.Lock()
     
@@ -63,6 +73,15 @@ class HotkeyListener:
         if self._is_listening:
             logger.warning("热键监听器已在运行")
             return False
+        
+        # 尝试获取文本注入器实例
+        if HAS_LINUX_INJECTOR:
+            try:
+                self._text_injector = LinuxInjector()
+                logger.info("已连接到Linux文本注入器")
+            except Exception as e:
+                logger.warning(f"无法连接到Linux文本注入器: {e}")
+                self._text_injector = None
         
         # 保存回调函数
         self._on_activate = on_activate
@@ -212,6 +231,17 @@ class HotkeyListener:
         logger.debug(f"成功解析热键组合，结果: {result}")    
         return result
     
+    def _is_injecting_text(self) -> bool:
+        """
+        检查是否当前正在进行文本注入操作。
+        
+        Returns:
+            bool: 如果当前正在注入文本，则返回True，否则返回False
+        """
+        if self._text_injector is not None and hasattr(self._text_injector, 'is_injecting'):
+            return self._text_injector.is_injecting
+        return False
+    
     def _on_key_press(self, key):
         """
         按键按下事件处理函数。
@@ -221,16 +251,29 @@ class HotkeyListener:
         """
         with self._lock:
             try:
+                # 检查是否正在注入文本，如果是普通字符键，可能是注入的一部分，不处理
+                if self._is_injecting_text() and isinstance(key, keyboard.KeyCode):
+                    logger.debug(f"忽略可能来自文本注入的按键按下事件: {key}")
+                    return
+                
                 # 向按下的键集合中添加当前键
                 self._pressed_keys.add(key)
                 logger.debug(f"键被按下: {key}, 当前按下的键: {self._pressed_keys}")
                 
+                # 增加详细日志输出热键组合当前状态
+                hotkey_match = self._is_hotkey_matched()
+                logger.info(f"热键匹配状态: {hotkey_match}, 热键组合: {self._hotkey_combo}, 当前按下的键: {self._pressed_keys}")
+                
                 # 检查是否所有热键都被按下
-                if self._is_hotkey_matched() and not self._is_active:
+                if hotkey_match and not self._is_active:
                     self._is_active = True
-                    logger.debug("热键组合被按下，触发激活回调")
+                    logger.info("热键组合被按下，触发激活回调")
                     if self._on_activate:
-                        self._on_activate()
+                        try:
+                            self._on_activate()
+                            logger.info("激活回调执行成功")
+                        except Exception as e:
+                            logger.error(f"执行激活回调时出错: {e}")
             except Exception as e:
                 logger.error(f"处理按键按下事件时出错: {e}")
     
@@ -243,17 +286,30 @@ class HotkeyListener:
         """
         with self._lock:
             try:
+                # 检查是否正在注入文本，如果是普通字符键，可能是注入的一部分，不处理
+                if self._is_injecting_text() and isinstance(key, keyboard.KeyCode):
+                    logger.debug(f"忽略可能来自文本注入的按键释放事件: {key}")
+                    return
+                
                 # 尝试从按下的键集合中移除当前键
-                if key in self._pressed_keys:
+                was_in_pressed_keys = key in self._pressed_keys
+                if was_in_pressed_keys:
                     self._pressed_keys.remove(key)
                     logger.debug(f"键被释放: {key}, 当前按下的键: {self._pressed_keys}")
+                else:
+                    logger.warning(f"键被释放但不在按下的键集合中: {key}")
+                
+                # 增加更多日志以便调试
+                is_active = self._is_active
+                is_in_hotkey = key in self._hotkey_combo
+                logger.info(f"键释放状态: 热键激活={is_active}, 键在热键组合中={is_in_hotkey}, 键={key}")
                 
                 # 只有当热键处于激活状态时才处理热键释放
                 # 并且确保是热键组合中的键被释放时才触发停用回调
-                if self._is_active and key in self._hotkey_combo:
+                if is_active and is_in_hotkey:
                     # 标记热键为非激活状态（防止多次触发）
                     self._is_active = False
-                    logger.debug("热键组合被释放，触发停用回调")
+                    logger.info("热键组合被释放，触发停用回调")
                     
                     # 添加独立的标志，避免在热键处理期间重复触发回调
                     # 使用原子操作检查和设置标志
@@ -263,10 +319,13 @@ class HotkeyListener:
                         self._deactivate_in_progress = True
                         try:
                             # 处理热键释放
+                            logger.info("开始执行热键释放处理程序")
                             self._handle_deactivate()
+                            logger.info("热键释放处理程序执行完成")
                         finally:
                             # 在完成处理后重置标志
                             self._deactivate_in_progress = False
+                            logger.debug("重置热键处理中标志")
             except Exception as e:
                 logger.error(f"处理按键释放事件时出错: {e}")
                 # 确保在发生错误时也重置标志

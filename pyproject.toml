@@ -28,6 +28,7 @@ dependencies = [
     "pip>=25.0.1",
     "pyperclip>=1.8.2",
     "funasr>=1.2.6",
+    "cairosvg>=2.7.0",
 ]
 
 [build-system]

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <title>NexTalk - Listening</title>
+  <!-- 圆形背景 -->
+  <circle cx="32" cy="32" r="30" fill="#e6f7e6" stroke="#4CAF50" stroke-width="2"/>
+  
+  <!-- 麦克风图标 - 绿色表示正在监听 -->
+  <g transform="translate(20, 15)" fill="#4CAF50">
+    <!-- 麦克风主体 -->
+    <rect x="5" y="0" width="14" height="24" rx="7" ry="7" />
+    
+    <!-- 麦克风底座 -->
+    <path d="M0,22 C0,30 24,30 24,22 L24,18 L20,18 L20,22 C20,26 4,26 4,22 L4,18 L0,18 Z" />
+    
+    <!-- 声波波纹 (活跃) -->
+    <path fill="none" stroke="#4CAF50" stroke-width="2" stroke-linecap="round" 
+          d="M30,13 C33,13 36,18 36,23 C36,28 33,32 30,32">
+      <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite" />
+    </path>
+    <path fill="none" stroke="#4CAF50" stroke-width="2" stroke-linecap="round" 
+          d="M-6,13 C-9,13 -12,18 -12,23 C-12,28 -9,32 -6,32">
+      <animate attributeName="opacity" values="0.3;1;0.3" dur="1.5s" repeatCount="indefinite" />
+    </path>
+  </g>
+  
+  <!-- 状态文本 -->
+  <text x="32" y="55" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="#4CAF50">监听中</text>
+</svg>

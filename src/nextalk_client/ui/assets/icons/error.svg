@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <title>NexTalk - Error</title>
+  <!-- 圆形背景 -->
+  <circle cx="32" cy="32" r="30" fill="#ffebee" stroke="#F44336" stroke-width="2"/>
+  
+  <!-- 麦克风图标 - 红色表示错误 -->
+  <g transform="translate(20, 15)" fill="#F44336">
+    <!-- 麦克风主体 -->
+    <rect x="5" y="0" width="14" height="24" rx="7" ry="7" />
+    
+    <!-- 麦克风底座 -->
+    <path d="M0,22 C0,30 24,30 24,22 L24,18 L20,18 L20,22 C20,26 4,26 4,22 L4,18 L0,18 Z" />
+    
+    <!-- 错误标识 (叉号) -->
+    <g transform="translate(12, 12)">
+      <line x1="-15" y1="-15" x2="15" y2="15" stroke="#F44336" stroke-width="3" stroke-linecap="round" />
+      <line x1="15" y1="-15" x2="-15" y2="15" stroke="#F44336" stroke-width="3" stroke-linecap="round" />
+    </g>
+  </g>
+  
+  <!-- 状态文本 -->
+  <text x="32" y="55" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="#F44336">错误</text>
+</svg> 
