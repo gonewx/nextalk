@@ -6,14 +6,14 @@ NexTalk客户端核心逻辑。
 - WebSocket通信
 - 服务器消息处理
 - 状态管理
-- 模型切换请求
 """
 
 import asyncio
 import logging
 import threading
 from typing import Optional, Dict, Any, Callable
-import json
+import numpy as np
+import os
 
 from .audio.capture import AudioCapturer
 from .network.client import WebSocketClient
@@ -23,6 +23,9 @@ from .hotkey.listener import HotkeyListener
 from .ui.tray_icon import SystemTrayIcon
 from .ui.notifications import show_notification
 
+# 导入简单窗口作为唯一的文本显示方法
+from .ui.simple_window import show_text
+
 from nextalk_shared.constants import (
     STATUS_IDLE,
     STATUS_LISTENING,
@@ -31,12 +34,11 @@ from nextalk_shared.constants import (
     STATUS_DISCONNECTED,
     STATUS_CONNECTED
 )
-from nextalk_shared.data_models import TranscriptionResponse, ErrorMessage, StatusUpdate, CommandMessage
+from nextalk_shared.data_models import TranscriptionResponse, ErrorMessage, StatusUpdate
 
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
-
 
 class NexTalkClient:
     """
@@ -53,17 +55,17 @@ class NexTalkClient:
         self.is_connected = False
         self.is_processing = False
         
+        # 添加等待最终结果的标志
+        self._waiting_for_final_result = False
+        
         # 加载配置
         self.config = load_config()
         self.client_config = self.config.get('Client', {})
         self.server_config = self.config.get('Server', {})
         logger.info("已加载客户端配置")
         
-        # 获取音频后端设置
-        audio_backend = self.client_config.get('audio_backend', 'pulse')
-        
         # 初始化组件
-        self.audio_capturer = AudioCapturer(audio_backend=audio_backend)
+        self.audio_capturer = AudioCapturer()
         self.websocket_client = WebSocketClient()
         
         # 初始化文本注入器
@@ -94,10 +96,12 @@ class NexTalkClient:
     
     def _register_websocket_callbacks(self):
         """注册WebSocket客户端回调函数。"""
-        self.websocket_client.message_callback = self._handle_server_message
-        self.websocket_client.disconnect_callback = self._handle_disconnect
-        self.websocket_client.error_callback = self._handle_error
-        self.websocket_client.status_callback = self._handle_status_update
+        self.websocket_client.register_callbacks(
+            message_callback=self._handle_server_message,
+            error_callback=self._handle_error,
+            status_callback=self._handle_status_update,
+            disconnect_callback=self._handle_disconnect
+        )
     
     async def start(self):
         """
@@ -112,8 +116,7 @@ class NexTalkClient:
         
         # 启动系统托盘图标
         tray_started = self.tray_icon.start(
-            on_quit=self._handle_quit_request,
-            model_select_callback=self._request_model_switch
+            on_quit=self._handle_quit_request
         )
         if not tray_started:
             logger.warning("无法启动系统托盘图标，但客户端仍会继续运行")
@@ -121,10 +124,11 @@ class NexTalkClient:
             logger.info("系统托盘图标已启动")
         
         # 连接到服务器
-        server_url = self.server_config.get('server_url', 'ws://127.0.0.1:8000/ws/stream')
+        server_url = self.client_config.get('server_url', 'ws://127.0.0.1:8000/ws/stream')
+        use_ssl = self.client_config.get('use_ssl', False)
         logger.info(f"正在连接到服务器: {server_url}")
         
-        connected = await self.websocket_client.connect(server_url)
+        connected = await self.websocket_client.connect(server_url, use_ssl=use_ssl)
         if not connected:
             logger.error("无法连接到服务器，客户端启动失败")
             self._update_state(STATUS_ERROR)
@@ -163,34 +167,53 @@ class NexTalkClient:
         
         停止所有正在进行的处理并断开与服务器的连接。
         """
+        # 防止重复停止
+        if hasattr(self, '_stopping') and self._stopping:
+            logger.info("客户端已在停止过程中，跳过重复停止请求")
+            return True
+            
+        # 设置停止标志
+        self._stopping = True
         logger.info("正在停止NexTalk客户端...")
         
+        # 停止热键监听
+        try:
+            if self.hotkey_listener:
+                self.hotkey_listener.stop()
+                logger.info("热键监听器已停止")
+        except Exception as e:
+            logger.error(f"停止热键监听器时出错: {str(e)}")
+        
+        # 停止音频捕获
+        try:
+            if self.is_listening:
+                self.audio_capturer.stop_stream()
+                logger.info("音频捕获器已停止")
+                self.is_listening = False
+        except Exception as e:
+            logger.error(f"停止音频捕获时出错: {str(e)}")
+        
+        # 断开WebSocket连接
+        try:
+            if self.websocket_client:
+                await self.websocket_client.disconnect()
+                logger.info("WebSocket客户端已断开连接")
+                self.is_connected = False
+        except Exception as e:
+            logger.error(f"断开WebSocket连接时出错: {str(e)}")
+        
         # 停止系统托盘图标
-        if hasattr(self, 'tray_icon') and self.tray_icon:
-            self.tray_icon.stop()
-            logger.info("系统托盘图标已停止")
+        try:
+            if self.tray_icon:
+                self.tray_icon.stop()
+                logger.info("系统托盘图标已停止")
+        except Exception as e:
+            logger.error(f"停止系统托盘图标时出错: {str(e)}")
         
-        # 停止热键监听器
-        if hasattr(self, 'hotkey_listener') and self.hotkey_listener:
-            self.hotkey_listener.stop()
-            logger.info("热键监听器已停止")
+        # 清除停止标志
+        self._stopping = False
+        logger.info("NexTalk客户端已完全停止")
         
-        # 如果正在录音，停止录音
-        if self.is_listening:
-            self._deactivate_listening()
-        
-        # 断开与服务器的连接
-        if self.is_connected:
-            await self.websocket_client.disconnect()
-            self.is_connected = False
-        
-        # 更新状态
-        self._update_state(STATUS_IDLE)
-        
-        # 设置关闭事件
-        self._shutdown_event.set()
-        
-        logger.info("NexTalk客户端已停止")
         return True
     
     def _activate_listening(self):
@@ -199,9 +222,17 @@ class NexTalkClient:
         
         开始捕获音频并发送到服务器。
         """
-        if self.is_listening:
-            logger.warning("已经在监听音频，忽略激活请求")
+        logger.info("正在激活音频监听...")
+        
+        # 检查是否已经在等待最终结果
+        if getattr(self, '_waiting_for_final_result', False):
+            logger.warning("当前正在等待最终结果，无法重新激活音频监听")
             return False
+        
+        # 如果已经在监听，不需要重新启动音频捕获
+        if self.is_listening:
+            logger.info("已经在监听音频，继续当前会话")
+            return True
         
         if not self.is_connected:
             logger.error("未连接到服务器，无法激活音频监听")
@@ -218,57 +249,253 @@ class NexTalkClient:
                 
             return False
         
-        logger.info("正在激活音频监听...")
-        
-        # 开始音频捕获，设置回调
-        started = self.audio_capturer.start_stream(self._handle_audio_chunk)
-        if not started:
-            logger.error("启动音频捕获失败")
-            self._update_state(STATUS_ERROR)
+        # 启动语音识别过程
+        try:
+            # 重置所有相关状态
+            self._waiting_for_final_result = False
+            self._stop_signal_sent = False
             
-            # 显示音频设备错误通知
+            # 取消任何可能存在的超时任务
+            if hasattr(self, '_stop_timeout_task') and not self._stop_timeout_task.done():
+                logger.debug("取消现有的超时任务")
+                self._stop_timeout_task.cancel()
+            
+            # 启动音频捕获
+            logger.info("正在启动音频捕获...")
+            capture_started = self.audio_capturer.start_stream(self._handle_audio_chunk)
+            
+            if not capture_started:
+                logger.error("无法启动音频捕获，音频监听激活失败")
+                return False
+            
+            # 更新状态
+            self.is_listening = True
+            self._update_state(STATUS_LISTENING)
+            
+            # 通知服务器开始识别
+            logger.info("正在通知服务器开始识别...")
+            
+            # 创建异步任务以不阻塞当前线程
+            if self.loop and self.loop.is_running():
+                # 使用run_coroutine_threadsafe在事件循环中执行
+                start_recognition_task = asyncio.run_coroutine_threadsafe(
+                    self.websocket_client.start_recognition(),
+                    self.loop
+                )
+                
+                # 添加回调以处理任务完成
+                def start_recognition_callback(fut):
+                    try:
+                        result = fut.result()
+                        logger.info(f"启动识别结果: {result}")
+                    except Exception as e:
+                        logger.error(f"通知服务器开始识别时出错: {str(e)}")
+                        # 出现错误时重置状态，避免卡在错误状态
+                        self.is_listening = False
+                        self._update_state(STATUS_ERROR)
+                        
+                        # 尝试停止音频捕获
+                        try:
+                            self.audio_capturer.stop_stream()
+                        except Exception as stop_err:
+                            logger.error(f"重置状态时停止音频捕获失败: {str(stop_err)}")
+                
+                start_recognition_task.add_done_callback(start_recognition_callback)
+            else:
+                logger.error("事件循环未运行，无法启动识别")
+                return False
+            
+            # 显示已激活通知
             try:
                 show_notification(
-                    title="NexTalk音频设备错误",
-                    message="无法启动音频捕获，请检查麦克风设置",
-                    urgency="critical"
+                    title="NexTalk已激活",
+                    message="正在监听",
+                    urgency="normal"
                 )
             except Exception as e:
-                logger.error(f"发送音频设备错误通知时出现异常: {e}")
-                
+                logger.error(f"发送监听激活通知时出现异常: {str(e)}")
+            
+            logger.info("音频监听已成功激活")
+            return True
+        except Exception as e:
+            logger.error(f"激活音频监听时出错: {str(e)}")
+            
+            # 确保在出错时清理资源
+            try:
+                if self.is_listening:
+                    self.audio_capturer.stop_stream()
+                    self.is_listening = False
+            except Exception as cleanup_err:
+                logger.error(f"清理资源时出错: {str(cleanup_err)}")
+            
             return False
-        
-        self.is_listening = True
-        self._update_state(STATUS_LISTENING)
-        logger.info("音频监听已激活")
-        return True
     
-    def _deactivate_listening(self):
+    async def _deactivate_listening(self) -> None:
         """
         停用音频监听。
         
-        停止捕获并发送音频。
+        当热键释放时发送停止说话信号，但保持音频捕获直到收到最终结果。
         """
+        logger.info("正在处理音频监听停用请求...")
+        
         if not self.is_listening:
             logger.warning("未在监听音频，忽略停用请求")
-            return False
+            return
         
-        logger.info("正在停用音频监听...")
+        # 检查是否应该立即停止监听
+        # 情况1: 通过菜单或API显式停止 (force=True)
+        # 情况2: 热键释放 (简化处理，直接处理热键释放)
+        force_stop = getattr(self, '_force_stop_listening', False)
         
-        # 停止音频捕获
-        stopped = self.audio_capturer.stop_stream()
-        if not stopped:
-            logger.warning("停止音频捕获失败")
+        # 如果是强制停止，直接完全停止
+        if force_stop:
+            logger.info("强制停止监听，立即停止音频捕获")
+            await self._complete_stop_listening()
+            # 重置强制停止标志
+            self._force_stop_listening = False
+            return
         
-        self.is_listening = False
+        # 检查是否已经在等待最终结果 - 如果是，直接返回，防止重复处理
+        if getattr(self, '_waiting_for_final_result', False):
+            logger.info("已经在等待最终结果，跳过重复处理")
+            return
         
-        if self.is_connected:
-            self._update_state(STATUS_CONNECTED)
-        else:
-            self._update_state(STATUS_IDLE)
+        # 设置等待最终结果标志
+        self._waiting_for_final_result = True
+        
+        # 使用超时机制确保即使没收到最终结果也会停止
+        timeout_seconds = 3.0
+        logger.info(f"设置{timeout_seconds}秒超时，确保即使没有收到最终结果也会停止")
+        
+        # 创建一个定时任务，在超时后强制停止音频捕获
+        if hasattr(self, '_stop_timeout_task') and not self._stop_timeout_task.done():
+            logger.debug("取消现有的超时任务")
+            self._stop_timeout_task.cancel()
+        
+        # 创建新的超时任务
+        self._stop_timeout_task = asyncio.create_task(self._delayed_stop_listening(timeout_seconds))
+        
+        # 设置一个状态变量，标记发送信号的结果
+        self._stop_signal_sent = False
+        
+        try:
+            # 直接异步发送停止说话信号
+            logger.info("发送停止说话信号并等待最终结果")
+            result = await self.websocket_client.send_stop_speaking_signal()
             
-        logger.info("音频监听已停用")
-        return True
+            if result:
+                logger.info("已成功发送停止说话信号，等待服务器返回最终结果")
+                self._stop_signal_sent = True
+            else:
+                logger.error("发送停止说话信号失败，立即停止音频捕获")
+                await self._complete_stop_listening()
+        except Exception as e:
+            logger.error(f"发送停止说话信号时出错: {str(e)}")
+            await self._complete_stop_listening()
+    
+    async def _delayed_stop_listening(self, timeout_seconds: float):
+        """
+        延迟停止音频捕获的辅助方法。
+        
+        在等待最终结果的情况下，如果超过指定时间未收到结果，则强制停止。
+        
+        Args:
+            timeout_seconds: 等待的超时时间(秒)
+        """
+        try:
+            logger.info(f"延迟停止任务开始，将在{timeout_seconds}秒后自动停止")
+            # 使用asyncio.sleep而不是time.sleep，避免阻塞事件循环
+            await asyncio.sleep(timeout_seconds)
+            
+            # 检查是否仍在等待最终结果
+            if getattr(self, '_waiting_for_final_result', False):
+                logger.warning(f"等待最终结果超时({timeout_seconds}秒)，强制停止音频捕获")
+                # 检查是否发送了停止信号但没有收到最终结果
+                stop_signal_sent = getattr(self, '_stop_signal_sent', False)
+                if stop_signal_sent:
+                    logger.warning("已发送停止信号但未收到最终结果，可能服务器未响应")
+                else:
+                    logger.warning("未成功发送停止信号或尚未收到响应")
+                    
+                # 无论如何，超时后一定要停止
+                await self._complete_stop_listening()
+            else:
+                logger.debug("定时任务完成，但等待标志已被重置，不需要额外处理")
+        except asyncio.CancelledError:
+            # 任务被取消(可能是因为已经收到了最终结果)
+            logger.debug("延迟停止任务被取消")
+        except Exception as e:
+            logger.error(f"延迟停止任务出错: {str(e)}")
+            # 发生错误时，确保停止音频捕获
+            await self._complete_stop_listening()
+    
+    async def _complete_stop_listening(self):
+        """
+        完全停止音频监听和识别。
+        
+        停止音频捕获、清理状态并更新UI。
+        """
+        logger.info("正在完全停止音频监听...")
+        
+        # 重置等待最终结果标志
+        self._waiting_for_final_result = False
+        self._stop_signal_sent = False
+        
+        # 取消超时任务（如果存在）
+        try:
+            if hasattr(self, '_stop_timeout_task') and not self._stop_timeout_task.done():
+                logger.debug("取消已有的停止超时任务")
+                self._stop_timeout_task.cancel()
+        except Exception as e:
+            logger.error(f"取消超时任务时出错: {str(e)}")
+        
+        # 停止音频捕获 - 添加重试逻辑
+        max_retries = 3
+        retry_count = 0
+        stop_success = False
+        
+        while retry_count < max_retries and not stop_success:
+            try:
+                # 重置状态标志，确保我们在重新尝试时有正确的状态
+                if retry_count > 0:
+                    logger.info(f"重试停止音频捕获 (尝试 {retry_count+1}/{max_retries})")
+                    
+                # 检查捕获器是否正在捕获
+                if self.audio_capturer.is_capturing():
+                    self.audio_capturer.stop_stream()
+                    logger.info("音频捕获器已停止")
+                    stop_success = True
+                else:
+                    logger.warning("音频捕获器已经不在捕获状态，不需要停止")
+                    stop_success = True
+            except Exception as e:
+                retry_count += 1
+                logger.error(f"停止音频捕获时出错(尝试 {retry_count}/{max_retries}): {str(e)}")
+                if retry_count < max_retries:
+                    await asyncio.sleep(0.2)  # 延长等待时间，给系统更多恢复时间
+        
+        if not stop_success:
+            logger.error("无法停止音频捕获器，达到最大重试次数")
+        
+        # 停止识别
+        try:
+            await self.websocket_client.stop_recognition()
+        except Exception as e:
+            logger.error(f"停止识别时出错: {str(e)}")
+        
+        # 更新状态 - 确保即使出现异常也会更新状态
+        self.is_listening = False
+        self._update_state(STATUS_IDLE)
+        
+        # 显示通知
+        try:
+            show_notification(
+                title="NexTalk已停用",
+                message="不再监听",
+                urgency="low"
+            )
+        except Exception as e:
+            logger.error(f"发送监听停用通知时出现异常: {str(e)}")
     
     def _handle_audio_chunk(self, data: bytes):
         """
@@ -282,391 +509,412 @@ class NexTalkClient:
         if not self.is_connected or not self.is_listening:
             return
         
-        # 创建异步任务发送音频数据
-        asyncio.run_coroutine_threadsafe(
-            self.websocket_client.send_audio(data),
-            self.loop
-        )
+        # 记录收到的音频数据信息
+        try:
+            # 为避免日志过多，每10个数据块记录一次
+            if hasattr(self, '_audio_chunk_counter'):
+                self._audio_chunk_counter += 1
+            else:
+                self._audio_chunk_counter = 1
+                
+            if self._audio_chunk_counter % 10 == 0:
+                # 检查音频数据
+                audio_int16 = np.frombuffer(data, dtype=np.int16)
+                non_zero_ratio = np.count_nonzero(audio_int16) / len(audio_int16)
+                max_amplitude = np.max(np.abs(audio_int16))
+                
+                logger.debug(
+                    f"处理音频块 #{self._audio_chunk_counter}: "
+                    f"大小={len(data)}字节, "
+                    f"非零比例={non_zero_ratio:.4f}, "
+                    f"最大振幅={max_amplitude}"
+                )
+        except Exception as e:
+            logger.warning(f"音频数据分析失败: {str(e)}")
+        
+        # 检查数据是否为空
+        if not data or len(data) == 0:
+            logger.warning("收到空的音频数据块，跳过发送")
+            return
+        
+        try:
+            # 创建异步任务发送音频数据
+            send_task = asyncio.run_coroutine_threadsafe(
+                self.websocket_client.send_audio(data),
+                self.loop
+            )
+            
+            # 每个数据块记录一次发送状态
+            logger.debug(f"音频块 #{self._audio_chunk_counter} 发送任务已创建")
+            
+            # 每10个数据块检查一次发送结果
+            if self._audio_chunk_counter % 10 == 0:
+                try:
+                    # 等待发送完成并获取结果(最多等待0.1秒)
+                    result = send_task.result(timeout=0.1)
+                    logger.info(f"音频数据发送结果: {'成功' if result else '失败'}")
+                except asyncio.TimeoutError:
+                    logger.warning("获取音频发送结果超时，发送可能仍在进行")
+                except Exception as e:
+                    logger.warning(f"获取音频发送结果时出错: {str(e)}")
+        except Exception as e:
+            logger.error(f"创建音频发送任务时出错: {str(e)}")
     
     def _handle_server_message(self, message):
         """
         处理从服务器接收到的消息。
         
-        根据消息类型（transcription、error、status等）进行不同处理。
+        解析消息并分发到对应的处理函数。
         
         Args:
-            message: 从服务器接收到的消息对象
+            message: 服务器发送的消息
         """
         if not message:
             logger.warning("收到空消息")
             return
-            
-        # 根据消息类型分发处理
+        
         try:
+            if isinstance(message, str):
+                message_str = message
+            else:
+                # 假设是对象，尝试转换为字符串
+                message_str = str(message)
+            
+            logger.debug(f"收到服务器消息: {message_str[:100]}")
+            
+            # 检查消息是否有type字段
             if hasattr(message, 'type'):
                 message_type = message.type
+                logger.info(f"处理类型为'{message_type}'的消息")
                 
                 if message_type == "transcription" and hasattr(message, 'text'):
-                    # 处理转录结果
-                    self._handle_transcription(message.text)
+                    # 处理转录文本
+                    text = message.text
+                    # 检查是否有is_final字段
+                    is_final = getattr(message, 'is_final', False)
                     
+                    # 添加相关日志
+                    if is_final:
+                        logger.info(f"接收到最终转录结果: '{text}'")
+                    else:
+                        logger.info(f"接收到中间转录结果: '{text}'")
+                    
+                    # 将转录结果传递给专门的处理函数
+                    self._handle_transcription(text, is_final)
+                
                 elif message_type == "error" and hasattr(message, 'message'):
                     # 处理错误消息
-                    self._handle_error(message.message)
+                    error_message = message.message
+                    logger.error(f"接收到错误消息: {error_message}")
+                    self._handle_error(error_message)
                     
                 elif message_type == "status" and hasattr(message, 'state'):
                     # 处理状态更新
-                    self._handle_status_update(message.state)
-                    
-                elif message_type == "command_result":
-                    # 处理命令执行结果
-                    self._handle_command_result(message)
+                    logger.info(f"处理状态更新: type='{message_type}' state='{message.state}'")
+                    # 将整个消息对象传递给状态处理函数
+                    self._handle_status_update(message)
                     
                 else:
-                    logger.warning(f"未知消息类型: {message_type}")
+                    logger.warning(f"收到未知类型或不完整的消息: {message_str[:100]}")
             else:
-                logger.warning(f"消息缺少类型字段: {message}")
-                
+                logger.warning(f"消息缺少类型字段: {message_str[:100]}")
         except Exception as e:
-            logger.error(f"处理服务器消息时出错: {e}")
-            self._update_state(STATUS_ERROR)
+            logger.error(f"处理服务器消息时出错: {str(e)}")
     
-    def _handle_transcription(self, text: str):
+    def _handle_transcription(self, text: str, is_final: bool = False):
         """
-        处理转录文本。
+        处理转录结果。
         
-        接收转录文本并使用文本注入器将其注入到当前活动窗口。
+        根据转录结果进行相应的处理，包括文本注入和状态更新。
         
         Args:
-            text: 转录的文本
+            text: 转录文本
+            is_final: 是否为最终结果
         """
-        if not text or text.isspace():
-            logger.debug("收到空白转录，忽略")
+        logger.info(f"处理类型为'transcription'的消息")
+        
+        # 检查转录文本是否有效
+        if not text or len(text.strip()) == 0:
+            logger.warning(f"收到无效的转录文本: '{text}'")
             return
             
-        logger.info(f"转录结果: {text}")
-        logger.info(f"转录结果字符数: {len(text)}, 类型: {type(text)}")
-        print(f"语音识别结果: {text}")  # 在控制台打印转录结果
+        # 记录转录结果日志
+        logger.info(f"接收到转录结果: '{text}', is_final={is_final}")
         
-        # 调用文本注入器功能
-        if self.injector:
-            logger.info(f"开始文本注入, 注入器类型: {type(self.injector).__name__}")
+        # 文本注入功能
+        if self.injector and text:
+            logger.info(f"正在注入文本: '{text}'")
             success = self.injector.inject_text(text)
             if success:
-                logger.info(f"文本注入成功, 内容: {text[:30]}...")
+                logger.info("文本注入成功")
             else:
-                logger.error(f"文本注入失败, 尝试注入内容: {text[:30]}...")
-                logger.error("请检查xdotool是否正确安装，或尝试在终端执行 'xdotool type \"test\"' 测试")
-        else:
-            logger.warning("文本注入器不可用，无法执行文本注入")
-            logger.error("请检查xdotool是否已安装，可使用命令: sudo apt install xdotool")
+                logger.error("文本注入失败")
+                # 如果注入失败且已配置，则显示文本窗口
+                if self.client_config.get('show_text_on_error', False):
+                    try:
+                        show_text(text, is_final)
+                    except Exception as e:
+                        logger.error(f"显示文本窗口时出错: {str(e)}")
+        
+        # 显示文本窗口（如果已配置）
+        try:
+            if self.client_config.get('show_text', False):
+                # 这里我们使用一个简单的独立窗口显示文本
+                show_text(text, is_final)
+        except Exception as e:
+            logger.error(f"显示文本窗口时出错: {str(e)}")
+        
+        # 处理等待最终结果的情况
+        waiting_for_final = getattr(self, '_waiting_for_final_result', False)
+        stop_signal_sent = getattr(self, '_stop_signal_sent', False)
+        
+        # 记录当前状态详情，帮助调试
+        if waiting_for_final:
+            logger.debug(f"等待最终结果: {waiting_for_final}, 已发送停止信号: {stop_signal_sent}, 当前结果是最终结果: {is_final}")
+        
+        if waiting_for_final and is_final:
+            logger.info("收到等待中的最终结果，准备停止音频捕获")
+            
+            # 取消超时任务（如果存在）
+            try:
+                if hasattr(self, '_stop_timeout_task') and not self._stop_timeout_task.done():
+                    logger.debug("取消停止超时任务")
+                    self._stop_timeout_task.cancel()
+            except Exception as e:
+                logger.error(f"取消超时任务时出错: {str(e)}")
+            
+            # 使用asyncio.run_coroutine_threadsafe来正确运行异步方法
+            try:
+                # 确保只创建一次停止任务
+                if not hasattr(self, '_complete_stop_task') or self._complete_stop_task.done():
+                    logger.debug("创建完全停止音频捕获任务")
+                    self._complete_stop_task = asyncio.run_coroutine_threadsafe(
+                        self._complete_stop_listening(),
+                        self.loop
+                    )
+                    
+                    # 添加完成回调以处理可能的异常
+                    def callback(fut):
+                        try:
+                            fut.result()  # 获取结果，如果有异常会抛出
+                            logger.debug("停止音频捕获任务完成")
+                        except Exception as e:
+                            logger.error(f"停止音频捕获时出错: {str(e)}")
+                    
+                    self._complete_stop_task.add_done_callback(callback)
+                else:
+                    logger.debug("停止任务已经在进行中，不再创建新任务")
+            except Exception as e:
+                logger.error(f"创建停止任务时出错: {str(e)}")
+                # 出错时尝试直接停止，确保不会卡在监听状态
+                try:
+                    self.is_listening = False
+                    self._update_state(STATUS_IDLE)
+                except Exception as stop_err:
+                    logger.error(f"紧急停止失败: {stop_err}")
     
     def _handle_error(self, error_message: str):
         """
-        处理错误消息。
+        处理从服务器接收到的错误消息。
         
-        更新状态并记录错误。
+        更新UI状态并显示错误通知。
         
         Args:
-            error_message: 错误消息内容
+            error_message: 错误消息
         """
-        # 使用线程锁保护状态更新
-        with self._state_lock:
-            logger.error(f"处理错误: {error_message}")
-            
-            # 临时将状态设置为错误状态
-            previous_state = self.current_state
-            self._update_state(STATUS_ERROR)
-            
-            # 如果当前正在处理，重置处理状态
-            if self.is_processing:
-                self.is_processing = False
-            
-            # 打印错误消息到控制台
-            print(f"错误: {error_message}")
-            
-            # 显示桌面通知
-            try:
-                notification_sent = show_notification(
-                    title="NexTalk错误",
-                    message=error_message,
-                    urgency="critical"
-                )
-                if notification_sent:
-                    logger.debug("错误通知已发送")
-                else:
-                    logger.warning("无法发送错误通知")
-            except Exception as e:
-                logger.error(f"发送错误通知时出现异常: {e}")
-            
-            # 短暂延迟后恢复之前的状态（如果是连接或监听状态）
-            if self.is_listening:
-                # 延迟2秒后恢复监听状态
-                loop = asyncio.get_event_loop()
-                loop.call_later(2, self._delayed_state_restore, STATUS_LISTENING)
-            elif self.is_connected:
-                # 延迟2秒后恢复连接状态
-                loop = asyncio.get_event_loop()
-                loop.call_later(2, self._delayed_state_restore, STATUS_CONNECTED)
+        logger.error(f"处理错误消息: {error_message}")
+        
+        # 更新状态
+        self._update_state(STATUS_ERROR)
+        
+        # 显示错误通知
+        try:
+            show_notification(
+                title="NexTalk错误",
+                message=error_message,
+                urgency="critical"
+            )
+        except Exception as e:
+            logger.error(f"发送错误通知时出现异常: {e}")
+        
+        # 短暂延迟后恢复状态
+        try:
+            # 延迟5秒后恢复状态
+            threading.Timer(5.0, self._delayed_state_restore, 
+                          args=([STATUS_CONNECTED if self.is_connected else STATUS_DISCONNECTED])).start()
+        except Exception as e:
+            logger.error(f"创建延时任务时出错: {e}")
     
     def _delayed_state_restore(self, state: str):
         """
         延迟恢复状态。
         
-        用于错误状态短暂显示后恢复到正常状态。
+        用于错误状态显示一段时间后恢复正常状态。
         
         Args:
             state: 要恢复的状态
         """
-        with self._state_lock:
-            if self.current_state == STATUS_ERROR:
-                self._update_state(state)
+        if self.current_state == STATUS_ERROR:
+            logger.info(f"延迟恢复状态: {state}")
+            self._update_state(state)
     
     def _handle_status_update(self, status: str):
         """
         处理状态更新消息。
         
-        根据服务器报告的状态调整客户端状态。
+        更新内部状态和UI显示。
         
         Args:
-            status: 服务器报告的状态
+            status: 状态字符串或StatusUpdate对象
         """
-        logger.debug(f"处理状态更新: {status}")
+        logger.info(f"处理状态更新: {status}")
         
-        # 使用线程锁保护状态更新
-        with self._state_lock:
-            # 根据服务器状态进行客户端状态逻辑处理
-            if status == STATUS_DISCONNECTED and self.is_connected:
-                # 服务器报告断开连接
-                self.is_connected = False
-                self._handle_disconnect()
-            elif status == STATUS_ERROR:
-                # 服务器报告错误
-                logger.warning("服务器报告错误状态")
-                # 不直接将客户端状态设为错误，等待具体的错误消息
-                # 错误状态应该是短暂的，所以不更新UI
-            
-            # 记录服务器状态，但不一定更新客户端UI状态
-            # 客户端UI状态应反映客户端的实际状态而不仅是服务器状态
-            logger.debug(f"服务器状态: {status}, 客户端状态: {self.current_state}")
+        # 检查status是否为StatusUpdate对象
+        if isinstance(status, StatusUpdate):
+            # 从StatusUpdate对象中提取state字段
+            status = status.state
+            logger.debug(f"从StatusUpdate提取状态: {status}")
+        
+        if status == STATUS_CONNECTED:
+            self.is_connected = True
+        elif status == STATUS_DISCONNECTED:
+            self.is_connected = False
+        elif status == STATUS_LISTENING:
+            self.is_listening = True
+        elif status == STATUS_IDLE:
+            self.is_listening = False
+        elif status == STATUS_PROCESSING:
+            self.is_processing = True
+        
+        # 更新状态
+        self._update_state(status)
     
     def _handle_disconnect(self):
-        """处理与服务器的连接断开。"""
-        logger.info("与服务器的连接已断开")
+        """
+        处理WebSocket连接断开。
+        
+        更新状态和UI显示。
+        """
+        logger.info("处理WebSocket连接断开")
+        
+        # 更新连接状态
         self.is_connected = False
         
-        # 如果正在监听，停止监听
+        # 如果正在监听，则停止音频捕获
         if self.is_listening:
-            self._deactivate_listening()
+            try:
+                logger.info("正在停止音频捕获...")
+                self.audio_capturer.stop_stream()
+                self.is_listening = False
+            except Exception as e:
+                logger.error(f"停止音频捕获时出错: {str(e)}")
         
+        # 更新状态
         self._update_state(STATUS_DISCONNECTED)
         
-        # 显示断开连接通知
+        # 显示通知
         try:
-            notification_sent = show_notification(
+            show_notification(
                 title="NexTalk连接断开",
-                message="与服务器的连接已断开，请检查网络连接或服务器状态",
+                message="与服务器的连接已断开",
                 urgency="normal"
             )
-            if notification_sent:
-                logger.debug("断开连接通知已发送")
-            else:
-                logger.warning("无法发送断开连接通知")
         except Exception as e:
-            logger.error(f"发送断开连接通知时出现异常: {e}")
+            logger.error(f"发送连接断开通知时出现异常: {e}")
     
     def _update_state(self, new_state: str):
         """
         更新客户端状态。
         
-        使用线程锁确保状态更新的线程安全。
+        线程安全地更新内部状态并更新UI。
         
         Args:
-            new_state: 新的状态字符串
+            new_state: 新状态
         """
         with self._state_lock:
+            # 如果状态没有变化，不执行操作
             if self.current_state == new_state:
                 return
-            
-            logger.info(f"客户端状态从 {self.current_state} 变更为 {new_state}")
+                
+            logger.info(f"状态更新: {self.current_state} -> {new_state}")
             self.current_state = new_state
             
-            # 状态变更时的特殊处理
-            if new_state == STATUS_PROCESSING:
-                self.is_processing = True
-            elif new_state == STATUS_LISTENING:
-                self.is_processing = False
-            
-            # 更新UI状态
-            self._update_ui_state(new_state)
+        # 更新UI状态（在锁外执行，避免死锁）
+        self._update_ui_state(new_state)
     
     def _update_ui_state(self, new_state: str):
         """
         更新UI状态。
         
-        将状态更新传递给系统托盘图标，以便更新图标显示。
+        根据当前状态更新系统托盘图标等UI元素。
         
         Args:
-            new_state: 新的状态字符串
+            new_state: 新状态
         """
-        try:
-            if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.update_state(new_state)
-                logger.debug(f"已更新系统托盘图标状态为: {new_state}")
-        except Exception as e:
-            logger.error(f"更新系统托盘图标状态时出错: {e}")
+        if self.tray_icon:
+            self.tray_icon.update_state(new_state)
     
     def toggle_listening(self):
         """
-        切换监听状态。
+        切换音频监听状态。
         
-        如果当前在监听，则停止；如果当前未监听，则开始。
-        用于热键触发。
-        
-        Returns:
-            bool: 新的监听状态
-        """
-        if self.is_listening:
-            self._deactivate_listening()
-        else:
-            self._activate_listening()
-        
-        return self.is_listening
-    
-    def _handle_quit_request(self):
-        """
-        处理来自系统托盘的退出请求。
-        
-        创建异步任务调用stop()方法。
-        """
-        logger.info("收到来自系统托盘的退出请求")
-        
-        if self.loop and not self.loop.is_closed():
-            asyncio.run_coroutine_threadsafe(self.stop(), self.loop)
-        else:
-            logger.error("无法处理退出请求：事件循环不可用或已关闭")
-    
-    def _request_model_switch(self, model_size: str):
-        """
-        请求切换语音识别模型。
-        
-        向服务器发送模型切换命令，可以通过WebSocket或REST API。
-        
-        Args:
-            model_size: 要切换到的模型大小（例如 "tiny.en", "small.en", "base.en"）
+        如果当前正在监听，则停止监听；否则开始监听。
         """
         if not self.is_connected:
-            logger.error("未连接到服务器，无法请求模型切换")
+            logger.warning("未连接到服务器，无法切换监听状态")
+            return
             
-            # 显示错误通知
-            try:
-                show_notification(
-                    title="NexTalk模型切换失败",
-                    message="未连接到服务器，无法切换模型",
-                    urgency="normal"
-                )
-            except Exception as e:
-                logger.error(f"发送模型切换错误通知时出现异常: {e}")
-                
-            return False
+        if self.is_listening:
+            logger.info("切换：强制停止监听")
             
-        logger.info(f"请求切换到模型: {model_size}")
-        
-        # 更新状态，表示正在处理
-        old_state = self.current_state
-        self._update_state(STATUS_PROCESSING)
-        
-        # 通过WebSocket发送命令消息
-        try:
-            # 创建命令消息
-            command = CommandMessage(
-                command="switch_model",
-                payload=model_size
-            )
+            # 手动切换时，强制停止监听
+            self._force_stop_listening = True
             
-            # 异步发送命令
-            asyncio.run_coroutine_threadsafe(
-                self.websocket_client.send_json(command.dict()),
+            # 创建任务来停止监听
+            task = asyncio.run_coroutine_threadsafe(
+                self._deactivate_listening(),
                 self.loop
             )
             
-            # 更新托盘图标中的当前模型
-            if hasattr(self, 'tray_icon') and self.tray_icon:
-                self.tray_icon.update_current_model(model_size)
-                
-            logger.info(f"已发送模型切换命令: {model_size}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"发送模型切换命令时出错: {e}")
-            
-            # 恢复之前的状态
-            self._update_state(old_state)
-            
-            # 显示错误通知
-            try:
-                show_notification(
-                    title="NexTalk模型切换失败",
-                    message=f"发送切换命令时出错: {str(e)}",
-                    urgency="normal"
-                )
-            except Exception as e2:
-                logger.error(f"发送模型切换错误通知时出现异常: {e2}")
-                
-            return False
-    
-    def _handle_command_result(self, result):
-        """
-        处理命令执行结果消息。
-        
-        Args:
-            result: 命令执行结果消息对象
-        """
-        if not hasattr(result, 'command') or not hasattr(result, 'status'):
-            logger.warning("收到格式不正确的命令结果消息")
-            return
-            
-        command = result.command
-        status = result.status
-        message = getattr(result, 'message', '')
-        
-        logger.info(f"收到命令执行结果: {command}, 状态: {status}, 消息: {message}")
-        
-        # 处理模型切换命令结果
-        if command == "switch_model":
-            if status == "success":
-                logger.info(f"模型切换成功: {message}")
-                
-                # 恢复到IDLE状态
-                self._update_state(STATUS_IDLE)
-                
-                # 显示成功通知
+            # 添加完成回调
+            def callback(fut):
                 try:
-                    show_notification(
-                        title="NexTalk模型切换成功",
-                        message=message,
-                        urgency="low"
-                    )
+                    fut.result()  # 获取结果，可能会引发异常
                 except Exception as e:
-                    logger.error(f"发送模型切换成功通知时出现异常: {e}")
-                    
-            else:
-                logger.error(f"模型切换失败: {message}")
-                
-                # 更新状态为错误
-                self._update_state(STATUS_ERROR)
-                
-                # 显示错误通知
-                try:
-                    show_notification(
-                        title="NexTalk模型切换失败",
-                        message=message,
-                        urgency="normal"
-                    )
-                except Exception as e:
-                    logger.error(f"发送模型切换失败通知时出现异常: {e}")
+                    logger.error(f"停止监听时出错: {str(e)}")
+            
+            task.add_done_callback(callback)
         else:
-            logger.debug(f"收到未处理的命令结果: {command}")
+            logger.info("切换：开始监听")
+            self._activate_listening()
+    
+    def _handle_quit_request(self):
+        """
+        处理退出请求。
+        
+        停止客户端并退出应用程序。
+        """
+        logger.info("接收到退出请求")
+        
+        # 创建任务来停止客户端
+        if self.loop:
+            task = asyncio.run_coroutine_threadsafe(
+                self.stop(),
+                self.loop
+            )
             
-            # 恢复到IDLE状态
-            self._update_state(STATUS_IDLE) 
+            # 添加完成回调
+            def callback(fut):
+                try:
+                    fut.result()  # 获取结果，可能会引发异常
+                    logger.info("客户端已停止，准备退出")
+                    
+                    # 发送关闭事件
+                    self._shutdown_event.set()
+                except Exception as e:
+                    logger.error(f"停止客户端时出错: {str(e)}")
+                    
+                    # 尽管出错，仍然发送关闭事件
+                    self._shutdown_event.set()
+            
+            task.add_done_callback(callback) 

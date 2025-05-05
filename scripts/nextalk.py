@@ -6,9 +6,9 @@ NexTalk 统一启动脚本
 提供命令行参数，支持标准模式和调试模式。
 
 使用方法:
-  - 启动服务器: python nextalk.py server [--debug] [--log-file FILE]
+  - 启动服务器: python nextalk.py server [--log-level LEVEL] [--log-file FILE]
   - 启动客户端: python nextalk.py client [--debug] [--log-file FILE]
-  - 启动完整工作流: python nextalk.py start [--debug] [--log-file-server FILE] [--log-file-client FILE]
+  - 启动完整工作流: python nextalk.py start [--log-level LEVEL] [--log-file-server FILE] [--log-file-client FILE]
 """
 
 import argparse
@@ -87,13 +87,13 @@ def parse_args():
         epilog="""
 示例:
   启动服务器:
-    python nextalk.py server --debug
+    python nextalk.py server --log-level debug
   
   启动客户端:
     python nextalk.py client
   
   启动完整工作流:
-    python nextalk.py start --debug
+    python nextalk.py start --log-level debug
         """
     )
     
@@ -102,7 +102,7 @@ def parse_args():
     
     # 服务器命令
     server_parser = subparsers.add_parser("server", help="启动NexTalk服务器")
-    server_parser.add_argument("--debug", action="store_true", help="启用调试模式")
+    server_parser.add_argument("--log-level", type=str, default="info", choices=["debug", "info", "warning", "error"], help="设置日志级别，默认为info")
     server_parser.add_argument("--log-file", type=str, help="指定日志文件路径")
     server_parser.add_argument("--host", type=str, help="指定服务器监听地址")
     server_parser.add_argument("--port", type=int, help="指定服务器监听端口")
@@ -116,7 +116,7 @@ def parse_args():
     
     # 完整工作流命令
     workflow_parser = subparsers.add_parser("start", help="启动完整NexTalk工作流（服务器+客户端）")
-    workflow_parser.add_argument("--debug", action="store_true", help="为服务器和客户端启用调试模式")
+    workflow_parser.add_argument("--log-level", type=str, default="info", choices=["debug", "info", "warning", "error"], help="设置服务器日志级别，默认为info")
     workflow_parser.add_argument("--log-file-server", type=str, default="server_debug.log", help="指定服务器日志文件路径")
     workflow_parser.add_argument("--log-file-client", type=str, default="client_debug.log", help="指定客户端日志文件路径")
     workflow_parser.add_argument("--host", type=str, help="指定服务器监听地址")
@@ -140,7 +140,8 @@ def start_server(args):
     print("\033[1;36m=== 启动NexTalk服务器 ===\033[0m")
     
     # 设置环境变量
-    if args.debug:
+    log_level = args.log_level.lower()
+    if log_level == "debug":
         os.environ["NEXTALK_DEBUG"] = "1"
         print("\033[1;33m调试模式已启用\033[0m")
     
@@ -155,8 +156,7 @@ def start_server(args):
         # 构建启动命令
         cmd = [sys.executable, "-m", "nextalk_server.main"]
         
-        if args.debug:
-            cmd.append("--debug")
+        cmd.extend(["--log-level", log_level])
         
         if args.log_file:
             cmd.extend(["--log-file", args.log_file])
@@ -248,15 +248,15 @@ def start_workflow(args):
             return 1
     
     # 设置环境变量
-    if args.debug:
+    log_level = args.log_level.lower()
+    if log_level == "debug":
         os.environ["NEXTALK_DEBUG"] = "1"
         print("\033[1;33m调试模式已启用，将显示详细日志\033[0m")
     
     try:
         # 创建服务器进程参数
         server_cmd = [sys.executable, os.path.abspath(__file__), "server"]
-        if args.debug:
-            server_cmd.append("--debug")
+        server_cmd.extend(["--log-level", log_level])
         if args.log_file_server:
             server_cmd.extend(["--log-file", args.log_file_server])
         if args.host:

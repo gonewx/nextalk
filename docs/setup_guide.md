@@ -23,6 +23,8 @@
   - `xdotool`（用于文本注入）
   - `libnotify-bin`（用于桌面通知）
   - 音频库: `portaudio19-dev`, `python3-pyaudio`
+- 可选依赖项:
+  - FunASR库（用于中文语音识别）
 
 ## 安装步骤
 
@@ -78,7 +80,18 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-### 5. 配置NexTalk
+### 5. 安装FunASR（可选）
+
+如果您需要更好的中文语音识别支持，可以安装FunASR库：
+
+```bash
+# 使用pip安装FunASR
+pip install funasr
+```
+
+有关FunASR的更多信息，请参阅[FunASR官方文档](https://github.com/alibaba-damo-academy/FunASR)。
+
+### 6. 配置NexTalk
 
 NexTalk首次运行时会自动创建默认配置文件，但您也可以手动设置：
 
@@ -107,6 +120,8 @@ audio_backend=pulse
 
 [Server]
 ; 默认语音识别模型
+; Whisper模型选项: small.en, base.en, large-v3等
+; FunASR模型选项: paraformer-zh, paraformer-zh-streaming, SenseVoiceSmall等
 default_model=small.en-int8
 ; 语音活动检测敏感度 (0-3)
 vad_sensitivity=2
@@ -114,6 +129,10 @@ vad_sensitivity=2
 device=cuda
 ; 计算精度类型
 compute_type=int8
+; 默认语言设置 (en, zh, auto等)
+language=en
+; FunASR使用的VAD模型
+funasr_vad_model=fsmn-vad
 ```
 
 ### 关键配置选项
@@ -124,12 +143,13 @@ compute_type=int8
   - `pulse`: 使用PulseAudio（推荐，默认值）
   - `alsa`: 使用ALSA
   - `oss`: 使用OSS
-- **default_model**: Whisper模型大小，可选：
-  - `tiny.en-int8`: 最小最快，准确度有限
-  - `small.en-int8`: 平衡大小和准确度（推荐）
-  - `base.en-int8`: 更准确但需要更多资源
+- **default_model**: 语音识别模型，可选：
+  - Whisper模型: `tiny.en-int8`（最小最快）、`small.en-int8`（平衡）、`base.en-int8`（更准确）
+  - FunASR模型: `paraformer-zh`（标准中文）、`paraformer-zh-streaming`（流式中文）
 - **device**: 计算设备，`cuda`(GPU)或`cpu`
 - **vad_sensitivity**: 语音活动检测敏感度，0-3之间的值（3最敏感）
+- **language**: 默认语言，例如`en`（英语）、`zh`（中文）或`auto`（自动检测）
+- **funasr_vad_model**: FunASR使用的VAD模型，默认为`fsmn-vad`
 
 ## 首次运行
 

@@ -6,9 +6,11 @@ NexTalk WebSocket通信的数据模型定义。
 - ErrorMessage: 错误消息
 - StatusUpdate: 状态更新消息
 - CommandMessage: 客户端到服务器的命令消息
+- FunASRConfig: FunASR配置模型
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional, List, Union
 
 
 class BaseModelWithDict(BaseModel):
@@ -27,6 +29,10 @@ class TranscriptionResponse(BaseModelWithDict):
     """语音转文本结果响应模型。"""
     type: str = "transcription"
     text: str
+    mode: Optional[str] = None  # offline, online, 2pass, 2pass-online, 2pass-offline
+    wav_name: Optional[str] = None
+    is_final: Optional[bool] = None
+    timestamp: Optional[Union[str, float]] = None
 
 
 class ErrorMessage(BaseModelWithDict):
@@ -45,4 +51,27 @@ class CommandMessage(BaseModelWithDict):
     """客户端到服务器的命令消息模型。"""
     type: str = "command"
     command: str
-    payload: str = "" 
+    payload: str = ""
+
+
+class FunASRConfig(BaseModel):
+    """FunASR配置类，用于控制语音识别参数"""
+    
+    # 识别模式: 2pass(先在线后离线), online(纯在线), offline(纯离线)
+    mode: str = "2pass"
+    
+    # 在线模型参数
+    chunk_size: List[int] = [5, 10]  # 用于在线流式模型的分块大小
+    chunk_interval: int = 10  # 处理音频块的间隔（帧数）
+    encoder_chunk_look_back: Optional[int] = None  # 编码器回看窗口大小
+    decoder_chunk_look_back: Optional[int] = None  # 解码器回看窗口大小
+    
+    # 状态控制
+    is_speaking: bool = True  # 是否正在说话
+    
+    # 增强特性
+    hotwords: Optional[str] = None  # 热词，增强特定词语的识别
+    itn: bool = True  # 是否使用逆文本正规化（数字转换等）
+    
+    # 其他参数
+    wav_name: str = "microphone"  # 音频名称标识 

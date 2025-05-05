@@ -17,8 +17,6 @@ from nextalk_shared.constants import (
     AUDIO_FRAME_DURATION_MS,
     AUDIO_CHUNK_SIZE,
 )
-from nextalk_server.asr.recognizer import ASRRecognizer
-
 
 # 路径常量
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -150,7 +148,7 @@ def patched_asr_recognizer():
     mock_recognizer = MagicMock()
     mock_recognizer.return_value.transcribe.return_value = "这是一个测试转录"
     
-    with patch('nextalk_server.asr.recognizer.ASRRecognizer', mock_recognizer):
+    with patch('nextalk_server.models.whisper.WhisperRecognizer', mock_recognizer):
         yield mock_recognizer
 
 

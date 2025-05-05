@@ -28,6 +28,7 @@
       - [调试模式启动](#调试模式启动)
   - [高级功能](#高级功能)
     - [多语言支持](#多语言支持)
+    - [FunASR特有配置](#funasr特有配置)
     - [性能调优](#性能调优)
   - [其他资源](#其他资源)
 
@@ -128,17 +129,28 @@ NexTalk提供了多种控制转录过程的方式：
 
 ```ini
 [server]
-# 可选值: tiny, base, small, medium, large, large-v3, distil-large-v3
+# Whisper模型可选值: tiny, base, small, medium, large, large-v3, distil-large-v3
+# FunASR模型可选值: paraformer-zh, paraformer-zh-streaming, SenseVoiceSmall
 default_model = large-v3
 # 可选值: cpu, cuda
 device = cuda
 ```
 
-不同模型的对比：
+Whisper模型的对比：
 - `tiny`: 最小，速度最快，精度最低
 - `base`/`small`: 平衡速度和精度
 - `medium`/`large`: 高精度，但需要更多计算资源
 - `large-v3`/`distil-large-v3`: 最新模型，支持更多语言
+
+FunASR模型的对比：
+- `paraformer-zh`: 标准中文模型，精度较高，速度适中
+- `paraformer-zh-streaming`: 流式中文模型，实时性好，适合持续转录
+- `SenseVoiceSmall`: 小型通用模型，资源占用少，速度快
+
+选择模型时的建议：
+- 对于中文识别，推荐使用FunASR的`paraformer-zh`或`paraformer-zh-streaming`模型
+- 对于英文或多语言识别，推荐使用Whisper的`large-v3`或`medium`模型
+- 在资源受限的设备上，可以选择较小的模型，如Whisper的`small`或FunASR的`SenseVoiceSmall`
 
 ### 音频设置
 
@@ -336,10 +348,52 @@ python -m nextalk_client.main --debug --log-file debug.log
 
 ### 多语言支持
 
-NexTalk主要支持英语识别，但也可以通过切换模型来支持其他语言：
+NexTalk支持多种语言的语音识别：
 
-1. 在配置文件中设置 `language` 选项（例如 `zh` 表示中文）
-2. 使用适当的模型（例如 `base.zh` 用于中文识别）
+1. 对于英语识别：
+   - 在配置文件中设置 `language=en`
+   - 使用带有语言后缀的Whisper模型（例如 `small.en`）
+
+2. 对于中文识别：
+   - 在配置文件中设置 `language=zh`
+   - 使用FunASR模型（如 `paraformer-zh`）或通用Whisper模型（如 `large-v3`）
+
+3. 对于其他语言：
+   - 在配置文件中设置相应的语言代码（如 `fr` 表示法语）
+   - 使用通用Whisper模型（不带语言后缀的模型）
+   
+### FunASR特有配置
+
+使用FunASR模型时，您可以调整以下特有的配置选项：
+
+```ini
+[Server]
+# FunASR使用的VAD模型
+funasr_vad_model=fsmn-vad
+# 是否启用流式（实时）处理模式
+funasr_streaming=true
+# 标点恢复模型（可选）
+funasr_punc_model=ct-punc
+# 时间戳预测模型（可选）
+funasr_timestamp_model=fa-zh
+```
+
+FunASR的关键配置选项：
+- **VAD模型**:
+  - `fsmn-vad`: 标准VAD模型，适用于大多数场景
+  - `silero-vad`: 替代VAD模型，在某些嘈杂环境中可能有更好表现
+
+- **流式处理模式**:
+  - `true`: 启用流式处理（默认），适合实时转录，支持连续音频处理
+  - `false`: 禁用流式处理，一次性处理整段音频，转录精度可能更高但延迟更大
+
+- **标点恢复**:
+  - 如果配置了标点恢复模型（如`ct-punc`），系统会自动为识别的文本添加标点符号
+  - 对中文文本特别有用，显著提高可读性
+
+- **时间戳预测**:
+  - 通过配置时间戳模型（如`fa-zh`），可以获取每个字的时间戳信息
+  - 适用于需要音频与文本精确同步的场景
 
 ### 性能调优
 

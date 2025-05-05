@@ -130,10 +130,11 @@ async def shutdown():
     """优雅地关闭应用程序。"""
     global client
     if client:
+        # 等待客户端完全停止后再停止事件循环
         await client.stop()
-    # 终止事件循环
-    loop = asyncio.get_event_loop()
-    loop.stop()
+    
+    # 不要在这里直接停止事件循环
+    # 让主函数中的shutdown_event处理程序退出
 
 async def main(args):
     """
@@ -168,7 +169,11 @@ async def main(args):
     # 注册信号处理程序（SIGINT对应Ctrl+C，SIGTERM对应终止信号）
     loop = asyncio.get_event_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown()))
+        # 使用更直接的信号处理方式
+        loop.add_signal_handler(
+            sig, 
+            lambda s=sig: asyncio.create_task(immediate_shutdown(s))
+        )
     
     try:
         # 启动客户端
@@ -182,25 +187,42 @@ async def main(args):
         print("\033[1;32m客户端已成功启动\033[0m")
         print(f"\033[1;33m提示: 使用热键({client.client_config.get('hotkey', 'ctrl+shift+space')})激活语音识别\033[0m")
         
-        # 创建一个Future对象，用于保持事件循环运行
-        # 直到收到关闭信号
-        running = asyncio.Future()
-        
         # 等待关闭事件被设置
         await client._shutdown_event.wait()
-        
-        # 解决Future，允许程序退出
-        if not running.done():
-            running.set_result(None)
             
     except Exception as e:
         logger.exception(f"运行过程中发生错误: {e}")
     finally:
         # 确保客户端已停止
         if client:
-            await client.stop()
+            try:
+                await client.stop()
+            except Exception as e:
+                logger.error(f"停止客户端时出错: {e}")
         logger.info("NexTalk客户端已关闭")
 
+async def immediate_shutdown(sig):
+    """立即关闭应用程序，对信号做出更直接的响应。"""
+    global client
+    logger.info(f"收到信号 {sig}，立即关闭...")
+    
+    # 立即停止客户端
+    if client:
+        try:
+            await client.stop()
+        except Exception as e:
+            logger.error(f"停止客户端时出错: {e}")
+    
+    # 设置关闭事件
+    if client and hasattr(client, '_shutdown_event'):
+        client._shutdown_event.set()
+    
+    # 更强制地停止程序（如果客户端没有正确响应）
+    if sig == signal.SIGINT:
+        logger.warning("强制终止程序...")
+        # 使用os._exit强制终止，而不是sys.exit，因为后者只会引发异常
+        import os
+        os._exit(130)  # 130是SIGINT的标准退出码
 
 def run_client(debug=False, log_file=None):
     """

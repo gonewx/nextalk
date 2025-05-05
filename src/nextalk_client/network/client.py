@@ -9,12 +9,13 @@ import json
 import logging
 import asyncio
 from typing import Callable, Optional, Dict, Any, Union
+import numpy as np
 
 import websockets
 from websockets.exceptions import ConnectionClosed
 
 from nextalk_shared.data_models import TranscriptionResponse, ErrorMessage, StatusUpdate
-
+from nextalk_shared.constants import AUDIO_SILENCE_THRESHOLD, AUDIO_INIT_FRAME_COUNT
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -37,20 +38,41 @@ class WebSocketClient:
         self.error_callback = None
         self.status_callback = None
         self.disconnect_callback = None
+        
+        # 音频包计数器（用于日志记录）
+        self._audio_packet_counter = 0
     
-    async def connect(self, url: str) -> bool:
+    async def connect(self, url: str, use_ssl: bool = False) -> bool:
         """
         连接到WebSocket服务器。
         
         Args:
-            url: WebSocket服务器URL（例如 ws://127.0.0.1:8000/ws/stream）
+            url: WebSocket服务器URL（例如 ws://127.0.0.1:8000/ws
+            use_ssl: 是否使用SSL连接
             
         Returns:
             bool: 连接是否成功
         """
         try:
             logger.info(f"正在连接到服务器: {url}")
-            self.connection = await websockets.connect(url)
+            
+            if use_ssl:
+                ssl_context = websockets.ssl.SSLContext()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = websockets.ssl.CERT_NONE
+                self.connection = await websockets.connect(
+                    url, 
+                    subprotocols=["binary"], 
+                    ping_interval=None, 
+                    ssl=ssl_context
+                )
+            else:
+                self.connection = await websockets.connect(
+                    url,
+                    subprotocols=["binary"],
+                    ping_interval=None
+                )
+                
             self.connected = True
             logger.info("WebSocket连接已建立")
             return True
@@ -84,7 +106,7 @@ class WebSocketClient:
     
     async def send_audio(self, data: bytes) -> bool:
         """
-        发送音频数据到服务器。
+        发送音频数据到服务器。按照官方实现的简单发送方式。
         
         Args:
             data: 音频二进制数据
@@ -97,8 +119,19 @@ class WebSocketClient:
             return False
         
         try:
+            # 直接发送数据，不做额外检查
             await self.connection.send(data)
             return True
+        except ConnectionClosed as cc:
+            logger.error(f"发送音频数据时WebSocket连接已关闭: {cc}")
+            self.connected = False
+            
+            # 如果有断开连接回调，则调用
+            if self.disconnect_callback:
+                self.disconnect_callback()
+                
+            return False
+            
         except Exception as e:
             logger.error(f"发送音频数据失败: {str(e)}")
             self.connected = False
@@ -109,55 +142,19 @@ class WebSocketClient:
                 
             return False
     
-    async def send_json(self, data: Union[Dict[str, Any], str]) -> bool:
-        """
-        发送JSON数据到服务器。
-        
-        用于发送命令消息，如模型切换请求。
-        
-        Args:
-            data: 要发送的JSON数据（字典或已序列化的JSON字符串）
-            
-        Returns:
-            bool: 发送是否成功
-        """
-        if not self.connected or not self.connection:
-            logger.warning("尝试发送JSON数据但未连接到服务器")
-            return False
-        
-        try:
-            # 如果是字典，先转换为JSON字符串
-            if isinstance(data, dict):
-                json_data = json.dumps(data)
-            else:
-                json_data = data
-                
-            logger.debug(f"发送JSON数据: {json_data[:100]}...")
-            await self.connection.send(json_data)
-            return True
-        except Exception as e:
-            logger.error(f"发送JSON数据失败: {str(e)}")
-            self.connected = False
-            
-            # 如果有断开连接回调，则调用
-            if self.disconnect_callback:
-                self.disconnect_callback()
-                
-            return False
-    
     def register_callbacks(self, 
-                           message_callback: Optional[Callable[[TranscriptionResponse], None]] = None,
-                           error_callback: Optional[Callable[[ErrorMessage], None]] = None,
-                           status_callback: Optional[Callable[[StatusUpdate], None]] = None,
-                           disconnect_callback: Optional[Callable[[], None]] = None) -> None:
+                       message_callback: Optional[Callable[[TranscriptionResponse], None]] = None,
+                       error_callback: Optional[Callable[[ErrorMessage], None]] = None,
+                       status_callback: Optional[Callable[[StatusUpdate], None]] = None,
+                       disconnect_callback: Optional[Callable[[], None]] = None) -> None:
         """
-        注册接收消息的回调函数。
+        注册回调函数。
         
         Args:
-            message_callback: 接收到转录消息时调用的函数
-            error_callback: 接收到错误消息时调用的函数
-            status_callback: 接收到状态更新时调用的函数
-            disconnect_callback: 连接断开时调用的函数
+            message_callback: 处理转录消息的回调函数
+            error_callback: 处理错误消息的回调函数
+            status_callback: 处理状态更新的回调函数
+            disconnect_callback: 处理连接断开的回调函数
         """
         self.message_callback = message_callback
         self.error_callback = error_callback
@@ -165,125 +162,179 @@ class WebSocketClient:
         self.disconnect_callback = disconnect_callback
     
     async def listen(self) -> None:
-        """
-        持续监听来自服务器的消息。
-        
-        启动一个异步任务来接收和处理服务器发送的JSON消息，
-        根据消息类型调用相应的回调函数。
-        """
-        if not self.connected or not self.connection:
-            logger.warning("尝试监听服务器消息但未连接到服务器")
+        """启动消息监听任务。"""
+        if self.listening_task and not self.listening_task.done():
+            logger.warning("消息监听任务已在运行")
             return
         
-        async def _listen():
-            try:
-                logger.debug("开始监听服务器消息")
-                while self.connected:
-                    try:
-                        # 接收消息
-                        message = await self.connection.recv()
-                        
-                        # 处理消息 - 可能是文本(JSON)或二进制数据
+        self.listening_task = asyncio.create_task(self._listen())
+    
+    async def _listen(self) -> None:
+        """
+        监听并处理从服务器接收到的消息。
+        
+        持续监听WebSocket连接并处理接收到的消息。
+        当收到消息时，会调用相应的回调函数。
+        """
+        if not self.connected or not self.connection:
+            logger.error("未连接到服务器，无法监听消息")
+            return
+        
+        try:
+            logger.info("开始监听服务器消息")
+            
+            async for message in self.connection:
+                try:
+                    # 处理二进制消息或文本消息
+                    if isinstance(message, bytes):
+                        logger.warning("收到二进制消息，当前不支持处理")
+                    else:
+                        # 尝试解析JSON消息
                         try:
-                            # 如果接收到的是字符串，则解析为JSON
-                            if isinstance(message, str):
-                                data = json.loads(message)
-                            # 如果服务器直接发送了JSON对象
-                            elif isinstance(message, bytes):
-                                data = json.loads(message.decode('utf-8'))
-                            else:
-                                logger.warning(f"收到未知类型的消息: {type(message)}")
-                                continue
-                                
-                            # 获取消息类型
-                            message_type = data.get('type')
+                            data = json.loads(message)
+                            logger.debug(f"收到JSON消息: {str(data)[:100]}...")
                             
-                            # 根据消息类型处理并使用Pydantic模型验证
-                            if message_type == 'transcription' and self.message_callback:
-                                # 转录消息
-                                try:
-                                    response = TranscriptionResponse(**data)
-                                    logger.debug(f"接收到转录: {response.text[:30]}...")
-                                    logger.info(f"接收到完整转录结果，长度: {len(response.text)}, 内容: {response.text}")
-                                    logger.debug(f"转录消息完整内容: {data}")
+                            # 判断消息类型并调用相应的回调函数
+                            if "type" in data:
+                                message_type = data["type"]
+                                
+                                if message_type == "transcription" and self.message_callback:
+                                    # 创建转录响应对象
+                                    response = TranscriptionResponse(
+                                        text=data.get("text", ""),
+                                        is_final=data.get("is_final", True),
+                                        mode=data.get("mode", ""),
+                                        type="transcription"
+                                    )
                                     self.message_callback(response)
-                                    logger.debug("转录消息回调函数已调用")
-                                except Exception as e:
-                                    logger.error(f"处理转录消息失败: {str(e)}")
-                                    logger.error(f"转录消息处理异常详情: {e}", exc_info=True)
-                                    logger.error(f"原始数据: {data}")
-                                
-                            elif message_type == 'error' and self.error_callback:
-                                # 错误消息
-                                try:
-                                    error = ErrorMessage(**data)
-                                    logger.warning(f"接收到错误: {error.message}")
-                                    self.error_callback(error)
-                                except Exception as e:
-                                    logger.error(f"处理错误消息失败: {str(e)}")
-                                
-                            elif message_type == 'status' and self.status_callback:
-                                # 状态更新
-                                try:
-                                    status = StatusUpdate(**data)
-                                    logger.debug(f"接收到状态更新: {status.state}")
-                                    self.status_callback(status)
-                                except Exception as e:
-                                    logger.error(f"处理状态消息失败: {str(e)}")
-                                
-                            elif message_type == 'command_result' and self.message_callback:
-                                # 命令结果消息
-                                try:
-                                    logger.debug(f"接收到命令结果: {data}")
-                                    # 创建一个具有类型属性的简单对象
-                                    class CommandResult:
-                                        def __init__(self, **kwargs):
-                                            for key, value in kwargs.items():
-                                                setattr(self, key, value)
                                     
-                                    result = CommandResult(**data)
-                                    self.message_callback(result)
-                                except Exception as e:
-                                    logger.error(f"处理命令结果消息失败: {str(e)}")
-                                
+                                elif message_type == "error" and self.error_callback:
+                                    # 创建错误消息对象
+                                    error = ErrorMessage(
+                                        message=data.get("message", "未知错误"),
+                                        code=data.get("code", 0),
+                                        type="error"
+                                    )
+                                    self.error_callback(error)
+                                    
+                                elif message_type == "status" and self.status_callback:
+                                    # 创建状态更新对象
+                                    status = StatusUpdate(
+                                        state=data.get("state", ""),
+                                        type="status"
+                                    )
+                                    self.status_callback(status)
+                                    
+                                else:
+                                    logger.warning(f"未知消息类型: {message_type}")
                             else:
-                                logger.warning(f"接收到未知消息类型: {message_type}")
+                                logger.warning(f"消息缺少类型字段: {str(data)[:100]}...")
                                 
                         except json.JSONDecodeError:
-                            logger.error(f"解析JSON消息失败: {message[:100] if isinstance(message, str) else '非文本数据'}")
-                        except Exception as e:
-                            logger.error(f"处理消息时出错: {str(e)}")
-                            
-                    except ConnectionClosed:
-                        logger.info("WebSocket连接已关闭")
-                        self.connected = False
-                        break
-                    except Exception as e:
-                        logger.error(f"接收消息时出错: {str(e)}")
+                            logger.warning(f"收到无效的JSON消息: {message[:100]}...")
                         
-                # 连接已断开，调用回调
-                if self.disconnect_callback:
-                    self.disconnect_callback()
+                except Exception as e:
+                    logger.error(f"处理服务器消息时出错: {str(e)}")
                     
-            except asyncio.CancelledError:
-                logger.debug("监听任务已取消")
-                raise
-            except Exception as e:
-                logger.error(f"监听任务出错: {str(e)}")
-                self.connected = False
+        except ConnectionClosed as cc:
+            logger.error(f"WebSocket连接已关闭: {str(cc)}")
+            self.connected = False
+            
+            # 如果有断开连接回调，则调用
+            if self.disconnect_callback:
+                self.disconnect_callback()
                 
-                # 调用断开连接回调
-                if self.disconnect_callback:
-                    self.disconnect_callback()
-        
-        # 启动监听任务
-        self.listening_task = asyncio.create_task(_listen())
-        
+        except Exception as e:
+            logger.error(f"监听消息时出错: {str(e)}")
+            self.connected = False
+            
+            # 如果有断开连接回调，则调用
+            if self.disconnect_callback:
+                self.disconnect_callback()
+    
     def is_connected(self) -> bool:
         """
         检查是否已连接到服务器。
         
         Returns:
-            bool: 是否已连接
+            bool: 如果已连接则为True，否则为False
         """
-        return self.connected 
+        return self.connected
+    
+    async def start_recognition(self) -> bool:
+        """
+        开始进行语音识别。
+        
+        Returns:
+            bool: 成功返回True，失败返回False
+        """
+        if not self.connection:
+            logger.error("无法开始语音识别：WebSocket未连接")
+            return False
+            
+        try:
+            logger.info("开始进行语音识别")
+            # 发送开始命令
+            await self.connection.send(json.dumps({
+                "command": "start"
+            }))
+            
+            return True
+        except ConnectionClosed as cc:
+            logger.error(f"开始语音识别时WebSocket连接已关闭: {str(cc)}")
+            self.connected = False
+            
+            # 如果有断开连接回调，则调用
+            if self.disconnect_callback:
+                self.disconnect_callback()
+                
+            return False
+        except Exception as e:
+            logger.error(f"开始语音识别失败: {str(e)}")
+            return False
+    
+    async def stop_recognition(self) -> bool:
+        """
+        停止语音识别。
+        
+        Returns:
+            bool: 如果成功发送停止请求则为True，否则为False
+        """
+        logger.info("停止语音识别")
+        # 由于简化后只要停止发送音频即可，无需额外操作
+        return True
+    
+    async def send_stop_speaking_signal(self) -> bool:
+        """
+        发送停止说话信号。
+        
+        向服务器发送{"is_speaking": false}信号，通知服务器客户端已停止说话，
+        这将促使服务器处理所有已发送的音频数据并生成最终结果。
+        
+        Returns:
+            bool: 如果成功发送停止信号则为True，否则为False
+        """
+        if not self.connected or not self.connection:
+            logger.warning("尝试发送停止说话信号但未连接到服务器")
+            return False
+        
+        try:
+            logger.info("发送停止说话信号")
+            await self.connection.send(json.dumps({
+                "is_speaking": False
+            }))
+            
+            return True
+        except ConnectionClosed as cc:
+            logger.error(f"发送停止说话信号时WebSocket连接已关闭: {cc}")
+            self.connected = False
+            
+            # 如果有断开连接回调，则调用
+            if self.disconnect_callback:
+                self.disconnect_callback()
+                
+            return False
+            
+        except Exception as e:
+            logger.error(f"发送停止说话信号失败: {e}")
+            return False 

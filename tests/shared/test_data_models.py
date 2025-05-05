@@ -56,6 +56,23 @@ class TestTranscriptionResponse:
         # 尝试使用非字符串类型的type
         with pytest.raises(ValidationError):
             TranscriptionResponse(type=123, text="测试")
+            
+    def test_timestamp_validation(self):
+        """测试timestamp字段接受字符串和浮点数类型"""
+        # 测试字符串类型时间戳
+        response1 = TranscriptionResponse(text="字符串时间戳", timestamp="2023-04-25T12:34:56")
+        assert response1.timestamp == "2023-04-25T12:34:56"
+        
+        # 测试浮点数类型时间戳
+        float_timestamp = 1682415296.123
+        response2 = TranscriptionResponse(text="浮点数时间戳", timestamp=float_timestamp)
+        assert response2.timestamp == float_timestamp
+        
+        # 测试序列化
+        serialized1 = response1.dict()
+        serialized2 = response2.dict()
+        assert isinstance(serialized1["timestamp"], str)
+        assert isinstance(serialized2["timestamp"], float)
 
 
 class TestErrorMessage:

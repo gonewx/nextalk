@@ -6,6 +6,8 @@
 
 import logging
 import threading
+import asyncio
+import time
 from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 from pynput import keyboard
@@ -246,14 +248,30 @@ class HotkeyListener:
                     self._pressed_keys.remove(key)
                     logger.debug(f"键被释放: {key}, 当前按下的键: {self._pressed_keys}")
                 
-                # 如果释放的键是热键组合中的一个，并且热键处于激活状态，触发停用回调
-                if key in self._hotkey_combo and self._is_active:
+                # 只有当热键处于激活状态时才处理热键释放
+                # 并且确保是热键组合中的键被释放时才触发停用回调
+                if self._is_active and key in self._hotkey_combo:
+                    # 标记热键为非激活状态（防止多次触发）
                     self._is_active = False
                     logger.debug("热键组合被释放，触发停用回调")
-                    if self._on_deactivate:
-                        self._on_deactivate()
+                    
+                    # 添加独立的标志，避免在热键处理期间重复触发回调
+                    # 使用原子操作检查和设置标志
+                    deactivate_in_progress = getattr(self, '_deactivate_in_progress', False)
+                    if not deactivate_in_progress:
+                        # 设置处理中标志
+                        self._deactivate_in_progress = True
+                        try:
+                            # 处理热键释放
+                            self._handle_deactivate()
+                        finally:
+                            # 在完成处理后重置标志
+                            self._deactivate_in_progress = False
             except Exception as e:
                 logger.error(f"处理按键释放事件时出错: {e}")
+                # 确保在发生错误时也重置标志
+                if hasattr(self, '_deactivate_in_progress'):
+                    self._deactivate_in_progress = False
     
     def _is_hotkey_matched(self) -> bool:
         """
@@ -266,3 +284,78 @@ class HotkeyListener:
         result = all(k in self._pressed_keys for k in self._hotkey_combo)
         logger.debug(f"热键匹配检查: {result} (热键组合: {self._hotkey_combo}, 当前按下的键: {self._pressed_keys})")
         return result 
+        
+    def is_hotkey_released(self) -> bool:
+        """
+        检查热键组合中的所有键是否都已释放。
+        
+        Returns:
+            bool: 如果热键组合中的所有键都已释放，则返回True，否则返回False
+        """
+        with self._lock:
+            # 检查是否有任何热键组合中的键仍然被按下
+            for key in self._hotkey_combo:
+                if key in self._pressed_keys:
+                    logger.debug(f"热键 {key} 仍在按下状态")
+                    return False
+            logger.debug("所有热键都已释放")
+            return True
+
+    def _handle_deactivate(self):
+        """处理热键释放事件"""
+        logger.info(f"热键释放: {self._hotkey_combo}")
+        if self._on_deactivate:
+            if asyncio.iscoroutinefunction(self._on_deactivate):
+                # 如果是协程函数，使用run_coroutine_threadsafe在主事件循环中执行
+                try:
+                    from nextalk_client.client_logic import NexTalkClient
+                    client = self._on_deactivate.__self__
+                    if isinstance(client, NexTalkClient) and client.loop:
+                        logger.debug("使用run_coroutine_threadsafe执行异步热键释放回调")
+                        try:
+                            # 检查事件循环是否仍在运行
+                            if client.loop.is_running() and not client.loop.is_closed():
+                                # 添加重试逻辑，最多尝试3次
+                                max_retries = 3
+                                retry_count = 0
+                                success = False
+                                
+                                while retry_count < max_retries and not success:
+                                    try:
+                                        future = asyncio.run_coroutine_threadsafe(
+                                            self._on_deactivate(),
+                                            client.loop
+                                        )
+                                        
+                                        # 这里不能直接等待异步结果，因为这是在一个非异步上下文中调用的
+                                        # 但我们可以添加一个回调来处理完成情况
+                                        def done_callback(fut):
+                                            try:
+                                                fut.result()  # 获取结果，如果有异常会抛出
+                                                logger.debug("热键释放回调执行完成")
+                                            except asyncio.CancelledError:
+                                                logger.warning("热键释放回调被取消")
+                                            except Exception as e:
+                                                logger.error(f"热键释放回调执行失败: {e}")
+                                        
+                                        future.add_done_callback(done_callback)
+                                        success = True
+                                    except Exception as e:
+                                        logger.warning(f"尝试执行热键释放回调失败(尝试 {retry_count+1}/{max_retries}): {e}")
+                                        retry_count += 1
+                                        # 短暂等待后重试
+                                        time.sleep(0.1)
+                                
+                                if not success:
+                                    logger.error("热键释放回调执行失败，达到最大重试次数")
+                            else:
+                                logger.warning("事件循环已停止或关闭，无法执行热键释放回调")
+                        except RuntimeError as e:
+                            logger.error(f"执行热键释放回调时发生运行时错误: {e}")
+                    else:
+                        logger.error("无法获取事件循环执行异步热键释放回调")
+                except Exception as e:
+                    logger.error(f"执行异步热键释放回调时出错: {str(e)}")
+            else:
+                # 如果是普通函数，直接调用
+                self._on_deactivate() 

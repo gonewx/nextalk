@@ -19,7 +19,7 @@ NexTalk 是一个轻量级实时本地语音识别和输入系统，由客户端
 - **客户端**：负责音频捕获和文本注入
 - **WebSocket通信**：连接客户端和服务器
 - **VAD（语音活动检测）**：过滤非语音音频
-- **Whisper模型**：执行语音转文本
+- **语音识别引擎**：包括Whisper和FunASR模型，执行语音转文本
 - **文本注入器**：将识别文本输入到活动窗口
 
 ## 开发环境设置
@@ -38,6 +38,7 @@ NexTalk 是一个轻量级实时本地语音识别和输入系统，由客户端
 - `pytest-cov`：用于测试覆盖率报告
 - `ruff`：代码格式和静态分析
 - `uvicorn[standard]`：用于开发服务器
+- `funasr`：用于FunASR模型支持（可选）
 
 ### 设置开发环境
 
@@ -57,6 +58,11 @@ NexTalk 是一个轻量级实时本地语音识别和输入系统，由客户端
 3. 安装系统依赖（Linux）：
    ```bash
    sudo apt-get install xdotool libnotify-bin portaudio19-dev
+   ```
+
+4. （可选）安装FunASR支持：
+   ```bash
+   pip install funasr
    ```
 
 ## 代码组织结构
@@ -198,15 +204,21 @@ ruff format .  # 格式化代码
 
 2. **GPU内存问题**
    - 开发时如遇GPU内存不足，可在配置中设置 `device=cpu`
-   - 或使用较小的模型（如 `tiny.en`）进行开发
+   - 或使用较小的模型（如 `tiny.en` 或 `SenseVoiceSmall`）进行开发
 
 3. **音频设备权限问题**
    - 确保用户在 `audio` 组中
    - 使用 `aplay -l` 和 `arecord -l` 验证设备访问权限
+
+4. **FunASR相关问题**
+   - 如果遇到ImportError，确保已安装funasr库：`pip install funasr`
+   - 如果遇到模型下载问题，可以手动下载模型到`~/.cache/NexTalk/funasr_models`目录
+   - FunASR模型可能会在第一次使用时自动下载，需要确保网络连接良好
+   - 使用`ASRRecognizer`类时注意导入检查，避免强制依赖FunASR库
 
 ### 调试技巧
 
 - 使用标准库的 `logging` 模块记录详细信息
 - 服务器端设置环境变量 `LOG_LEVEL=DEBUG`
 - 客户端使用 `--debug` 参数启动，输出更多日志信息
-- WebSocket通信问题可使用浏览器开发工具的网络面板检查 
+- WebSocket通信问题可使用浏览器开发工具的网络面板检查
