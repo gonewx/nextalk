@@ -371,17 +371,10 @@ class WebSocketHandler:
             logger.warning(f"音频太短且振幅太低，跳过离线处理: {duration_s:.2f}秒, 振幅: {max_amp}")
             return
             
-        # 添加静音填充，提高识别稳定性
-        if duration_s < 1.0:
-            padding_length = int((1.0 - duration_s) * 16000) * 2  # 16bit=2字节/样本
-            silence_padding = b'\x00' * padding_length
-            logger.info(f"添加 {padding_length} 字节静音填充，原始音频太短")
-            audio_data = audio_data + silence_padding
-        
         # 记录开始时间
         start_time = time.time()
         
-        # 处理音频 - 离线最终结果
+        # 处理音频 - 离线最终结果，直接传递原始音频数据
         result = await self.model.process_audio_offline(audio_data)
         
         # 检查结果有效性

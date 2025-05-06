@@ -630,13 +630,13 @@ class FunASRModel:
                 logger.warning("离线模型收到空音频数据，跳过处理")
                 return {"text": "", "error": "空音频数据"}
             
-            # 确保音频数据是float32类型
-            audio_float = audio_np.astype(np.float32) / 32768.0  # 转换为float32并归一化到[-1,1]
+            # 注意：这里不要转换为float32，直接使用int16数据
+            # 在官方示例中，离线模型直接使用原始音频数据而不是float32归一化数据
             
             logger.info("使用离线模型处理音频...")
             
-            # 使用离线模型进行识别
-            asr_result = self._model_asr.generate(input=audio_float)
+            # 使用离线模型进行识别 - 直接使用原始音频数据
+            asr_result = self._model_asr.generate(input=audio_np)
             
             # 提取文本结果
             if isinstance(asr_result, list):
