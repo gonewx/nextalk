@@ -241,37 +241,26 @@ class FunASRModel:
     
     async def process_audio_chunk(self, audio_data: bytes, is_final: bool = False) -> Dict[str, Any]:
         """
-        处理音频数据块
+        处理音频块数据（流式）
         
         Args:
             audio_data: 音频数据（PCM格式）
-            is_final: 是否为最后一帧
+            is_final: 是否为最终帧
             
         Returns:
             Dict[str, Any]: 识别结果
         """
-        # 检查初始化状态，如果未初始化则等待
         if not self._initialized:
-            logger.warning("模型尚未初始化完成，等待初始化...")
-            timeout = 60  # 最多等待60秒
-            start_time = time.time()
-            
-            while not self._initialized and time.time() - start_time < timeout:
-                await asyncio.sleep(0.5)
-                
-            if not self._initialized:
-                logger.error("模型未初始化，超时等待，无法处理音频")
-                return {"error": "模型未初始化，服务器可能启动不正确", "text": ""}
-            
-            logger.info("模型初始化已完成，继续处理音频")
+            logger.error("模型未初始化，无法处理音频块")
+            return {"error": "模型未初始化"}
         
         try:
-            # 如果是最终帧，明确设置状态
-            if is_final and hasattr(self, 'status_dict_asr_online'):
-                self.status_dict_asr_online["is_final"] = True
-                logger.debug("设置status_dict_asr_online的is_final为True")
+            # 检查音频数据
+            if not audio_data or len(audio_data) == 0:
+                logger.warning("收到空音频数据")
+                return {"text": "", "error": "空音频数据"}
             
-            # 在线程池中处理音频，避免阻塞事件循环
+            # 在线程池中处理音频，避免阻塞
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 _executor,
@@ -280,11 +269,14 @@ class FunASRModel:
                 is_final
             )
             
+            # 为结果添加额外信息
+            if "error" not in result:
+                result["timestamp"] = int(time.time())
+                
             return result
             
         except Exception as e:
-            logger.error(f"处理音频出错: {str(e)}")
-            logger.exception(e)
+            logger.error(f"处理音频块出错: {str(e)}")
             return {"error": str(e), "text": ""}
     
     def _process_audio_sync(self, audio_data: bytes, is_final: bool) -> Dict[str, Any]:
@@ -293,194 +285,61 @@ class FunASRModel:
         
         Args:
             audio_data: 音频数据
-            is_final: 是否为最后一帧
+            is_final: 是否最终帧
             
         Returns:
             Dict[str, Any]: 识别结果
         """
+        # 检查模型是否可用
+        if not FUNASR_AVAILABLE or not self._model_asr_streaming:
+            logger.error("FunASR在线模型不可用")
+            return {"error": "FunASR在线模型不可用"}
+        
         try:
-            config = get_config()
-            mode = "2pass"  # 默认使用2pass模式
-            
-            # 将音频数据转换为NumPy数组，仅用于在线处理和检查
+            # 将二进制音频数据转换为NumPy数组
             audio_np = np.frombuffer(audio_data, dtype=np.int16)
             
-            # 获取模型实例
-            if not self._model_asr_streaming or not self._model_asr:
-                return {"text": "", "error": "模型未加载"}
+            # 直接使用状态字典中的参数，不做手动修改
+            if "chunk_size" not in self.status_dict_asr_online:
+                # 设置默认值 [5, 10, 5] 与官方示例一致
+                self.status_dict_asr_online["chunk_size"] = [5, 10, 5]
             
-            result = {}
-            # 添加识别模式
-            result["mode"] = mode
+            # 使用在线ASR模型处理音频
+            start_time = time.time()
             
-            if mode == "online" or mode == "2pass":
-                # 初始化状态字典，如果为None
-                if not hasattr(self, 'status_dict_asr_online') or self.status_dict_asr_online is None:
-                    self.status_dict_asr_online = {"cache": {}, "is_final": False}
-                
-                # 确保cache键存在
-                if "cache" not in self.status_dict_asr_online:
-                    self.status_dict_asr_online["cache"] = {}
-                
-                # 设置is_final状态 - 但不会在流式处理时设置
-                if is_final:
-                    self.status_dict_asr_online["is_final"] = is_final
-                    logger.debug("标记为最终帧")
-                
-                # 安全获取cache
-                cache = self.status_dict_asr_online.get("cache", {})
-                
-                # 使用在线模型进行识别（流式）
-                try:
-                    logger.debug(f"使用在线模型处理音频，音频长度: {len(audio_np)}，是否最终: {is_final}")
-                    logger.debug(f"cache类型: {type(cache)}, cache为空: {not bool(cache)}")
-                    
-                    # 检查音频数据长度，避免处理空数据
-                    if len(audio_np) == 0:
-                        logger.warning("在线模型收到空音频数据，跳过处理")
-                        result["text"] = ""
-                        result["error"] = "空音频数据"
-                        result["is_final"] = is_final
-                        return result
-                    
-                    # 把is_final信息也传递给模型 - 仅在真正结束时
-                    online_result = self._model_asr_streaming.generate(
-                        input=audio_np, 
-                        cache=cache,
-                        is_final=is_final
-                    )
-                    
-                    # 处理返回结果，处理列表类型的结果
-                    if isinstance(online_result, list):
-                        if len(online_result) > 0:
-                            if isinstance(online_result[0], dict) and "text" in online_result[0]:
-                                # 获取文本并处理重复
-                                online_text = online_result[0]["text"]
-                                result["text"] = online_text
-                            else:
-                                result["text"] = str(online_result[0])
-                        else:
-                            result["text"] = ""
-                            logger.warning("在线模型返回空列表结果")
-                    # 原来的字典类型处理
-                    elif isinstance(online_result, dict) and "text" in online_result:
-                        # 获取文本并处理重复
-                        online_text = online_result["text"]
-                        result["text"] = online_text
-                        
-                        # 安全更新在线模型状态
-                        if "cache" in online_result:
-                            # 更新缓存，但不重置
-                            self.status_dict_asr_online["cache"] = online_result["cache"]
-                            if is_final:
-                                # 仅在最终帧时重置缓存
-                                logger.info("最终帧处理完成，重置缓存")
-                                self.status_dict_asr_online["cache"] = {}
-                    else:
-                        logger.warning(f"在线模型结果格式异常: {type(online_result)}")
-                        result["text"] = ""
-                    
-                    # 设置结果的最终状态 - 通常不会在流式处理中设置为final
-                    result["is_final"] = is_final
-                    
-                except Exception as e:
-                    logger.error(f"在线模型处理错误: {str(e)}")
-                    result["text"] = ""
-                    result["error"] = f"在线模型处理错误: {str(e)}"
+            # 调用FunASR模型
+            # 注意：这里使用了**self.status_dict_asr_online将所有状态参数传递给模型
+            # 包括cache, is_final, chunk_size及其他可能的参数
+            result = self._model_asr_streaming.generate(
+                input=audio_np,
+                **self.status_dict_asr_online
+            )
             
-            # 离线模型处理 - 仅在最终帧时执行
-            if (mode == "offline" or mode == "2pass") and is_final:
-                try:
-                    # 检查音频数据长度，避免处理空数据
-                    if len(audio_data) == 0:
-                        logger.warning("离线模型收到空音频数据，跳过处理")
-                        if "text" not in result:
-                            result["text"] = ""
-                        result["error_offline"] = "空音频数据"
-                        result["is_final"] = True
-                        return result
-                    
-                    # 确保状态字典已初始化
-                    if not hasattr(self, 'status_dict_asr') or self.status_dict_asr is None:
-                        self.status_dict_asr = {}
-                        
-                    logger.info("使用离线模型处理最终音频...")
-                    
-                    # 完全按照官方示例方式处理 - 直接使用原始音频数据
-                    try:
-                        offline_result = self._model_asr.generate(
-                            input=audio_data,  # 使用原始字节数据而不是NumPy数组
-                            **self.status_dict_asr
-                        )[0]
-                    except Exception as e:
-                        logger.error(f"离线模型生成异常: {str(e)}")
-                        logger.exception(e)
-                        if "text" not in result:
-                            result["text"] = ""
-                        result["error_offline"] = f"离线模型生成异常: {str(e)}"
-                        result["is_final"] = True
-                        return result
-                    
-                    # 安全获取文本
-                    offline_text = ""
-                    if isinstance(offline_result, dict) and "text" in offline_result:
-                        offline_text = offline_result["text"]
-                    elif isinstance(offline_result, list):
-                        # 如果结果是列表，检查列表是否为空
-                        if len(offline_result) > 0:
-                            # 尝试获取第一个元素
-                            if isinstance(offline_result[0], dict) and "text" in offline_result[0]:
-                                offline_text = offline_result[0]["text"]
-                            else:
-                                offline_text = str(offline_result[0])
-                        else:
-                            logger.warning("离线模型返回空列表结果")
-                    else:
-                        logger.warning(f"离线模型结果格式异常: {type(offline_result)}")
-                    
-                    # 尝试应用标点模型处理（如果有）
-                    if self._model_punc is not None and offline_text.strip():
-                        try:
-                            punc_result = self._model_punc.generate(
-                                input=offline_text, 
-                                **self.status_dict_punc
-                            )[0]
-                            
-                            if isinstance(punc_result, dict) and "text" in punc_result:
-                                offline_text = punc_result["text"]
-                            elif isinstance(punc_result, str):
-                                offline_text = punc_result
-                                
-                            logger.info(f"已应用标点模型，结果: {offline_text}")
-                        except Exception as e:
-                            logger.warning(f"标点模型处理失败: {str(e)}")
-                    
-                    if mode == "2pass":
-                        # 2pass模式：如果离线模型有结果，使用离线模型结果
-                        if offline_text.strip():
-                            logger.info(f"离线模型最终结果: {offline_text}")
-                            result["text"] = offline_text
-                    else:
-                        # 离线模式：直接使用离线模型结果
-                        result["text"] = offline_text
-                        
-                    # 设置最终标志
-                    result["is_final"] = True
-                    
-                except Exception as e:
-                    logger.error(f"离线模型处理错误: {str(e)}")
-                    logger.exception(e)
-                    # 不覆盖在线模型的结果
-                    if "text" not in result:
-                        result["text"] = ""
-                    result["error_offline"] = f"离线模型处理错误: {str(e)}"
+            process_time = time.time() - start_time
+            logger.debug(f"在线ASR处理耗时: {process_time:.3f}秒, 第一层结果类型: {type(result)}")
             
-            return result
+            # 更新缓存状态
+            if isinstance(result, list) and len(result) > 0:
+                if isinstance(result[0], dict) and "cache" in result[0]:
+                    self.status_dict_asr_online["cache"] = result[0].get("cache", {})
+                
+                # 提取文本结果
+                text = ""
+                if isinstance(result[0], dict) and "text" in result[0]:
+                    text = result[0].get("text", "")
+                elif isinstance(result[0], str):
+                    text = result[0]
+                
+                return {"text": text}
+            
+            # 处理空结果或异常格式
+            logger.warning(f"无法解析在线ASR结果: {result}")
+            return {"text": ""}
             
         except Exception as e:
-            logger.error(f"同步处理音频时出错: {str(e)}")
-            logger.exception(e)
-            return {"text": "", "error": str(e)}
+            logger.error(f"处理在线音频出错: {str(e)}")
+            print(f"处理在线音频出错: {str(e)}", flush=True)
+            return {"error": str(e)}
     
     async def reset(self) -> None:
         """
@@ -533,7 +392,22 @@ class FunASRModel:
             logger.warning("VAD模型未加载，使用内置VAD代替")
             return await self._process_vad_fallback(audio_data, status_dict)
         
+        # 确保状态字典包含必要的字段
+        if status_dict is None:
+            status_dict = {"cache": {}}
+        elif "cache" not in status_dict:
+            status_dict["cache"] = {}
+        
+        # 打印VAD状态字典（debug）
+        print(f"VAD状态字典: {status_dict.keys()}, cache是否为空: {not bool(status_dict.get('cache'))}", flush=True)
+        
         try:
+            # 计算音频基本特征用于调试
+            audio_np = np.frombuffer(audio_data, dtype=np.int16)
+            max_amp = np.max(np.abs(audio_np)) if len(audio_np) > 0 else 0
+            
+            print(f"VAD输入数据: 长度={len(audio_np)}样本, 最大振幅={max_amp}", flush=True)
+            
             # 在线程池中处理音频，避免阻塞事件循环
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
@@ -543,10 +417,17 @@ class FunASRModel:
                 status_dict or {}
             )
             
+            # 调试输出VAD结果
+            if "segments" in result and result["segments"]:
+                print(f"VAD返回语音段: {result['segments']}", flush=True)
+            else:
+                print(f"VAD未检测到语音段", flush=True)
+                
             return result
             
         except Exception as e:
             logger.error(f"处理VAD出错: {str(e)}")
+            print(f"处理VAD出错: {str(e)}", flush=True)
             return {"error": str(e), "segments": []}
             
     def _process_vad_sync(self, audio_data: bytes, status_dict: Dict) -> Dict[str, Any]:
@@ -571,7 +452,13 @@ class FunASRModel:
             audio_np = np.frombuffer(audio_data, dtype=np.int16)
             
             # 使用VAD模型进行检测
-            vad_result = self._model_vad.generate(input=audio_np, **status_dict)
+            # 添加chunk_size参数，与官方示例一致（每60秒检测一次）
+            if "chunk_size" not in status_dict:
+                # 使用默认参数
+                vad_result = self._model_vad.generate(input=audio_np, **status_dict)
+            else:
+                # 使用传入的参数
+                vad_result = self._model_vad.generate(input=audio_np, **status_dict)
             
             # 解析结果
             if isinstance(vad_result, list) and len(vad_result) > 0:
@@ -583,19 +470,33 @@ class FunASRModel:
                 # 处理不同格式的结果
                 if "value" in first_result:
                     segments = first_result["value"]
+                    print(f"VAD结果使用value字段: {segments}", flush=True)
                 elif isinstance(first_result, list):
                     segments = first_result
+                    print(f"VAD结果是列表类型: {segments}", flush=True)
+                else:
+                    print(f"VAD结果格式异常: {type(first_result)}", flush=True)
                 
-                # 返回结果
-                return {
-                    "segments": segments,
-                    "cache": status_dict.get("cache", {})
-                }
-            else:
-                return {"segments": [], "cache": status_dict.get("cache", {})}
+                # 检查segments内容并打印
+                if segments:
+                    print(f"VAD检测到语音段: {segments}", flush=True)
+                else:
+                    print("VAD返回空segments列表", flush=True)
+                
+                # 更新cache并返回
+                if "cache" in status_dict:
+                    # 返回结果
+                    return {
+                        "segments": segments,
+                        "cache": status_dict.get("cache", {})
+                    }
+            
+            # 默认结果 - 无语音段
+            return {"segments": [], "cache": status_dict.get("cache", {})}
                 
         except Exception as e:
             logger.error(f"VAD处理出错: {str(e)}")
+            print(f"VAD同步处理异常: {str(e)}", flush=True)
             return {"error": str(e), "segments": []}
     
     async def _process_vad_fallback(self, audio_data: bytes, status_dict=None) -> Dict[str, Any]:
@@ -699,72 +600,114 @@ class FunASRModel:
             Dict[str, Any]: 离线识别结果
         """
         try:
-            # 确保离线模型可用
-            if not self._model_asr:
-                return {"text": "", "error": "离线模型未加载"}
+            logger.info("准备离线处理音频数据，长度: {0} 字节".format(len(audio_data)))
             
-            # 检查音频数据长度
+            # 检查音频数据长度，避免处理空数据
             if len(audio_data) == 0:
                 logger.warning("离线模型收到空音频数据，跳过处理")
                 return {"text": "", "error": "空音频数据"}
+                
+            # 将音频数据转换为NumPy数组用于分析
+            audio_np = np.frombuffer(audio_data, dtype=np.int16)
+            samples = len(audio_np)
+            duration_s = samples / 16000
             
-            logger.info("使用离线模型处理音频...")
+            logger.info(f"离线处理音频: 长度={samples}样本，{duration_s:.3f}秒")
             
             # 确保状态字典已初始化
             if not hasattr(self, 'status_dict_asr') or self.status_dict_asr is None:
                 self.status_dict_asr = {}
             
-            # 完全按照官方示例方式进行处理
-            # 直接使用原始字节数据，不转换为NumPy数组
-            try:
-                # 注意：这里直接使用audio_data而不是转换为NumPy数组
-                asr_result = self._model_asr.generate(
-                    input=audio_data, 
-                    **self.status_dict_asr
-                )[0]
-            except Exception as e:
-                logger.error(f"离线ASR生成失败: {str(e)}")
-                logger.exception(e)
-                return {"text": "", "error": f"离线ASR生成错误: {str(e)}"}
-            
-            # 提取文本结果
-            if isinstance(asr_result, dict) and "text" in asr_result:
-                text = asr_result["text"]
-            elif isinstance(asr_result, list):
-                if len(asr_result) == 0:
-                    return {"text": "", "error": "空结果"}
+            # 如果在线ASR配置中有这些参数，复用它们
+            if hasattr(self, 'status_dict_asr_online'):
+                if "encoder_chunk_look_back" in self.status_dict_asr_online:
+                    self.status_dict_asr["encoder_chunk_look_back"] = self.status_dict_asr_online["encoder_chunk_look_back"]
+                    logger.debug(f"离线ASR使用encoder_chunk_look_back={self.status_dict_asr['encoder_chunk_look_back']}")
                 
-                if isinstance(asr_result[0], dict) and "text" in asr_result[0]:
-                    text = asr_result[0]["text"]
+                if "decoder_chunk_look_back" in self.status_dict_asr_online:
+                    self.status_dict_asr["decoder_chunk_look_back"] = self.status_dict_asr_online["decoder_chunk_look_back"]
+                    logger.debug(f"离线ASR使用decoder_chunk_look_back={self.status_dict_asr['decoder_chunk_look_back']}")
+            
+            # 使用离线模型处理
+            logger.info("使用离线模型处理最终音频...")
+            
+            # 标记是否使用了标点模型
+            used_punctuation = False
+            original_text = ""
+                
+            try:
+                # 调用离线ASR模型
+                print("调用离线ASR模型...", flush=True)
+                offline_result = self._model_asr.generate(
+                    input=audio_data,  # 使用原始字节数据
+                    **self.status_dict_asr
+                )
+                
+                # 获取ASR结果
+                if isinstance(offline_result, list) and len(offline_result) > 0:
+                    first_result = offline_result[0]
+                    
+                    # 获取文本结果
+                    if isinstance(first_result, dict) and "text" in first_result:
+                        offline_text = first_result["text"]
+                    elif isinstance(first_result, str):
+                        offline_text = first_result
+                    else:
+                        offline_text = str(first_result)
+                        
+                    # 保存原始文本结果
+                    original_text = offline_text
+                    print(f"【重要调试信息】离线ASR原始结果 (标点处理前): '{offline_text}'", flush=True)
+                    logger.info(f"离线ASR原始结果 (标点处理前): '{offline_text}'")
+                    
+                    # 应用标点模型（如果有）
+                    if self._model_punc is not None and offline_text.strip():
+                        try:
+                            print("应用标点模型...", flush=True)
+                            punc_result = self._model_punc.generate(
+                                input=offline_text,
+                                **self.status_dict_punc
+                            )
+                            
+                            if isinstance(punc_result, list) and len(punc_result) > 0:
+                                if isinstance(punc_result[0], dict) and "text" in punc_result[0]:
+                                    offline_text = punc_result[0]["text"]
+                                elif isinstance(punc_result[0], str):
+                                    offline_text = punc_result[0]
+                            
+                            logger.info(f"已应用标点模型，结果: {offline_text}")
+                            print(f"【重要调试信息】已应用标点模型，结果: '{offline_text}'", flush=True)
+                            used_punctuation = True
+                            
+                            # 如果标点前后文本有明显差异，记录下来
+                            if original_text and original_text != offline_text:
+                                diff_ratio = abs(len(original_text) - len(offline_text)) / max(len(original_text), len(offline_text))
+                                if diff_ratio > 0.3:  # 差异超过30%
+                                    logger.info(f"标点处理前后的文本差异较大: '{original_text}' -> '{offline_text}'")
+                                    print(f"【重要调试信息】标点处理前后的文本差异较大: '{original_text}' -> '{offline_text}'", flush=True)
+                                    
+                        except Exception as e:
+                            logger.warning(f"标点模型处理失败，使用原始文本: {str(e)}")
+                    
+                    logger.info(f"离线模型最终结果: {offline_text}")
+                    print(f"【重要调试信息】离线模型最终结果: '{offline_text}'", flush=True)
+                    
+                    # 构造结果
+                    result = {"text": offline_text}
+                    
+                    # 如果使用了标点模型，并且有原始文本，也返回原始文本
+                    if used_punctuation and original_text:
+                        result["original_text"] = original_text
+                        
+                    return result
                 else:
-                    text = str(asr_result[0])
-            else:
-                logger.warning(f"未知的结果格式: {type(asr_result)}")
-                return {"text": "", "error": "未知的结果格式"}
-            
-            # 尝试使用标点模型（如果可用）
-            if self._model_punc is not None and text.strip():
-                try:
-                    punc_result = self._model_punc.generate(
-                        input=text,
-                        **self.status_dict_punc
-                    )[0]
-                    
-                    if isinstance(punc_result, dict) and "text" in punc_result:
-                        text = punc_result["text"]
-                    elif isinstance(punc_result, str):
-                        text = punc_result
-                    
-                    logger.info(f"标点处理后的文本: {text}")
-                except Exception as e:
-                    logger.warning(f"标点处理失败，使用原始文本: {str(e)}")
-            
-            return {
-                "text": text,
-                "is_final": True,
-                "mode": "offline"
-            }
-            
+                    logger.warning("离线ASR模型未返回有效结果")
+                    return {"text": "", "error": "未获取到有效结果"}
+                
+            except Exception as e:
+                logger.error(f"离线ASR处理出错: {str(e)}")
+                return {"text": "", "error": str(e)}
+                
         except Exception as e:
             logger.error(f"离线音频处理出错: {str(e)}")
             logger.exception(e)

@@ -14,10 +14,15 @@ import signal
 import sys
 import os
 import argparse
+import platform
+import shutil
+from pathlib import Path
+from typing import Dict, Any, Optional
 from .client_logic import NexTalkClient
+from nextalk_shared.constants import STATUS_IDLE, STATUS_CONNECTED
 
 # 解析命令行参数
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """解析命令行参数"""
     parser = argparse.ArgumentParser(description="NexTalk语音识别客户端")
     parser.add_argument(
@@ -29,6 +34,33 @@ def parse_args():
         "--log-file", 
         type=str, 
         help="指定日志文件路径，默认只输出到控制台"
+    )
+    parser.add_argument(
+        "--server", 
+        help="服务器地址，例如: ws://localhost:8000/ws/stream",
+        type=str
+    )
+    parser.add_argument(
+        "--ssl", 
+        help="使用SSL连接",
+        action="store_true"
+    )
+    parser.add_argument(
+        "--hotkey", 
+        help="热键组合，例如: ctrl+shift+space",
+        type=str
+    )
+    parser.add_argument(
+        "--log-level", 
+        help="日志级别: debug, info, warning, error, critical",
+        type=str,
+        choices=['debug', 'info', 'warning', 'error', 'critical'],
+        default='info'
+    )
+    parser.add_argument(
+        "--config-file", 
+        help="配置文件路径",
+        type=str
     )
     return parser.parse_args()
 
@@ -119,6 +151,7 @@ def setup_logging(args):
 
 # 全局客户端实例，用于信号处理
 client = None
+loop = None
 
 def handle_shutdown(sig, frame):
     """处理终止信号，优雅地关闭应用程序。"""
@@ -153,13 +186,14 @@ async def main(args):
     
     # 检查xdotool是否已安装
     try:
-        import shutil
-        if shutil.which("xdotool") is None:
-            logger.error("\033[1;31mxdotool工具未安装，文本注入功能将不可用\033[0m")
-            print("\033[1;31m错误: xdotool工具未安装，语音识别结果将无法自动输入\033[0m")
-            print("\033[1;31m请安装xdotool: sudo apt install xdotool\033[0m")
-        else:
-            logger.info("\033[1;32mxdotool工具已安装，文本注入功能可用\033[0m")
+        if platform.system().lower() == 'linux':
+            xdotool_available = shutil.which("xdotool") is not None
+            if xdotool_available:
+                logger.info("\033[1;32mxdotool工具已安装，文本注入功能可用\033[0m")
+            else:
+                logger.error("\033[1;31mxdotool工具未安装，文本注入功能将不可用\033[0m")
+                print("\033[1;31m错误: xdotool工具未安装，语音识别结果将无法自动输入\033[0m")
+                print("\033[1;31m请安装xdotool: sudo apt install xdotool\033[0m")
     except Exception as e:
         logger.error(f"检查xdotool时出错: {e}")
     

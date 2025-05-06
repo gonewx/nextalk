@@ -1,13 +1,14 @@
 """
 Linux平台的文本注入器实现。
 
-使用pynput.keyboard.Controller将文本输入到当前活动窗口。
+使用xdotool将文本输入到当前活动窗口。
 """
 
 import logging
 import threading
+import subprocess
+import shutil
 from typing import Optional
-from pynput.keyboard import Controller
 from .injector_base import BaseInjector
 
 # 设置日志记录器
@@ -17,28 +18,25 @@ class LinuxInjector(BaseInjector):
     """
     Linux平台的文本注入器实现。
     
-    使用pynput.keyboard.Controller将文本输入到当前活动窗口。
+    使用xdotool将文本输入到当前活动窗口。
     """
     
     def __init__(self):
         """
         初始化Linux文本注入器。
         
-        创建pynput键盘控制器实例。
+        检查xdotool是否可用。
         """
-        # 创建键盘控制器实例
-        try:
-            self._keyboard_controller: Optional[Controller] = Controller()
-            self._controller_available = True
-            logger.info("pynput.keyboard.Controller 实例已创建，文本注入已准备就绪")
-        except Exception as e:
-            self._keyboard_controller = None
-            self._controller_available = False
-            logger.error(f"无法创建 pynput.keyboard.Controller 实例: {e}")
-            logger.error("文本注入功能将不可用")
+        # 检查xdotool是否可用
+        self._xdotool_available = shutil.which('xdotool') is not None
+        if not self._xdotool_available:
+            logger.error("无法找到xdotool命令，文本注入功能将不可用")
+            logger.error("请安装xdotool: sudo apt-get install xdotool")
             # 尝试输出到标准输出，确保用户可以看到错误消息
-            print("\033[31m错误: 无法初始化pynput键盘控制器，文本注入功能将不可用\033[0m")
-            print("\033[31m请确认已安装pynput库: pip install pynput\033[0m")
+            print("\033[31m错误: 无法找到xdotool命令，文本注入功能将不可用\033[0m")
+            print("\033[31m请安装xdotool: sudo apt-get install xdotool\033[0m")
+        else:
+            logger.info("xdotool命令已找到，文本注入已准备就绪")
         
         # 初始化注入状态标志和锁
         self._is_injecting = False
@@ -46,7 +44,7 @@ class LinuxInjector(BaseInjector):
     
     def inject_text(self, text: str) -> bool:
         """
-        使用pynput.keyboard.Controller将文本注入到当前活动窗口。
+        使用xdotool将文本输入到当前活动窗口。
         
         Args:
             text: 要注入的文本
@@ -58,8 +56,8 @@ class LinuxInjector(BaseInjector):
             logger.warning("尝试注入空文本，忽略")
             return True
         
-        if not self._controller_available or not self._keyboard_controller:
-            logger.error("无法注入文本: pynput键盘控制器不可用")
+        if not self._xdotool_available:
+            logger.error("无法注入文本: xdotool不可用")
             return False
         
         # 获取锁并设置注入标志
@@ -67,13 +65,25 @@ class LinuxInjector(BaseInjector):
             try:
                 # 设置注入标志为True
                 self._is_injecting = True
-                logger.info(f"正在使用pynput.keyboard.Controller注入文本，长度: {len(text)}")
+                logger.info(f"正在使用xdotool注入文本，长度: {len(text)}")
                 
-                # 使用pynput控制器执行文本输入
-                self._keyboard_controller.type(text)
+                # 使用xdotool --clearmodifiers确保没有修饰键被按下
+                # 使用--delay 10添加微小延迟，提高稳定性
+                result = subprocess.run(
+                    ['xdotool', 'type', '--clearmodifiers', '--delay', '10', text], 
+                    check=True, 
+                    capture_output=True, 
+                    text=True
+                )
                 
                 logger.info("文本注入成功")
+                logger.debug(f"xdotool输出: {result.stdout.strip() if result.stdout else '无输出'}")
                 return True
+            except subprocess.CalledProcessError as e:
+                logger.error(f"xdotool命令执行失败: {e}")
+                if e.stderr:
+                    logger.error(f"错误输出: {e.stderr}")
+                return False
             except Exception as e:
                 logger.error(f"文本注入过程中发生错误: {e}")
                 return False

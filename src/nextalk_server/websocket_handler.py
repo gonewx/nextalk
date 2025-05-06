@@ -11,6 +11,7 @@ import json
 import time
 import os
 import numpy as np
+import wave  # 添加wave模块用于保存音频文件
 from typing import Dict, Any, Optional, List, Tuple
 from fastapi import WebSocket, WebSocketDisconnect
 
@@ -125,10 +126,54 @@ class WebSocketHandler:
             self.is_speaking = bool(is_speaking)
             logger.info(f"设置说话状态为: {'说话中' if self.is_speaking else '停止说话'}")
             
-            # 如果设置为不说话且有活跃语音，处理结束当前语音段
-            if not self.is_speaking and self.speech_start_flag and not self.speech_end_flag:
+            # 如果设置为不说话，处理结束当前语音段
+            if not self.is_speaking:
+                # 调试：输出当前的语音状态标志
+                logger.info(f"调试 - speech_start_flag: {self.speech_start_flag}, speech_end_flag: {self.speech_end_flag}")
+                print(f"调试 - VAD状态: speech_start_flag={self.speech_start_flag}, speech_end_flag={self.speech_end_flag}", flush=True)
+                print(f"调试 - 帧数信息: frames={len(self.frames)}帧, frames_asr={len(self.frames_asr)}帧, frames_asr_online={len(self.frames_asr_online)}帧", flush=True)
+                
+                # 新条件：只要停止说话就处理，无论是否检测到语音
                 self.speech_end_flag = True
-                logger.info("客户端停止说话，强制结束当前语音段")
+                logger.info("客户端停止说话，强制结束当前语音段 (不考虑VAD状态)")
+                
+                # 如果没有检测到语音开始，我们为了调试也设置它为True
+                if not self.speech_start_flag:
+                    self.speech_start_flag = True
+                    logger.info("调试 - 强制设置speech_start_flag=True用于调试")
+                
+                # 核心修复：确保frames_asr包含完整的语音数据
+                # 之前的问题是VAD失效导致frames_asr没有积累有效语音
+                if not self.frames_asr or len(self.frames_asr) < 5:  # 如果frames_asr为空或太少
+                    if len(self.frames) > 0:
+                        # 关键改进：使用所有历史帧，而不仅仅是最近的frames_asr_online
+                        # 过滤开头可能的静音帧
+                        print(f"使用完整的历史帧数据替代VAD累积的frames_asr", flush=True)
+                        logger.info(f"使用完整的历史帧数据替代VAD累积的frames_asr")
+                        
+                        # 计算音频特征以找到有效语音起始
+                        valid_frames = []
+                        for frame in self.frames:
+                            frame_np = np.frombuffer(frame, dtype=np.int16)
+                            max_amp = np.max(np.abs(frame_np)) if len(frame_np) > 0 else 0
+                            # 只保留有效声音的帧（振幅大于阈值）
+                            if max_amp > 500:
+                                valid_frames.append(frame)
+                        
+                        if valid_frames:
+                            print(f"找到 {len(valid_frames)} 个有效音频帧（振幅>500）", flush=True)
+                            logger.info(f"找到 {len(valid_frames)} 个有效音频帧（振幅>500）")
+                            self.frames_asr = valid_frames
+                        else:
+                            # 如果没有找到有效声音帧，使用所有帧
+                            print("未找到有效声音帧，使用所有历史帧", flush=True)
+                            logger.info("未找到有效声音帧，使用所有历史帧")
+                            self.frames_asr = self.frames.copy()
+                    elif len(self.frames_asr_online) > 0:
+                        # 备选方案：使用在线ASR的帧
+                        logger.info("调试 - frames_asr为空，正在从frames_asr_online复制")
+                        self.frames_asr = self.frames_asr_online.copy()
+                
                 await self._process_speech_end()
                 
         # 处理热词
@@ -207,15 +252,32 @@ class WebSocketHandler:
             # 调用FunASR VAD模型进行语音检测
             vad_result = await self.model.process_vad(binary_data, self.vad_status_dict)
             
+            # 调试：输出原始VAD结果
+            print(f"调试 - 原始VAD结果: {vad_result}", flush=True)
+            
             # 解析VAD结果，获取语音起止点
             speech_start_i = -1
             speech_end_i = -1
             
             if "segments" in vad_result and vad_result["segments"]:
                 segment = vad_result["segments"][0]  # 获取第一个语音段
+                print(f"调试 - VAD检测到语音段: {segment}", flush=True)
+                
                 if len(segment) >= 2:
                     speech_start_i = segment[0] if segment[0] != -1 else -1
                     speech_end_i = segment[1] if segment[1] != -1 else -1
+                    print(f"调试 - 提取语音点: 起始={speech_start_i}, 结束={speech_end_i}", flush=True)
+            else:
+                print(f"调试 - VAD未检测到语音段, 当前帧振幅: {max_amp}", flush=True)
+            
+            # 调试点2: 记录VAD的准确性信息
+            if speech_start_i != -1 or speech_end_i != -1:
+                logger.info(f"VAD检测结果: 起始点={speech_start_i}ms, 结束点={speech_end_i}ms, vad_pre_idx={self.vad_pre_idx}ms")
+                if speech_start_i != -1:
+                    # 计算相对于当前帧的偏移量
+                    relative_start = speech_start_i - (self.vad_pre_idx - duration_ms)
+                    logger.info(f"VAD语音起始点相对于当前帧起始的偏移量: {relative_start}ms")
+                    print(f"调试 - VAD语音起始点相对于当前帧起始的偏移量: {relative_start}ms", flush=True)
             
             # 更新VAD状态字典缓存
             if "cache" in vad_result:
@@ -225,6 +287,7 @@ class WebSocketHandler:
             if speech_start_i != -1 and not self.speech_start_flag:
                 self.speech_start_flag = True
                 logger.info(f"VAD检测到语音开始，帧位置: {speech_start_i}ms，当前vad_pre_idx: {self.vad_pre_idx}ms")
+                print(f"调试 - VAD检测到语音开始！帧位置: {speech_start_i}ms, 当前vad_pre_idx: {self.vad_pre_idx}ms", flush=True)
                 await self.send_status(STATUS_PROCESSING)
                 
                 self.frames_asr = [] # 首先清空，确保从干净的状态开始
@@ -245,6 +308,7 @@ class WebSocketHandler:
                     actual_prefix_frames = historical_frames_before_current[-num_prefix_frames_to_keep:]
                     self.frames_asr.extend(actual_prefix_frames)
                     logger.info(f"已添加 {len(actual_prefix_frames)} 帧 (共 {sum(len(f) for f in actual_prefix_frames)} 字节) 作为前导帧到 frames_asr。")
+                    print(f"调试 - 已添加 {len(actual_prefix_frames)} 帧作为前导帧", flush=True)
                 
             # 如果语音已开始且未结束，添加当前帧到离线ASR列表
             if self.speech_start_flag and not self.speech_end_flag:
@@ -275,22 +339,76 @@ class WebSocketHandler:
             if speech_end_i != -1 and self.speech_start_flag and not self.speech_end_flag:
                 self.speech_end_flag = True
                 logger.info(f"VAD检测到语音结束，帧位置: {speech_end_i}ms")
+                print(f"调试 - VAD检测到语音结束！帧位置: {speech_end_i}ms", flush=True)
                 await self._process_speech_end()
+                
+            # 调试VAD状态
+            if len(self.frames) % 10 == 0:  # 每10帧打印一次
+                print(f"调试 - 当前状态: frames={len(self.frames)}帧, speech_start_flag={self.speech_start_flag}, speech_end_flag={self.speech_end_flag}", flush=True)
+                
         except Exception as e:
             logger.error(f"处理音频数据时出错: {str(e)}")
             logger.exception(e)
     
     async def _process_speech_end(self) -> None:
         """处理语音段结束时的逻辑"""
+        print("===== 开始处理语音段结束逻辑 =====", flush=True)
+        logger.info("开始处理语音段结束逻辑")
+        
         # 处理离线ASR - 在语音结束时
         if self.funasr_config.mode in ["2pass", "offline"] and self.frames_asr:
+            print(f"检测到frames_asr非空，长度为: {len(self.frames_asr)}帧", flush=True)
+            logger.info(f"检测到frames_asr非空，长度为: {len(self.frames_asr)}帧")
+            
             audio_in = b"".join(self.frames_asr)
+            
+            # 强化调试：将音频保存到临时文件
             try:
+                # 保存音频文件到固定目录
+                debug_dir = "/tmp/nextalk_debug"
+                os.makedirs(debug_dir, exist_ok=True)
+                
+                # 生成唯一文件名
+                timestamp = int(time.time())
+                audio_file = os.path.join(debug_dir, f'offline_audio_{self.session_id}_{timestamp}.wav')
+                
+                # 保存为WAV文件
+                with wave.open(audio_file, 'wb') as wf:
+                    wf.setnchannels(1)  # 单声道
+                    wf.setsampwidth(2)  # 16位
+                    wf.setframerate(16000)  # 16kHz采样率
+                    audio_np = np.frombuffer(audio_in, dtype=np.int16)
+                    wf.writeframes(audio_np.tobytes())
+                
+                # 强制输出到标准输出
+                print(f"调试: 已保存离线处理音频到: {audio_file}", flush=True)
+                logger.info(f"调试: 已保存离线处理音频到: {audio_file}")
+                
+                # 计算音频信息并记录，方便分析
+                duration_s = len(audio_np) / 16000
+                max_amp = np.max(np.abs(audio_np))
+                non_zero = np.count_nonzero(audio_np)
+                non_zero_ratio = non_zero / len(audio_np) if len(audio_np) > 0 else 0
+                
+                print(f"调试: 离线音频信息: 长度={duration_s:.3f}秒, 最大振幅={max_amp}, 非零比例={non_zero_ratio:.4f}", flush=True)
+                logger.info(f"调试: 离线音频信息: 长度={duration_s:.3f}秒, 最大振幅={max_amp}, 非零比例={non_zero_ratio:.4f}")
+            except Exception as e:
+                print(f"调试: 保存离线音频文件失败: {str(e)}", flush=True)
+                logger.error(f"保存离线音频文件失败: {str(e)}")
+            
+            try:
+                print("开始调用离线音频处理...", flush=True)
+                logger.info("开始调用离线音频处理...")
                 await self._process_offline_audio(audio_in)
             except Exception as e:
+                print(f"离线ASR处理出错: {str(e)}", flush=True)
                 logger.error(f"离线ASR处理出错: {str(e)}")
+        else:
+            print(f"未处理离线音频 - 模式: {self.funasr_config.mode}, frames_asr是否为空: {not bool(self.frames_asr)}", flush=True)
+            logger.info(f"未处理离线音频 - 模式: {self.funasr_config.mode}, frames_asr是否为空: {not bool(self.frames_asr)}")
         
         # 重置状态
+        logger.info("重置所有状态和缓存")
         self.frames_asr = []
         self.speech_start_flag = False
         self.speech_end_flag = False
@@ -331,10 +449,15 @@ class WebSocketHandler:
         # 将FunASR配置转换为模型可接受的格式
         self.model.status_dict_asr_online["is_final"] = is_final
         self.model.status_dict_asr_online["chunk_size"] = self.funasr_config.chunk_size
+        
+        # 确保添加 encoder_chunk_look_back 和 decoder_chunk_look_back 参数到模型状态字典
         if self.funasr_config.encoder_chunk_look_back is not None:
             self.model.status_dict_asr_online["encoder_chunk_look_back"] = self.funasr_config.encoder_chunk_look_back
+            logger.debug(f"设置在线ASR encoder_chunk_look_back: {self.funasr_config.encoder_chunk_look_back}")
+        
         if self.funasr_config.decoder_chunk_look_back is not None:
             self.model.status_dict_asr_online["decoder_chunk_look_back"] = self.funasr_config.decoder_chunk_look_back
+            logger.debug(f"设置在线ASR decoder_chunk_look_back: {self.funasr_config.decoder_chunk_look_back}")
         
         # 处理音频
         result = await self.model.process_audio_chunk(audio_data, is_final)
@@ -413,19 +536,22 @@ class WebSocketHandler:
             if not text:
                 logger.warning("离线ASR未返回有效文本内容")
                 return
-                
-            # 注意：标点处理已经在FunASRModel.process_audio_offline内部完成
-            # 不再需要在这里重复调用标点模型
             
+            # 获取标点前的原始ASR结果（如果可用）
+            original_text = result.get("original_text", "")
+                
             # 日志记录
             process_time = time.time() - start_time
-            logger.info(f"离线ASR处理完成，耗时: {process_time:.3f}秒, 结果: '{result.get('text', '')}'")
+            if original_text and original_text != text:
+                logger.info(f"离线ASR处理完成，耗时: {process_time:.3f}秒，标点前: '{original_text}'，标点后: '{text}'")
+            else:
+                logger.info(f"离线ASR处理完成，耗时: {process_time:.3f}秒, 结果: '{result.get('text', '')}'")
             
             # 添加模式和会话标识符
             mode = "2pass-offline" if self.funasr_config.mode == "2pass" else "offline"
             
-            # 发送结果 - 使用transcription类型而不是recognition类型
-            await self.send_json({
+            # 准备结果数据
+            response_data = {
                 "type": "transcription",  # 改为客户端期望的类型
                 "text": result.get("text", ""),
                 "is_final": True,  # 离线结果总是最终的
@@ -434,7 +560,20 @@ class WebSocketHandler:
                 "session_id": self.session_id,
                 "timestamp": int(time.time()),
                 "audio_duration": duration_s
-            })
+            }
+            
+            # 如果有标点前的原始ASR结果，也一并发送
+            if original_text:
+                response_data["original_text"] = original_text
+                
+                # 如果标点前后差异大，特别记录
+                if len(original_text) > 0 and len(text) > 0 and abs(len(original_text) - len(text)) / max(len(original_text), len(text)) > 0.5:
+                    logger.warning(f"标点前后文本长度差异巨大，标点前: [{len(original_text)}字] '{original_text}'，标点后: [{len(text)}字] '{text}'")
+                    response_data["text_difference_warning"] = True
+                
+            # 发送结果
+            await self.send_json(response_data)
+            
         except Exception as e:
             logger.error(f"处理离线音频出错: {str(e)}")
             logger.exception(e)

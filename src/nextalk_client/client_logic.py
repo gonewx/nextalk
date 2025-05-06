@@ -664,15 +664,17 @@ class NexTalkClient:
                     text = message.text
                     # 检查是否有is_final字段
                     is_final = getattr(message, 'is_final', False)
+                    # 获取识别模式
+                    mode = getattr(message, 'mode', 'online')
                     
                     # 添加相关日志
                     if is_final:
-                        logger.info(f"接收到最终转录结果: '{text}'")
+                        logger.info(f"接收到最终转录结果: '{text}', 模式: {mode}")
                     else:
-                        logger.info(f"接收到中间转录结果: '{text}'")
+                        logger.info(f"接收到中间转录结果: '{text}', 模式: {mode}")
                     
                     # 将转录结果传递给专门的处理函数
-                    self._handle_transcription(text, is_final)
+                    self._handle_transcription(text, is_final, mode)
                 
                 elif message_type == "error" and hasattr(message, 'message'):
                     # 处理错误消息
@@ -693,7 +695,7 @@ class NexTalkClient:
         except Exception as e:
             logger.error(f"处理服务器消息时出错: {str(e)}")
     
-    def _handle_transcription(self, text: str, is_final: bool = False):
+    def _handle_transcription(self, text: str, is_final: bool = False, mode: str = 'online'):
         """
         处理转录结果。
         
@@ -702,8 +704,9 @@ class NexTalkClient:
         Args:
             text: 转录文本
             is_final: 是否为最终结果
+            mode: 转录模式(online, offline, 2pass-online, 2pass-offline)
         """
-        logger.info(f"处理类型为'transcription'的消息")
+        logger.info(f"处理类型为'transcription'的消息, 模式={mode}")
         
         # 检查转录文本是否有效
         if not text or len(text.strip()) == 0:
@@ -711,12 +714,67 @@ class NexTalkClient:
             return
             
         # 记录转录结果日志
-        logger.info(f"接收到转录结果: '{text}', is_final={is_final}")
+        logger.info(f"接收到转录结果: '{text}', is_final={is_final}, mode={mode}")
+        
+        # 确保文本缓存初始化
+        if not hasattr(self, '_text_cache'):
+            logger.info("初始化文本缓存")
+            self._text_cache = {
+                'online': '',
+                'offline': '',
+                'last_injected': ''  # 记录最后注入的文本，避免重复注入
+            }
+            
+        # 根据不同模式处理文本缓存
+        if '2pass' in mode:
+            logger.info(f"使用2pass模式处理文本: {mode}")
+            
+            if mode == '2pass-online':
+                # 保存在线结果，但不直接注入，只在2pass模式下缓存
+                self._text_cache['online'] = text
+                logger.info(f"缓存在线结果: '{text}'")
+                
+                # 合并在线和离线结果用于显示
+                combined_text = self._text_cache['offline'] + self._text_cache['online']
+                logger.info(f"合并离线和在线结果: '{combined_text}'")
+                
+                # 显示在UI中
+                if self.client_config.get('show_text', False):
+                    try:
+                        show_text(combined_text, is_final)
+                    except Exception as e:
+                        logger.error(f"显示文本窗口时出错: {str(e)}")
+                        
+                # 在线模式下不直接注入文本，只在最终离线结果出来时注入
+                return
+                
+            elif mode == '2pass-offline':
+                # 离线模式下，使用新结果替换而不是累加，避免重复问题
+                logger.info(f"接收到离线结果: '{text}'，替换之前的离线结果: '{self._text_cache['offline']}'")
+                self._text_cache['offline'] = text
+                # 在线缓存清空
+                self._text_cache['online'] = ''
+                
+                # 最终文本是离线结果
+                text_to_inject = self._text_cache['offline']
+                logger.info(f"使用离线结果作为最终注入文本: '{text_to_inject}'")
+        else:
+            # 普通模式
+            logger.info(f"使用{mode}模式处理文本")
+            text_to_inject = text
+            
+        # 检查是否重复注入相同的文本
+        if text_to_inject == self._text_cache.get('last_injected', ''):
+            logger.info(f"跳过重复文本注入: '{text_to_inject}'")
+            return
+            
+        # 记录本次注入的文本
+        self._text_cache['last_injected'] = text_to_inject
         
         # 文本注入功能
-        if self.injector and text:
-            logger.info(f"正在注入文本: '{text}'")
-            success = self.injector.inject_text(text)
+        if self.injector and text_to_inject:
+            logger.info(f"正在注入文本: '{text_to_inject}', 模式: {mode}")
+            success = self.injector.inject_text(text_to_inject)
             if success:
                 logger.info("文本注入成功")
             else:
@@ -724,7 +782,7 @@ class NexTalkClient:
                 # 如果注入失败且已配置，则显示文本窗口
                 if self.client_config.get('show_text_on_error', False):
                     try:
-                        show_text(text, is_final)
+                        show_text(text_to_inject, is_final)
                     except Exception as e:
                         logger.error(f"显示文本窗口时出错: {str(e)}")
         
@@ -732,7 +790,7 @@ class NexTalkClient:
         try:
             if self.client_config.get('show_text', False):
                 # 这里我们使用一个简单的独立窗口显示文本
-                show_text(text, is_final)
+                show_text(text_to_inject, is_final)
         except Exception as e:
             logger.error(f"显示文本窗口时出错: {str(e)}")
         

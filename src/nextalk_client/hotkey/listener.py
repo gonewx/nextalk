@@ -262,7 +262,7 @@ class HotkeyListener:
                 
                 # 增加详细日志输出热键组合当前状态
                 hotkey_match = self._is_hotkey_matched()
-                logger.info(f"热键匹配状态: {hotkey_match}, 热键组合: {self._hotkey_combo}, 当前按下的键: {self._pressed_keys}")
+                # logger.info(f"热键匹配状态: {hotkey_match}, 热键组合: {self._hotkey_combo}, 当前按下的键: {self._pressed_keys}")
                 
                 # 检查是否所有热键都被按下
                 if hotkey_match and not self._is_active:
@@ -302,7 +302,7 @@ class HotkeyListener:
                 # 增加更多日志以便调试
                 is_active = self._is_active
                 is_in_hotkey = key in self._hotkey_combo
-                logger.info(f"键释放状态: 热键激活={is_active}, 键在热键组合中={is_in_hotkey}, 键={key}")
+                # logger.info(f"键释放状态: 热键激活={is_active}, 键在热键组合中={is_in_hotkey}, 键={key}")
                 
                 # 只有当热键处于激活状态时才处理热键释放
                 # 并且确保是热键组合中的键被释放时才触发停用回调
