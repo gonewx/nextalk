@@ -224,16 +224,27 @@ class WebSocketHandler:
             # 处理语音开始
             if speech_start_i != -1 and not self.speech_start_flag:
                 self.speech_start_flag = True
-                logger.info(f"VAD检测到语音开始，帧位置: {speech_start_i}ms")
+                logger.info(f"VAD检测到语音开始，帧位置: {speech_start_i}ms，当前vad_pre_idx: {self.vad_pre_idx}ms")
                 await self.send_status(STATUS_PROCESSING)
                 
-                # 计算前向偏移，包含语音开始前的一部分音频
-                beg_bias = min(10, len(self.frames))  # 增加到最多10帧作为前导帧
-                if beg_bias > 0:
-                    start_idx = max(0, len(self.frames) - beg_bias)
-                    # 添加前导帧到离线ASR帧列表
-                    self.frames_asr = self.frames[start_idx:]
-                    logger.info(f"添加 {len(self.frames_asr)} 帧作为前导帧")
+                self.frames_asr = [] # 首先清空，确保从干净的状态开始
+
+                # 定义希望保留的前导音频时长（毫秒）或帧数
+                # 例如，保留最多约200ms的前导音频 (16kHz, 16bit，每毫秒2*16=32字节)
+                # 200ms * 32 bytes/ms = 6400 bytes
+                # 假设WebSocket接收的每个binary_data块大致对应一个chunk_interval (e.g., 60ms for paraformer default)
+                # 200ms / 60ms_per_chunk ~= 3-4 chunks/frames
+                # 或者简单地取最后 N 帧
+                num_prefix_frames_to_keep = 3  # 例如，保留最后3帧作为前导
+                
+                # self.frames 已经包含了当前的 binary_data (在函数的开头 append 的)
+                # 取 self.frames[:-1] 是为了获取 binary_data 之前的历史帧
+                historical_frames_before_current = self.frames[:-1] 
+                
+                if historical_frames_before_current:
+                    actual_prefix_frames = historical_frames_before_current[-num_prefix_frames_to_keep:]
+                    self.frames_asr.extend(actual_prefix_frames)
+                    logger.info(f"已添加 {len(actual_prefix_frames)} 帧 (共 {sum(len(f) for f in actual_prefix_frames)} 字节) 作为前导帧到 frames_asr。")
                 
             # 如果语音已开始且未结束，添加当前帧到离线ASR列表
             if self.speech_start_flag and not self.speech_end_flag:
@@ -403,27 +414,9 @@ class WebSocketHandler:
                 logger.warning("离线ASR未返回有效文本内容")
                 return
                 
-            # 添加标点处理 - 与官方示例保持一致
-            if self.model._model_punc is not None:
-                try:
-                    # 使用标点模型处理文本
-                    punc_result = self.model._model_punc.generate(
-                        input=text, 
-                        **self.model.status_dict_punc
-                    )[0]
-                    
-                    if isinstance(punc_result, dict) and "text" in punc_result:
-                        result["text"] = punc_result["text"]
-                        logger.info(f"标点处理成功: '{result['text']}'")
-                    elif isinstance(punc_result, str):
-                        result["text"] = punc_result
-                        logger.info(f"标点处理成功(字符串结果): '{result['text']}'")
-                    else:
-                        logger.warning(f"标点模型返回未知格式: {type(punc_result)}")
-                except Exception as e:
-                    logger.error(f"标点处理失败: {str(e)}")
-                    logger.exception(e)
-                
+            # 注意：标点处理已经在FunASRModel.process_audio_offline内部完成
+            # 不再需要在这里重复调用标点模型
+            
             # 日志记录
             process_time = time.time() - start_time
             logger.info(f"离线ASR处理完成，耗时: {process_time:.3f}秒, 结果: '{result.get('text', '')}'")

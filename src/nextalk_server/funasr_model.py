@@ -356,14 +356,7 @@ class FunASRModel:
                             if isinstance(online_result[0], dict) and "text" in online_result[0]:
                                 # 获取文本并处理重复
                                 online_text = online_result[0]["text"]
-                                online_text = self._remove_duplicates(online_text)
                                 result["text"] = online_text
-                                
-                                # 当结果是列表而不是字典时，处理缓存
-                                if is_final:
-                                    # 仅在最终帧时重置缓存
-                                    logger.info("最终帧处理完成，重置缓存")
-                                    self.status_dict_asr_online["cache"] = {}
                             else:
                                 result["text"] = str(online_result[0])
                         else:
@@ -373,7 +366,6 @@ class FunASRModel:
                     elif isinstance(online_result, dict) and "text" in online_result:
                         # 获取文本并处理重复
                         online_text = online_result["text"]
-                        online_text = self._remove_duplicates(online_text)
                         result["text"] = online_text
                         
                         # 安全更新在线模型状态
@@ -446,9 +438,6 @@ class FunASRModel:
                     else:
                         logger.warning(f"离线模型结果格式异常: {type(offline_result)}")
                     
-                    # 处理可能的重复字词问题
-                    offline_text = self._remove_duplicates(offline_text)
-                    
                     # 尝试应用标点模型处理（如果有）
                     if self._model_punc is not None and offline_text.strip():
                         try:
@@ -492,56 +481,6 @@ class FunASRModel:
             logger.error(f"同步处理音频时出错: {str(e)}")
             logger.exception(e)
             return {"text": "", "error": str(e)}
-    
-    def _remove_duplicates(self, text: str) -> str:
-        """
-        移除文本中的重复片段，更强大的版本
-        
-        Args:
-            text: 输入文本
-            
-        Returns:
-            移除重复后的文本
-        """
-        if not text:
-            return text
-            
-        # 1. 简单重复字符去重
-        result = []
-        prev_char = None
-        repeat_count = 0
-        max_repeats = 2  # 允许最多重复次数
-        
-        for char in text:
-            if char == prev_char:
-                repeat_count += 1
-                if repeat_count < max_repeats:
-                    result.append(char)
-            else:
-                result.append(char)
-                prev_char = char
-                repeat_count = 0
-                
-        # 2. 处理重复双字词，如"你好你好"
-        text = ''.join(result)
-        for length in range(4, 1, -1):  # 从长到短处理，避免处理子串
-            i = 0
-            while i <= len(text) - length * 2:
-                chunk1 = text[i:i+length]
-                chunk2 = text[i+length:i+length*2]
-                if chunk1 == chunk2:
-                    # 找到重复，去除第二个重复部分
-                    text = text[:i+length] + text[i+length*2:]
-                else:
-                    i += 1
-                    
-        # 3. 过滤掉常见噪音词
-        noise_words = ["嗯", "啊", "呃", "额"]
-        for word in noise_words:
-            if len(text) > 4:  # 只在较长文本中过滤噪音词，避免过度过滤
-                text = text.replace(word, "")
-                
-        return text.strip()
     
     async def reset(self) -> None:
         """
@@ -802,9 +741,6 @@ class FunASRModel:
             else:
                 logger.warning(f"未知的结果格式: {type(asr_result)}")
                 return {"text": "", "error": "未知的结果格式"}
-            
-            # 处理文本中的重复内容
-            text = self._remove_duplicates(text)
             
             # 尝试使用标点模型（如果可用）
             if self._model_punc is not None and text.strip():
