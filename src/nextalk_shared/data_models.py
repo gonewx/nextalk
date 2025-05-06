@@ -63,8 +63,8 @@ class FunASRConfig(BaseModel):
     # 在线模型参数
     chunk_size: List[int] = [5, 10]  # 用于在线流式模型的分块大小
     chunk_interval: int = 10  # 处理音频块的间隔（帧数）
-    encoder_chunk_look_back: Optional[int] = None  # 编码器回看窗口大小
-    decoder_chunk_look_back: Optional[int] = None  # 解码器回看窗口大小
+    encoder_chunk_look_back: Optional[int] = 4  # 编码器回看窗口大小，默认4（与FunASR示例相同）
+    decoder_chunk_look_back: Optional[int] = 0  # 解码器回看窗口大小，默认0（与FunASR示例相同）
     
     # 状态控制
     is_speaking: bool = True  # 是否正在说话

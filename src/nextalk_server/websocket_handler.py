@@ -57,6 +57,15 @@ class WebSocketHandler:
         self.funasr_config.chunk_size = [5, 10, 5]  # 默认分块大小，与官方示例一致
         self.funasr_config.mode = "2pass"  # 默认使用2pass模式
         
+        # 从全局配置中获取高级参数
+        if hasattr(self.config, 'encoder_chunk_look_back') and self.config.encoder_chunk_look_back is not None:
+            self.funasr_config.encoder_chunk_look_back = self.config.encoder_chunk_look_back
+            logger.info(f"从配置中加载encoder_chunk_look_back: {self.funasr_config.encoder_chunk_look_back}")
+        
+        if hasattr(self.config, 'decoder_chunk_look_back') and self.config.decoder_chunk_look_back is not None:
+            self.funasr_config.decoder_chunk_look_back = self.config.decoder_chunk_look_back
+            logger.info(f"从配置中加载decoder_chunk_look_back: {self.funasr_config.decoder_chunk_look_back}")
+        
         # 音频帧缓存 - 与官方示例一致的命名
         self.frames = []  # 所有收到的帧
         self.frames_asr = []  # 用于离线ASR的帧

@@ -45,6 +45,10 @@ DEFAULT_CONFIG = {
     
     # FunASR设置
     "funasr_disable_update": True,  # 是否禁用FunASR更新检查
+    
+    # FunASR在线模型高级设置
+    "encoder_chunk_look_back": 4,  # 编码器回看块数，用于提升在线识别准确度
+    "decoder_chunk_look_back": 0,  # 解码器回看块数，用于提升在线识别准确度
 }
 
 CONFIG_PATH = os.path.expanduser("~/.nextalk/config.json")
@@ -87,6 +91,10 @@ class Config(BaseModel):
     
     # FunASR设置
     funasr_disable_update: bool = True
+    
+    # FunASR在线模型高级设置
+    encoder_chunk_look_back: Optional[int] = 4  # 编码器回看块数，参考FunASR wss client的默认值
+    decoder_chunk_look_back: Optional[int] = 0  # 解码器回看块数，参考FunASR wss client的默认值
 
 
 # 全局配置实例
@@ -127,14 +135,14 @@ def parse_ini_config(ini_path: str) -> dict:
     # 类型转换
     result = {}
     for k, v in server_cfg.items():
-        if k in ["port", "vad_sensitivity", "ngpu", "ncpu"]:
+        if k in ["port", "vad_sensitivity", "ngpu", "ncpu", "encoder_chunk_look_back", "decoder_chunk_look_back"]:
             try:
                 result[k] = int(v)
                 logger.info(f"INI配置项转换为整数: {k}={v} → {result[k]}")
             except Exception as e:
                 logger.warning(f"INI配置项转换整数失败: {k}={v}, 错误: {e}")
                 continue
-        elif k in ["funasr_streaming"]:
+        elif k in ["funasr_streaming", "funasr_disable_update"]:
             result[k] = v.lower() in ("1", "true", "yes")
             logger.info(f"INI配置项转换为布尔值: {k}={v} → {result[k]}")
         else:
