@@ -125,6 +125,11 @@ class WebSocketHandler:
         # 处理热词
         if "hotwords" in message:
             self.funasr_config.hotwords = message["hotwords"]
+            # 同时设置到离线和在线模型的状态字典中
+            if hasattr(self.model, 'status_dict_asr'):
+                self.model.status_dict_asr["hotword"] = message["hotwords"]
+            if hasattr(self.model, 'status_dict_asr_online'):
+                self.model.status_dict_asr_online["hotword"] = message["hotwords"]
             logger.info(f"设置热词: {self.funasr_config.hotwords}")
             
         # 处理分块大小
@@ -374,47 +379,63 @@ class WebSocketHandler:
         # 记录开始时间
         start_time = time.time()
         
-        # 处理音频 - 离线最终结果，直接传递原始音频数据
-        result = await self.model.process_audio_offline(audio_data)
-        
-        # 检查结果有效性
-        if not result or "text" not in result:
-            logger.warning("离线ASR返回无效结果")
-            return
+        try:
+            # 处理音频 - 离线最终结果，直接传递原始音频数据
+            result = await self.model.process_audio_offline(audio_data)
             
-        # 添加标点处理 - 与官方示例保持一致
-        if hasattr(self.model, '_model_punc') and self.model._model_punc is not None and len(result["text"]) > 0:
-            try:
-                # 使用标点模型处理文本
-                punc_result = self.model._model_punc.generate(
-                    input=result["text"], 
-                    **self.model.status_dict_punc
-                )[0]
+            # 检查结果有效性
+            if not result or "text" not in result:
+                logger.warning("离线ASR返回无效结果")
+                return
                 
-                if punc_result and "text" in punc_result:
-                    result["text"] = punc_result["text"]
-                    logger.info(f"标点处理成功: '{result['text']}'")
-            except Exception as e:
-                logger.error(f"标点处理失败: {e}")
+            # 获取文本结果
+            text = result.get("text", "")
+            if not text:
+                logger.warning("离线ASR未返回有效文本内容")
+                return
+                
+            # 添加标点处理 - 与官方示例保持一致
+            if self.model._model_punc is not None:
+                try:
+                    # 使用标点模型处理文本
+                    punc_result = self.model._model_punc.generate(
+                        input=text, 
+                        **self.model.status_dict_punc
+                    )[0]
+                    
+                    if isinstance(punc_result, dict) and "text" in punc_result:
+                        result["text"] = punc_result["text"]
+                        logger.info(f"标点处理成功: '{result['text']}'")
+                    elif isinstance(punc_result, str):
+                        result["text"] = punc_result
+                        logger.info(f"标点处理成功(字符串结果): '{result['text']}'")
+                    else:
+                        logger.warning(f"标点模型返回未知格式: {type(punc_result)}")
+                except Exception as e:
+                    logger.error(f"标点处理失败: {str(e)}")
+                    logger.exception(e)
+                
+            # 日志记录
+            process_time = time.time() - start_time
+            logger.info(f"离线ASR处理完成，耗时: {process_time:.3f}秒, 结果: '{result.get('text', '')}'")
             
-        # 日志记录
-        process_time = time.time() - start_time
-        logger.info(f"离线ASR处理完成，耗时: {process_time:.3f}秒, 结果: '{result.get('text', '')}'")
-        
-        # 添加模式和会话标识符
-        mode = "2pass-offline" if self.funasr_config.mode == "2pass" else "offline"
-        
-        # 发送结果 - 使用transcription类型而不是recognition类型
-        await self.send_json({
-            "type": "transcription",  # 改为客户端期望的类型
-            "text": result.get("text", ""),
-            "is_final": True,  # 离线结果总是最终的
-            "mode": mode,
-            "wav_name": self.wav_name,
-            "session_id": self.session_id,
-            "timestamp": int(time.time()),
-            "audio_duration": duration_s
-        })
+            # 添加模式和会话标识符
+            mode = "2pass-offline" if self.funasr_config.mode == "2pass" else "offline"
+            
+            # 发送结果 - 使用transcription类型而不是recognition类型
+            await self.send_json({
+                "type": "transcription",  # 改为客户端期望的类型
+                "text": result.get("text", ""),
+                "is_final": True,  # 离线结果总是最终的
+                "mode": mode,
+                "wav_name": self.wav_name,
+                "session_id": self.session_id,
+                "timestamp": int(time.time()),
+                "audio_duration": duration_s
+            })
+        except Exception as e:
+            logger.error(f"处理离线音频出错: {str(e)}")
+            logger.exception(e)
     
     async def handle_message(self, message) -> None:
         """处理传入的WebSocket消息"""

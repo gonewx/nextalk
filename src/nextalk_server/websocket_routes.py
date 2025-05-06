@@ -10,7 +10,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
 
 from .websocket_handler import WebSocketHandler
-from .funasr_model import FunASRModel
+from .funasr_model import FunASRModel, get_preloaded_model
 from .config import get_config
 from nextalk_shared.constants import STATUS_CONNECTED
 
@@ -28,6 +28,14 @@ async def get_model():
     """获取或创建模型实例，并确保初始化"""
     global _model_instance
     try:
+        # 首先尝试获取预加载的模型实例
+        preloaded_model = get_preloaded_model()
+        
+        if preloaded_model is not None:
+            logger.info("使用预加载的模型实例")
+            return preloaded_model
+        
+        # 如果没有预加载的模型，检查全局实例
         if _model_instance is None:
             logger.info("创建全局FunASR模型实例")
             config = get_config()

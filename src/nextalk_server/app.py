@@ -14,7 +14,7 @@ from logging.handlers import RotatingFileHandler
 
 from .websocket_routes import router as websocket_router
 from .config import get_config
-from .funasr_model import FunASRModel
+from .funasr_model import FunASRModel, get_preloaded_model
 
 def setup_logging():
     """
@@ -84,8 +84,15 @@ def create_app() -> FastAPI:
         version="0.1.0"
     )
     
-    # 创建模型实例
-    model = FunASRModel(config)
+    # 检查是否有预加载的模型实例
+    preloaded_model = get_preloaded_model()
+    
+    if preloaded_model is not None:
+        logger.info("使用预加载的模型实例")
+        model = preloaded_model
+    else:
+        logger.info("没有预加载的模型实例，创建新的模型实例")
+        model = FunASRModel(config)
     
     # 将模型实例添加到应用状态
     app.state.model = model
@@ -95,6 +102,18 @@ def create_app() -> FastAPI:
     async def setup_model():
         """服务器启动时加载模型"""
         logger.info("服务器启动，开始加载模型...")
+        
+        # 检查是否使用的预加载模型
+        if get_preloaded_model() is app.state.model:
+            logger.info("使用的是预加载模型，已就绪")
+            app.state.model_loaded = True
+            return
+            
+        # 检查环境变量，如果模型已预加载则跳过初始化
+        if os.environ.get("NEXTALK_MODEL_PRELOADED", "0") == "1":
+            logger.info("检测到环境变量NEXTALK_MODEL_PRELOADED=1，模型已预加载，跳过重复初始化")
+            app.state.model_loaded = True
+            return
         
         try:
             success = await app.state.model.initialize()

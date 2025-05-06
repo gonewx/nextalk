@@ -30,6 +30,9 @@ logger = logging.getLogger("nextalk_server.funasr_model")
 # 异步执行器 - 用于在不阻塞事件循环的情况下运行FunASR模型
 _executor = ThreadPoolExecutor(max_workers=2)
 
+# 预加载的模型实例
+_PRELOADED_MODEL = None
+
 # 检查FunASR是否可用
 try:
     from funasr import AutoModel
@@ -37,6 +40,28 @@ try:
 except ImportError:
     logger.warning("FunASR模块不可用，请安装FunASR依赖")
     FUNASR_AVAILABLE = False
+
+
+def set_preloaded_model(model):
+    """
+    设置预加载的模型实例到全局变量
+    
+    Args:
+        model: 预加载的FunASRModel实例
+    """
+    global _PRELOADED_MODEL
+    _PRELOADED_MODEL = model
+    logger.info("已设置预加载模型实例到全局变量")
+
+
+def get_preloaded_model():
+    """
+    获取预加载的模型实例
+    
+    Returns:
+        FunASRModel或None: 预加载的模型实例，如果没有则返回None
+    """
+    return _PRELOADED_MODEL
 
 
 class FunASRModel:
@@ -58,6 +83,9 @@ class FunASRModel:
         
         # ASR状态字典（stream模式）
         self.status_dict_asr_online = {"cache": {}, "is_final": False}
+        
+        # 离线ASR状态字典
+        self.status_dict_asr = {}
         
         # 标点模型状态字典
         self.status_dict_punc = {"cache": {}}
@@ -320,13 +348,16 @@ class FunASRModel:
                         result["error_offline"] = "空音频数据"
                         result["is_final"] = True
                         return result
-                        
-                    # 确保音频数据是float32类型，避免"normal_kernel_cpu" not implemented for 'Short'错误
-                    audio_float = audio_np.astype(np.float32) / 32768.0  # 转换为float32并归一化到[-1,1]
                     
+                    # 重要：不再将音频转换为float32，直接使用原始音频数据
+                    # 并且确保传递status_dict_asr状态字典，与官方示例保持一致
                     logger.info("使用离线模型处理最终音频...")
-                    # 使用离线模型进行识别（更高精度，仅在最后一帧使用）
-                    offline_result = self._model_asr.generate(input=audio_float)
+                    
+                    # 使用离线模型进行识别 - 使用原始音频数据，与官方示例保持一致
+                    offline_result = self._model_asr.generate(
+                        input=audio_np, 
+                        **self.status_dict_asr
+                    )[0]  # 注意这里取第一个结果，与官方示例一致
                     
                     # 安全获取文本
                     offline_text = ""
@@ -430,6 +461,12 @@ class FunASRModel:
         # 完全重置在线状态字典，确保缓存是空的
         self.status_dict_asr_online = {"cache": {}, "is_final": True}
         self.status_dict_punc = {"cache": {}}
+        
+        # 重置离线ASR状态字典
+        if not hasattr(self, 'status_dict_asr'):
+            self.status_dict_asr = {}
+        else:
+            self.status_dict_asr.clear()
         
         # 确保再次明确清空缓存
         if hasattr(self, 'status_dict_asr_online'):
@@ -630,16 +667,18 @@ class FunASRModel:
                 logger.warning("离线模型收到空音频数据，跳过处理")
                 return {"text": "", "error": "空音频数据"}
             
-            # 注意：这里不要转换为float32，直接使用int16数据
-            # 在官方示例中，离线模型直接使用原始音频数据而不是float32归一化数据
-            
             logger.info("使用离线模型处理音频...")
             
-            # 使用离线模型进行识别 - 直接使用原始音频数据
-            asr_result = self._model_asr.generate(input=audio_np)
+            # 使用离线模型进行识别 - 使用原始音频数据并传递状态字典，与官方示例一致
+            asr_result = self._model_asr.generate(
+                input=audio_np,
+                **self.status_dict_asr
+            )[0]  # 注意这里取第一个结果，与官方示例一致
             
             # 提取文本结果
-            if isinstance(asr_result, list):
+            if isinstance(asr_result, dict) and "text" in asr_result:
+                text = asr_result["text"]
+            elif isinstance(asr_result, list):
                 if len(asr_result) == 0:
                     return {"text": "", "error": "空结果"}
                 
@@ -647,9 +686,6 @@ class FunASRModel:
                     text = asr_result[0]["text"]
                 else:
                     text = str(asr_result[0])
-            
-            elif isinstance(asr_result, dict) and "text" in asr_result:
-                text = asr_result["text"]
             else:
                 logger.warning(f"未知的结果格式: {type(asr_result)}")
                 return {"text": "", "error": "未知的结果格式"}

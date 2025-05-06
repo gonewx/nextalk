@@ -122,7 +122,7 @@ def parse_args():
 
 async def preload_models():
     """在服务器启动前预加载模型"""
-    from nextalk_server.funasr_model import FunASRModel
+    from nextalk_server.funasr_model import FunASRModel, set_preloaded_model
     from nextalk_server.config import get_config
     logger = logging.getLogger("nextalk.preload")
     
@@ -150,9 +150,8 @@ async def preload_models():
                     logger.info(f"FunASR模型预加载成功，耗时: {elapsed_time:.2f}秒")
                     print(f"FunASR模型预加载成功，耗时: {elapsed_time:.2f}秒")
                     
-                    # 保存预加载的模型到全局变量
-                    # 但是为了解决模型跨进程问题，只标记模型已加载，而不实际传递模型实例
-                    del model  # 删除模型实例避免内存泄漏
+                    # 保存预加载的模型到全局变量，以便应用程序可以使用
+                    set_preloaded_model(model)
                     
                     return True
                 else:
