@@ -90,9 +90,6 @@ class FunASRModel:
         # 标点模型状态字典
         self.status_dict_punc = {"cache": {}}
         
-        # 创建临时目录
-        os.makedirs(getattr(config, 'temp_dir', '/tmp/nextalk'), exist_ok=True)
-        
         # 使用线程执行初始化，不阻塞主线程
         threading.Thread(target=self._init_model_sync).start()
     

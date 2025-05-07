@@ -21,7 +21,6 @@ DEFAULT_CONFIG = {
     
     # 模型设置
     "model_path": "~/.nextalk/models",
-    "temp_dir": "~/.nextalk/temp",
     "device": "cpu",  # 'cpu' 或 'cuda'
     "ngpu": 1,
     "ncpu": 4,
@@ -67,7 +66,6 @@ class Config(BaseModel):
     
     # 模型设置
     model_path: str = "~/.nextalk/models"
-    temp_dir: str = "~/.nextalk/temp"
     device: str = "cpu"
     ngpu: int = 1
     ncpu: int = 4
