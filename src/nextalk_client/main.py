@@ -183,20 +183,7 @@ async def main(args):
     # 输出版本信息
     logger.info("NexTalk客户端 v0.1.0")
     logger.info("正在启动NexTalk客户端...")
-    
-    # 检查xdotool是否已安装
-    try:
-        if platform.system().lower() == 'linux':
-            xdotool_available = shutil.which("xdotool") is not None
-            if xdotool_available:
-                logger.info("\033[1;32mxdotool工具已安装，文本注入功能可用\033[0m")
-            else:
-                logger.error("\033[1;31mxdotool工具未安装，文本注入功能将不可用\033[0m")
-                print("\033[1;31m错误: xdotool工具未安装，语音识别结果将无法自动输入\033[0m")
-                print("\033[1;31m请安装xdotool: sudo apt install xdotool\033[0m")
-    except Exception as e:
-        logger.error(f"检查xdotool时出错: {e}")
-    
+        
     # 创建客户端实例
     client = NexTalkClient()
     

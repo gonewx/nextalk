@@ -9,11 +9,194 @@ import logging
 import configparser
 import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union, List
 
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
+
+
+class Config:
+    """配置访问器类，提供面向对象的配置访问接口。"""
+    
+    def __init__(self, config_data: Dict[str, Dict[str, str]] = None, config_path: Optional[str] = None):
+        """
+        初始化配置访问器。
+        
+        Args:
+            config_data: 可选的配置数据字典
+            config_path: 可选的配置文件路径
+        """
+        if config_data is None:
+            self._config = load_config(config_path)
+        else:
+            self._config = config_data
+            
+    def get(self, section: str, key: str, default: Any = None) -> Any:
+        """
+        获取配置值。
+        
+        Args:
+            section: 配置节名
+            key: 配置键名
+            default: 默认值
+            
+        Returns:
+            配置值
+        """
+        if section not in self._config:
+            return default
+        
+        section_config = self._config[section]
+        return section_config.get(key, default)
+    
+    def get_bool(self, section: str, key: str, default: bool = False) -> bool:
+        """
+        获取布尔配置值。
+        
+        Args:
+            section: 配置节名
+            key: 配置键名
+            default: 默认布尔值
+            
+        Returns:
+            bool: 配置的布尔值
+        """
+        return get_bool_config(self._config, section, key, default)
+    
+    def get_int(self, section: str, key: str, default: int = 0) -> int:
+        """
+        获取整数配置值。
+        
+        Args:
+            section: 配置节名
+            key: 配置键名
+            default: 默认整数值
+            
+        Returns:
+            int: 配置的整数值
+        """
+        value = self.get(section, key, default)
+        if isinstance(value, int):
+            return value
+        
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            logger.warning(f"无法转换为整数的配置: [{section}].{key}={value}，使用默认值: {default}")
+            return default
+    
+    def get_float(self, section: str, key: str, default: float = 0.0) -> float:
+        """
+        获取浮点数配置值。
+        
+        Args:
+            section: 配置节名
+            key: 配置键名
+            default: 默认浮点数值
+            
+        Returns:
+            float: 配置的浮点数值
+        """
+        value = self.get(section, key, default)
+        if isinstance(value, float):
+            return value
+        
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            logger.warning(f"无法转换为浮点数的配置: [{section}].{key}={value}，使用默认值: {default}")
+            return default
+    
+    def get_list(self, section: str, key: str, default: List[str] = None, delimiter: str = ',') -> List[str]:
+        """
+        获取列表配置值（以分隔符分隔的字符串）。
+        
+        Args:
+            section: 配置节名
+            key: 配置键名
+            default: 默认列表值
+            delimiter: 分隔符
+            
+        Returns:
+            List[str]: 配置的列表值
+        """
+        if default is None:
+            default = []
+            
+        value = self.get(section, key, None)
+        if value is None:
+            return default
+        
+        if isinstance(value, list):
+            return value
+        
+        if not isinstance(value, str):
+            logger.warning(f"无法转换为列表的配置: [{section}].{key}={value}，使用默认值: {default}")
+            return default
+        
+        return [item.strip() for item in value.split(delimiter) if item.strip()]
+    
+    def client(self) -> Dict[str, str]:
+        """
+        获取客户端配置部分。
+        
+        Returns:
+            Dict[str, str]: 客户端配置字典
+        """
+        return self._config.get('Client', {})
+    
+    def server(self) -> Dict[str, str]:
+        """
+        获取服务器配置部分。
+        
+        Returns:
+            Dict[str, str]: 服务器配置字典
+        """
+        return self._config.get('Server', {})
+    
+    def client_bool(self, key: str, default: bool = False) -> bool:
+        """
+        获取客户端布尔配置值。
+        
+        Args:
+            key: 配置键名
+            default: 默认布尔值
+            
+        Returns:
+            bool: 配置的布尔值
+        """
+        return self.get_bool('Client', key, default)
+    
+    def server_bool(self, key: str, default: bool = False) -> bool:
+        """
+        获取服务器布尔配置值。
+        
+        Args:
+            key: 配置键名
+            default: 默认布尔值
+            
+        Returns:
+            bool: 配置的布尔值
+        """
+        return self.get_bool('Server', key, default)
+
+
+# 全局配置实例
+_config_instance = None
+
+
+def get_config() -> Config:
+    """
+    获取全局配置实例。
+    
+    Returns:
+        Config: 配置访问器实例
+    """
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = Config()
+    return _config_instance
 
 
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
@@ -137,6 +320,82 @@ def get_server_config() -> Dict[str, Any]:
     """
     config = load_config()
     return config.get('Server', {})
+
+
+def get_bool_config(config: Dict[str, Any], section: str, key: str, default: bool = False) -> bool:
+    """
+    从配置中获取布尔值，正确处理字符串表示的布尔值。
+    
+    支持的真值：'true', 'yes', '1', 't', 'y'（不区分大小写）
+    支持的假值：'false', 'no', '0', 'f', 'n'（不区分大小写）
+    
+    Args:
+        config: 包含配置的字典
+        section: 配置节名
+        key: 配置键名
+        default: 默认布尔值，当键不存在或无法识别时返回
+        
+    Returns:
+        bool: 配置的布尔值
+    """
+    if section not in config:
+        return default
+    
+    section_config = config[section]
+    if key not in section_config:
+        return default
+    
+    value = section_config[key]
+    
+    # 如果已经是布尔类型，直接返回
+    if isinstance(value, bool):
+        return value
+    
+    # 处理字符串形式的布尔值
+    if isinstance(value, str):
+        true_values = ('true', 'yes', '1', 't', 'y')
+        false_values = ('false', 'no', '0', 'f', 'n')
+        
+        value_lower = value.lower()
+        
+        if value_lower in true_values:
+            return True
+        if value_lower in false_values:
+            return False
+    
+    # 如果无法识别，返回默认值
+    logger.warning(f"无法识别为布尔值的配置: [{section}].{key}={value}，使用默认值: {default}")
+    return default
+
+
+def get_client_bool_config(key: str, default: bool = False) -> bool:
+    """
+    获取客户端部分的布尔配置值。
+    
+    Args:
+        key: 配置键名
+        default: 默认布尔值
+        
+    Returns:
+        bool: 配置的布尔值
+    """
+    config = load_config()
+    return get_bool_config(config, 'Client', key, default)
+
+
+def get_server_bool_config(key: str, default: bool = False) -> bool:
+    """
+    获取服务器部分的布尔配置值。
+    
+    Args:
+        key: 配置键名
+        default: 默认布尔值
+        
+    Returns:
+        bool: 配置的布尔值
+    """
+    config = load_config()
+    return get_bool_config(config, 'Server', key, default)
 
 
 def ensure_config_directory() -> bool:

@@ -194,7 +194,7 @@ class SystemTrayIcon:
             )
             self._icon_thread.start()
             
-            logger.info("系统托盘图标已启动")
+            logger.debug("系统托盘图标已启动")
             return True
             
         except Exception as e:
@@ -213,7 +213,7 @@ class SystemTrayIcon:
             logger.debug(f"模型 {model_name} 已经是当前模型，不做更改")
             return
             
-        logger.info(f"用户选择了语音识别模型: {model_name}")
+        logger.debug(f"用户选择了语音识别模型: {model_name}")
         
         # 更新当前模型
         self.current_model = model_name
@@ -241,7 +241,7 @@ class SystemTrayIcon:
         Args:
             on_quit: 退出回调函数
         """
-        logger.info("用户从系统托盘菜单请求退出")
+        logger.debug("用户从系统托盘菜单请求退出")
         
         # 先停止图标
         self.stop()
@@ -262,7 +262,7 @@ class SystemTrayIcon:
             if self.icon:
                 try:
                     self.icon.stop()
-                    logger.info("系统托盘图标已停止")
+                    logger.debug("系统托盘图标已停止")
                 except Exception as e:
                     logger.error(f"停止系统托盘图标时出错: {e}")
                 finally:
@@ -293,12 +293,12 @@ class SystemTrayIcon:
         
         # 处理空状态情况
         if not state:
-            logger.info(f"收到空状态，保持当前状态: {old_state}")
+            logger.debug(f"收到空状态，保持当前状态: {old_state}")
             return
         
         self.current_state = state
         
-        logger.info(f"更新托盘图标状态: {old_state} -> {state}")
+        logger.debug(f"更新托盘图标状态: {old_state} -> {state}")
         
         # 如果图标还没有创建，就不需要更新
         if not self.icon:
@@ -322,7 +322,7 @@ class SystemTrayIcon:
                 logger.debug(f"状态映射(默认): {state} -> {display_state}")
                 
         # 确认最终使用的图标状态
-        logger.info(f"最终托盘图标显示状态: {display_state}")
+        logger.debug(f"最终托盘图标显示状态: {display_state}")
                 
         # 更新图标
         with self._lock:
@@ -334,7 +334,7 @@ class SystemTrayIcon:
                         # 更新图标和标题
                         self.icon.icon = new_icon
                         self.icon.title = f"NexTalk - {state}"
-                        logger.info(f"托盘图标和标题已更新: 图标={display_state}, 标题={state}")
+                        logger.debug(f"托盘图标和标题已更新: 图标={display_state}, 标题={state}")
                     else:
                         logger.error(f"未找到状态 {display_state} 对应的图标")
                 except Exception as e:

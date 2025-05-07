@@ -54,7 +54,7 @@ class WebSocketClient:
             bool: 连接是否成功
         """
         try:
-            logger.info(f"正在连接到服务器: {url}")
+            logger.debug(f"正在连接到服务器: {url}")
             
             if use_ssl:
                 ssl_context = websockets.ssl.SSLContext()
@@ -74,7 +74,7 @@ class WebSocketClient:
                 )
                 
             self.connected = True
-            logger.info("WebSocket连接已建立")
+            logger.debug("WebSocket连接已建立")
             return True
         except Exception as e:
             logger.error(f"连接到服务器失败: {str(e)}")
@@ -93,7 +93,7 @@ class WebSocketClient:
                 
             if self.connection:
                 await self.connection.close()
-                logger.info("WebSocket连接已关闭")
+                logger.debug("WebSocket连接已关闭")
             
             self.connected = False
             
@@ -181,7 +181,7 @@ class WebSocketClient:
             return
         
         try:
-            logger.info("开始监听服务器消息")
+            logger.debug("开始监听服务器消息")
             
             async for message in self.connection:
                 try:
@@ -279,7 +279,7 @@ class WebSocketClient:
             return False
             
         try:
-            logger.info("开始进行语音识别")
+            logger.debug("开始进行语音识别")
             # 发送开始命令
             await self.connection.send(json.dumps({
                 "command": "start"
@@ -306,7 +306,7 @@ class WebSocketClient:
         Returns:
             bool: 如果成功发送停止请求则为True，否则为False
         """
-        logger.info("停止语音识别")
+        logger.debug("停止语音识别")
         # 由于简化后只要停止发送音频即可，无需额外操作
         return True
     
@@ -325,7 +325,7 @@ class WebSocketClient:
             return False
         
         try:
-            logger.info("发送停止说话信号")
+            logger.debug("发送停止说话信号")
             await self.connection.send(json.dumps({
                 "is_speaking": False
             }))

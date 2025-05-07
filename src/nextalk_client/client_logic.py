@@ -17,7 +17,7 @@ import os
 
 from .audio.capture import AudioCapturer
 from .network.client import WebSocketClient
-from .config.loader import load_config
+from .config.loader import load_config, get_client_bool_config
 from .injection.injector_base import get_injector, BaseInjector
 from .hotkey.listener import HotkeyListener
 from .ui.tray_icon import SystemTrayIcon
@@ -68,7 +68,7 @@ class NexTalkClient:
         self.config = load_config()
         self.client_config = self.config.get('Client', {})
         self.server_config = self.config.get('Server', {})
-        logger.info("已加载客户端配置")
+        logger.debug("已加载客户端配置")
         
         # 初始化组件
         self.audio_capturer = AudioCapturer()
@@ -79,15 +79,15 @@ class NexTalkClient:
         if self.injector is None:
             logger.warning("无法初始化文本注入器，文本注入功能将不可用")
         else:
-            logger.info("文本注入器初始化成功")
+            logger.debug("文本注入器初始化成功")
         
         # 初始化热键监听器
         self.hotkey_listener = HotkeyListener()
-        logger.info("热键监听器初始化成功")
+        logger.debug("热键监听器初始化成功")
         
         # 初始化系统托盘图标
         self.tray_icon = SystemTrayIcon(name="NexTalk")
-        logger.info("系统托盘图标初始化成功")
+        logger.debug("系统托盘图标初始化成功")
         
         # 设置WebSocket断开连接回调
         self._register_websocket_callbacks()
@@ -127,11 +127,11 @@ class NexTalkClient:
         if not tray_started:
             logger.warning("无法启动系统托盘图标，但客户端仍会继续运行")
         else:
-            logger.info("系统托盘图标已启动")
+            logger.debug("系统托盘图标已启动")
         
         # 连接到服务器
         server_url = self.client_config.get('server_url', 'ws://127.0.0.1:8000/ws/stream')
-        use_ssl = self.client_config.get('use_ssl', False)
+        use_ssl = get_client_bool_config('use_ssl', False)
         logger.info(f"正在连接到服务器: {server_url}")
         
         connected = await self.websocket_client.connect(server_url, use_ssl=use_ssl)
@@ -146,11 +146,11 @@ class NexTalkClient:
         
         # 更新状态
         self._update_state(STATUS_CONNECTED)
-        logger.info("NexTalk客户端已启动并连接到服务器")
+        logger.debug("NexTalk客户端已启动并连接到服务器")
         
         # 启动热键监听器
         hotkey = self.client_config.get('hotkey', 'ctrl+shift+space')
-        logger.info(f"正在启动热键监听器，热键组合: {hotkey}")
+        logger.debug(f"正在启动热键监听器，热键组合: {hotkey}")
         hotkey_started = self.hotkey_listener.start(
             hotkey_combination=hotkey,
             on_activate=self._activate_listening,
@@ -160,7 +160,7 @@ class NexTalkClient:
         if not hotkey_started:
             logger.error(f"无法启动热键监听器，但客户端仍会继续运行")
         else:
-            logger.info(f"热键监听器已启动，使用 {hotkey} 可以切换音频识别状态")
+            logger.debug(f"热键监听器已启动，使用 {hotkey} 可以切换音频识别状态")
         
         # 重置关闭事件
         self._shutdown_event.clear()
@@ -175,7 +175,7 @@ class NexTalkClient:
         """
         # 防止重复停止
         if hasattr(self, '_stopping') and self._stopping:
-            logger.info("客户端已在停止过程中，跳过重复停止请求")
+            logger.debug("客户端已在停止过程中，跳过重复停止请求")
             return True
             
         # 设置停止标志
@@ -186,7 +186,7 @@ class NexTalkClient:
         try:
             if self.hotkey_listener:
                 self.hotkey_listener.stop()
-                logger.info("热键监听器已停止")
+                logger.debug("热键监听器已停止")
         except Exception as e:
             logger.error(f"停止热键监听器时出错: {str(e)}")
         
@@ -194,7 +194,7 @@ class NexTalkClient:
         try:
             if self.is_listening:
                 self.audio_capturer.stop_stream()
-                logger.info("音频捕获器已停止")
+                logger.debug("音频捕获器已停止")
                 self.is_listening = False
         except Exception as e:
             logger.error(f"停止音频捕获时出错: {str(e)}")
@@ -203,7 +203,7 @@ class NexTalkClient:
         try:
             if self.websocket_client:
                 await self.websocket_client.disconnect()
-                logger.info("WebSocket客户端已断开连接")
+                logger.debug("WebSocket客户端已断开连接")
                 self.is_connected = False
         except Exception as e:
             logger.error(f"断开WebSocket连接时出错: {str(e)}")
@@ -212,7 +212,7 @@ class NexTalkClient:
         try:
             if self.tray_icon:
                 self.tray_icon.stop()
-                logger.info("系统托盘图标已停止")
+                logger.debug("系统托盘图标已停止")
         except Exception as e:
             logger.error(f"停止系统托盘图标时出错: {str(e)}")
         
@@ -228,7 +228,7 @@ class NexTalkClient:
         
         开始捕获音频并发送到服务器。
         """
-        logger.info("正在激活音频监听...")
+        logger.debug("正在激活音频监听...")
         
         # 检查是否已经在等待最终结果
         if getattr(self, '_waiting_for_final_result', False):
@@ -237,7 +237,7 @@ class NexTalkClient:
         
         # 如果已经在监听，不需要重新启动音频捕获
         if self.is_listening:
-            logger.info("已经在监听音频，继续当前会话")
+            logger.debug("已经在监听音频，继续当前会话")
             return True
         
         if not self.is_connected:
@@ -268,10 +268,10 @@ class NexTalkClient:
             
             # 锁定状态为LISTENING，阻止任何尝试将其更改为IDLE的操作
             self._listening_state_locked = True
-            logger.info("状态已锁定为LISTENING")
+            logger.debug("状态已锁定为LISTENING")
             
             # 先标记状态为正在监听，使UI立即响应
-            logger.info("立即更新状态为正在监听...")
+            logger.debug("立即更新状态为正在监听...")
             self.is_listening = True
             self._update_state(STATUS_LISTENING)
             
@@ -286,10 +286,10 @@ class NexTalkClient:
                     self._sync_listening_state(),
                     self.loop
                 )
-                logger.info("状态同步任务已启动")
+                logger.debug("状态同步任务已启动")
             
             # 启动音频捕获
-            logger.info("正在启动音频捕获...")
+            logger.debug("正在启动音频捕获...")
             capture_started = self.audio_capturer.start_stream(self._handle_audio_chunk)
             
             if not capture_started:
@@ -301,7 +301,7 @@ class NexTalkClient:
                 return False
             
             # 通知服务器开始识别
-            logger.info("正在通知服务器开始识别...")
+            logger.debug("正在通知服务器开始识别...")
             
             # 创建异步任务以不阻塞当前线程
             if self.loop and self.loop.is_running():
@@ -315,7 +315,7 @@ class NexTalkClient:
                 def start_recognition_callback(fut):
                     try:
                         result = fut.result()
-                        logger.info(f"启动识别结果: {result}")
+                        logger.debug(f"启动识别结果: {result}")
                         if not result:
                             logger.error("服务器拒绝开始识别")
                             # 如果服务器拒绝，需要恢复状态
@@ -350,7 +350,7 @@ class NexTalkClient:
                 return False
             
             # 强制重新设置状态为LISTENING，以防在回调期间被修改
-            logger.info("强制重新确认状态为LISTENING")
+            logger.debug("强制重新确认状态为LISTENING")
             self.is_listening = True
             self._update_state(STATUS_LISTENING)
             
@@ -364,7 +364,7 @@ class NexTalkClient:
             except Exception as e:
                 logger.error(f"发送监听激活通知时出现异常: {str(e)}")
             
-            logger.info("音频监听已成功激活")
+            logger.debug("音频监听已成功激活")
             return True
         except Exception as e:
             logger.error(f"激活音频监听时出错: {str(e)}")
@@ -387,7 +387,7 @@ class NexTalkClient:
         
         当热键释放时发送停止说话信号，但保持音频捕获直到收到最终结果。
         """
-        logger.info("正在处理音频监听停用请求...")
+        logger.debug("正在处理音频监听停用请求...")
         
         if not self.is_listening:
             logger.warning("未在监听音频，忽略停用请求")
@@ -400,7 +400,7 @@ class NexTalkClient:
         
         # 如果是强制停止，直接完全停止
         if force_stop:
-            logger.info("强制停止监听，立即停止音频捕获")
+            logger.debug("强制停止监听，立即停止音频捕获")
             await self._complete_stop_listening()
             # 重置强制停止标志
             self._force_stop_listening = False
@@ -408,7 +408,7 @@ class NexTalkClient:
         
         # 检查是否已经在等待最终结果 - 如果是，直接返回，防止重复处理
         if getattr(self, '_waiting_for_final_result', False):
-            logger.info("已经在等待最终结果，跳过重复处理")
+            logger.debug("已经在等待最终结果，跳过重复处理")
             return
         
         # 设置等待最终结果标志
@@ -416,7 +416,7 @@ class NexTalkClient:
         
         # 使用超时机制确保即使没收到最终结果也会停止
         timeout_seconds = 3.0
-        logger.info(f"设置{timeout_seconds}秒超时，确保即使没有收到最终结果也会停止")
+        logger.debug(f"设置{timeout_seconds}秒超时，确保即使没有收到最终结果也会停止")
         
         # 创建一个定时任务，在超时后强制停止音频捕获
         if hasattr(self, '_stop_timeout_task') and not self._stop_timeout_task.done():
@@ -431,11 +431,11 @@ class NexTalkClient:
         
         try:
             # 直接异步发送停止说话信号
-            logger.info("发送停止说话信号并等待最终结果")
+            logger.debug("发送停止说话信号并等待最终结果")
             result = await self.websocket_client.send_stop_speaking_signal()
             
             if result:
-                logger.info("已成功发送停止说话信号，等待服务器返回最终结果")
+                logger.debug("已成功发送停止说话信号，等待服务器返回最终结果")
                 self._stop_signal_sent = True
             else:
                 logger.error("发送停止说话信号失败，立即停止音频捕获")
@@ -454,7 +454,7 @@ class NexTalkClient:
             timeout_seconds: 等待的超时时间(秒)
         """
         try:
-            logger.info(f"延迟停止任务开始，将在{timeout_seconds}秒后自动停止")
+            logger.debug(f"延迟停止任务开始，将在{timeout_seconds}秒后自动停止")
             # 使用asyncio.sleep而不是time.sleep，避免阻塞事件循环
             await asyncio.sleep(timeout_seconds)
             
@@ -486,7 +486,7 @@ class NexTalkClient:
         
         停止音频捕获、清理状态并更新UI。
         """
-        logger.info("正在完全停止音频监听...")
+        logger.debug("正在完全停止音频监听...")
         
         # 重置等待最终结果标志
         self._waiting_for_final_result = False
@@ -517,12 +517,12 @@ class NexTalkClient:
             try:
                 # 重置状态标志，确保我们在重新尝试时有正确的状态
                 if retry_count > 0:
-                    logger.info(f"重试停止音频捕获 (尝试 {retry_count+1}/{max_retries})")
+                    logger.debug(f"重试停止音频捕获 (尝试 {retry_count+1}/{max_retries})")
                     
                 # 检查捕获器是否正在捕获
                 if self.audio_capturer.is_capturing():
                     self.audio_capturer.stop_stream()
-                    logger.info("音频捕获器已停止")
+                    logger.debug("音频捕获器已停止")
                     stop_success = True
                 else:
                     logger.warning("音频捕获器已经不在捕获状态，不需要停止")
@@ -543,11 +543,11 @@ class NexTalkClient:
             logger.error(f"停止识别时出错: {str(e)}")
         
         # 解除状态锁定，必须在更新状态前设置
-        logger.info("解除状态锁定")
+        logger.debug("解除状态锁定")
         self._listening_state_locked = False
             
         # 更新状态 - 确保即使出现异常也会更新状态
-        logger.info("更新标志和状态为IDLE")
+        logger.debug("更新标志和状态为IDLE")
         self.is_listening = False
         self._update_state(STATUS_IDLE)
         
@@ -624,7 +624,7 @@ class NexTalkClient:
                 try:
                     # 等待发送完成并获取结果(最多等待0.1秒)
                     result = send_task.result(timeout=0.1)
-                    logger.info(f"音频数据发送结果: {'成功' if result else '失败'}")
+                    logger.debug(f"音频数据发送结果: {'成功' if result else '失败'}")
                 except asyncio.TimeoutError:
                     logger.warning("获取音频发送结果超时，发送可能仍在进行")
                 except Exception as e:
@@ -657,7 +657,7 @@ class NexTalkClient:
             # 检查消息是否有type字段
             if hasattr(message, 'type'):
                 message_type = message.type
-                logger.info(f"处理类型为'{message_type}'的消息")
+                logger.debug(f"处理类型为'{message_type}'的消息")
                 
                 if message_type == "transcription" and hasattr(message, 'text'):
                     # 处理转录文本
@@ -669,9 +669,9 @@ class NexTalkClient:
                     
                     # 添加相关日志
                     if is_final:
-                        logger.info(f"接收到最终转录结果: '{text}', 模式: {mode}")
+                        logger.debug(f"接收到最终转录结果: '{text}', 模式: {mode}")
                     else:
-                        logger.info(f"接收到中间转录结果: '{text}', 模式: {mode}")
+                        logger.debug(f"接收到中间转录结果: '{text}', 模式: {mode}")
                     
                     # 将转录结果传递给专门的处理函数
                     self._handle_transcription(text, is_final, mode)
@@ -684,7 +684,7 @@ class NexTalkClient:
                     
                 elif message_type == "status" and hasattr(message, 'state'):
                     # 处理状态更新
-                    logger.info(f"处理状态更新: type='{message_type}' state='{message.state}'")
+                    logger.debug(f"处理状态更新: type='{message_type}' state='{message.state}'")
                     # 将整个消息对象传递给状态处理函数
                     self._handle_status_update(message)
                     
@@ -706,7 +706,7 @@ class NexTalkClient:
             is_final: 是否为最终结果
             mode: 转录模式(online, offline, 2pass-online, 2pass-offline)
         """
-        logger.info(f"处理类型为'transcription'的消息, 模式={mode}")
+        logger.debug(f"处理类型为'transcription'的消息, 模式={mode}")
         
         # 检查转录文本是否有效
         if not text or len(text.strip()) == 0:
@@ -714,11 +714,14 @@ class NexTalkClient:
             return
             
         # 记录转录结果日志
-        logger.info(f"接收到转录结果: '{text}', is_final={is_final}, mode={mode}")
+        if is_final:
+            logger.debug(f"接收到转录结果: '{text}', is_final={is_final}, mode={mode}")
+        else:
+            logger.debug(f"接收到转录结果: '{text}', is_final={is_final}, mode={mode}")
         
         # 确保文本缓存初始化
         if not hasattr(self, '_text_cache'):
-            logger.info("初始化文本缓存")
+            logger.debug("初始化文本缓存")
             self._text_cache = {
                 'online': '',
                 'offline': '',
@@ -727,19 +730,19 @@ class NexTalkClient:
             
         # 根据不同模式处理文本缓存
         if '2pass' in mode:
-            logger.info(f"使用2pass模式处理文本: {mode}")
+            logger.debug(f"使用2pass模式处理文本: {mode}")
             
             if mode == '2pass-online':
                 # 保存在线结果，但不直接注入，只在2pass模式下缓存
                 self._text_cache['online'] = text
-                logger.info(f"缓存在线结果: '{text}'")
+                logger.debug(f"缓存在线结果: '{text}'")
                 
                 # 合并在线和离线结果用于显示
                 combined_text = self._text_cache['offline'] + self._text_cache['online']
-                logger.info(f"合并离线和在线结果: '{combined_text}'")
+                logger.debug(f"合并离线和在线结果: '{combined_text}'")
                 
                 # 显示在UI中
-                if self.client_config.get('show_text', False):
+                if get_client_bool_config('show_text', False):
                     try:
                         show_text(combined_text, is_final)
                     except Exception as e:
@@ -750,22 +753,22 @@ class NexTalkClient:
                 
             elif mode == '2pass-offline':
                 # 离线模式下，使用新结果替换而不是累加，避免重复问题
-                logger.info(f"接收到离线结果: '{text}'，替换之前的离线结果: '{self._text_cache['offline']}'")
+                logger.debug(f"接收到离线结果: '{text}'，替换之前的离线结果: '{self._text_cache['offline']}'")
                 self._text_cache['offline'] = text
                 # 在线缓存清空
                 self._text_cache['online'] = ''
                 
                 # 最终文本是离线结果
                 text_to_inject = self._text_cache['offline']
-                logger.info(f"使用离线结果作为最终注入文本: '{text_to_inject}'")
+                logger.debug(f"使用离线结果作为最终注入文本: '{text_to_inject}'")
         else:
             # 普通模式
-            logger.info(f"使用{mode}模式处理文本")
+            logger.debug(f"使用{mode}模式处理文本")
             text_to_inject = text
             
         # 检查是否重复注入相同的文本
         if text_to_inject == self._text_cache.get('last_injected', '') and mode != '2pass-offline':
-            logger.info(f"跳过重复文本注入: '{text_to_inject}'")
+            logger.debug(f"跳过重复文本注入: '{text_to_inject}'")
             return
             
         # 记录本次注入的文本
@@ -776,11 +779,11 @@ class NexTalkClient:
             logger.info(f"正在注入文本: '{text_to_inject}', 模式: {mode}")
             success = self.injector.inject_text(text_to_inject)
             if success:
-                logger.info("文本注入成功")
+                logger.debug("文本注入成功")
             else:
                 logger.error("文本注入失败")
                 # 如果注入失败且已配置，则显示文本窗口
-                if self.client_config.get('show_text_on_error', False):
+                if get_client_bool_config('show_text_on_error', False):
                     try:
                         show_text(text_to_inject, is_final)
                     except Exception as e:
@@ -788,8 +791,10 @@ class NexTalkClient:
         
         # 显示文本窗口（如果已配置）
         try:
-            if self.client_config.get('show_text', False):
+            logger.info(f"显示文本窗口: {get_client_bool_config('show_text', False)}")
+            if get_client_bool_config('show_text', False):
                 # 这里我们使用一个简单的独立窗口显示文本
+                logger.info(f"显示文本窗口test: {text_to_inject}")
                 show_text(text_to_inject, is_final)
         except Exception as e:
             logger.error(f"显示文本窗口时出错: {str(e)}")
@@ -803,7 +808,7 @@ class NexTalkClient:
             logger.debug(f"等待最终结果: {waiting_for_final}, 已发送停止信号: {stop_signal_sent}, 当前结果是最终结果: {is_final}")
         
         if waiting_for_final and is_final:
-            logger.info("收到等待中的最终结果，准备停止音频捕获")
+            logger.debug("收到等待中的最终结果，准备停止音频捕获")
             
             # 取消超时任务（如果存在）
             try:
@@ -885,7 +890,7 @@ class NexTalkClient:
             state: 要恢复的状态
         """
         if self.current_state == STATUS_ERROR:
-            logger.info(f"延迟恢复状态: {state}")
+            logger.debug(f"延迟恢复状态: {state}")
             self._update_state(state)
     
     def _handle_status_update(self, status: str):
@@ -897,7 +902,7 @@ class NexTalkClient:
         Args:
             status: 状态字符串或StatusUpdate对象
         """
-        logger.info(f"处理状态更新: {status}")
+        logger.debug(f"处理状态更新: {status}")
         
         # 检查status是否为StatusUpdate对象
         if isinstance(status, StatusUpdate):
@@ -913,7 +918,7 @@ class NexTalkClient:
         # 检查状态锁定 - 如果当前状态锁定为LISTENING，则忽略IDLE状态更新
         if hasattr(self, '_listening_state_locked') and self._listening_state_locked:
             if status == STATUS_IDLE:
-                logger.info("状态锁定为LISTENING，忽略来自服务器的IDLE状态更新")
+                logger.debug("状态锁定为LISTENING，忽略来自服务器的IDLE状态更新")
                 return
         
         # 更新对应的状态标志
@@ -955,7 +960,7 @@ class NexTalkClient:
         # 如果正在监听，则停止音频捕获
         if self.is_listening:
             try:
-                logger.info("正在停止音频捕获...")
+                logger.debug("正在停止音频捕获...")
                 self.audio_capturer.stop_stream()
                 self.is_listening = False
             except Exception as e:
@@ -993,7 +998,7 @@ class NexTalkClient:
             if hasattr(self, '_listening_state_locked') and self._listening_state_locked:
                 # 如果状态被锁定，且尝试设置为任何非LISTENING的状态（除了ERROR），则拒绝
                 if self.current_state == STATUS_LISTENING and new_state != STATUS_LISTENING and new_state != STATUS_ERROR:
-                    logger.info(f"状态锁定为LISTENING，忽略切换到{new_state}的请求")
+                    logger.debug(f"状态锁定为LISTENING，忽略切换到{new_state}的请求")
                     return
                     
             # 如果状态没有变化，不执行操作
@@ -1001,39 +1006,39 @@ class NexTalkClient:
                 logger.debug(f"状态未变化，保持为 {new_state}")
                 return
                 
-            logger.info(f"状态更新: {self.current_state} -> {new_state}")
+            logger.debug(f"状态更新: {self.current_state} -> {new_state}")
             old_state = self.current_state
             self.current_state = new_state
             
             # 根据状态更新其他内部标志
             if new_state == STATUS_LISTENING:
                 self.is_listening = True
-                logger.info("已设置监听标志为True")
+                logger.debug("已设置监听标志为True")
             elif new_state == STATUS_IDLE:
                 # 如果状态锁定，则不更新listening标志
                 if not (hasattr(self, '_listening_state_locked') and self._listening_state_locked):
                     self.is_listening = False
-                    logger.info("已设置监听标志为False")
+                    logger.debug("已设置监听标志为False")
                 else:
-                    logger.info("状态锁定，保持监听标志为True")
+                    logger.debug("状态锁定，保持监听标志为True")
             elif new_state == STATUS_CONNECTED:
                 self.is_connected = True
-                logger.info("已设置连接标志为True")
+                logger.debug("已设置连接标志为True")
             elif new_state == STATUS_DISCONNECTED:
                 self.is_connected = False
                 self.is_listening = False
                 self._listening_state_locked = False
-                logger.info("已设置连接标志为False，监听标志为False")
+                logger.debug("已设置连接标志为False，监听标志为False")
             elif new_state == STATUS_ERROR:
                 # 错误状态可以解除状态锁定
                 self._listening_state_locked = False
-                logger.info("错误状态，已解除状态锁定")
+                logger.debug("错误状态，已解除状态锁定")
             
         # 更新UI状态（在锁外执行，避免死锁）
         self._update_ui_state(new_state)
         
         # 记录更新完成日志
-        logger.info(f"状态更新完成: {old_state} -> {new_state}")
+        logger.debug(f"状态更新完成: {old_state} -> {new_state}")
     
     def _update_ui_state(self, new_state: str):
         """
@@ -1046,9 +1051,9 @@ class NexTalkClient:
         """
         if self.tray_icon:
             try:
-                logger.info(f"开始更新托盘图标状态为: {new_state}")
+                logger.debug(f"开始更新托盘图标状态为: {new_state}")
                 self.tray_icon.update_state(new_state)
-                logger.info(f"托盘图标状态已更新为: {new_state}")
+                logger.debug(f"托盘图标状态已更新为: {new_state}")
             except Exception as e:
                 logger.error(f"更新托盘图标状态时出错: {e}")
         else:
@@ -1065,7 +1070,7 @@ class NexTalkClient:
             return
             
         if self.is_listening:
-            logger.info("切换：强制停止监听")
+            logger.debug("切换：强制停止监听")
             
             # 手动切换时，强制停止监听
             self._force_stop_listening = True
@@ -1085,7 +1090,7 @@ class NexTalkClient:
             
             task.add_done_callback(callback)
         else:
-            logger.info("切换：开始监听")
+            logger.debug("切换：开始监听")
             self._activate_listening()
     
     def _handle_quit_request(self):
@@ -1107,7 +1112,7 @@ class NexTalkClient:
             def callback(fut):
                 try:
                     fut.result()  # 获取结果，可能会引发异常
-                    logger.info("客户端已停止，准备退出")
+                    logger.debug("客户端已停止，准备退出")
                     
                     # 发送关闭事件
                     self._shutdown_event.set()
@@ -1127,23 +1132,23 @@ class NexTalkClient:
         例如，当热键激活后但托盘图标显示为idle时，会将状态强制设回listening。
         """
         try:
-            logger.info("状态同步任务开始运行")
+            logger.debug("状态同步任务开始运行")
             
             # 继续运行直到状态解锁
             while self._listening_state_locked:
                 # 如果状态锁定为LISTENING，但当前状态不是LISTENING，则强制修复
                 if self._listening_state_locked and self.current_state != STATUS_LISTENING:
-                    logger.warning(f"检测到状态不一致：当前状态为{self.current_state}，但状态锁定为LISTENING，正在修复")
+                    logger.debug(f"检测到状态不一致：当前状态为{self.current_state}，但状态锁定为LISTENING，正在修复")
                     with self._state_lock:
                         self.current_state = STATUS_LISTENING
                         self.is_listening = True
                     self._update_ui_state(STATUS_LISTENING)
-                    logger.info("状态已修复为LISTENING")
+                    logger.debug("状态已修复为LISTENING")
                 
                 # 休眠一段时间后再次检查
                 await asyncio.sleep(1.0)
             
-            logger.info("状态锁定已解除，状态同步任务结束")
+            logger.debug("状态锁定已解除，状态同步任务结束")
         except asyncio.CancelledError:
             logger.debug("状态同步任务被取消")
         except Exception as e:

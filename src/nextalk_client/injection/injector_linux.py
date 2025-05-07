@@ -52,7 +52,7 @@ class LinuxInjector(BaseInjector):
             print("\033[31m错误: 无法导入必要的依赖库\033[0m")
             print("\033[31m请安装依赖: pip install pyautogui pyclip\033[0m")
         else:
-            logger.info("pyautogui 和 pyclip 库已找到，文本注入已准备就绪")
+            logger.debug("pyautogui 和 pyclip 库已找到，文本注入已准备就绪")
         
         # 初始化注入状态标志和锁
         self._is_injecting = False
@@ -117,12 +117,12 @@ class LinuxInjector(BaseInjector):
             try:
                 # 设置注入标志为True
                 self._is_injecting = True
-                logger.info(f"正在使用 pyautogui/pyclip 注入文本，长度: {len(text)}")
+                logger.debug(f"正在使用 pyautogui/pyclip 注入文本，长度: {len(text)}")
                 
                 # 执行文本注入
                 self._type_text(text)
                 
-                logger.info("文本注入成功")
+                logger.debug("文本注入成功")
                 return True
             except Exception as e:
                 logger.error(f"文本注入过程中发生错误: {e}")

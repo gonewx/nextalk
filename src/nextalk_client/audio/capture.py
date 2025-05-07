@@ -66,7 +66,7 @@ class AudioCapturer:
         self.chunk_size = FUNASR_DEFAULT_CHUNK_SIZE  # [5, 10, 5] 对应600ms
         self.chunk_interval = FUNASR_DEFAULT_CHUNK_INTERVAL  # 默认为10，即60ms一块
         
-        self.logger.info("音频捕获器已初始化，使用默认设置")
+        self.logger.debug("音频捕获器已初始化，使用默认设置")
 
     def list_devices(self) -> list[dict]:
         """
@@ -128,7 +128,7 @@ class AudioCapturer:
                 self.logger.warning(f"采样率 {original_rate} 不支持，自动切换到 {closest_rate}")
                 AUDIO_SAMPLE_RATE = closest_rate
             
-            self.logger.info(f"已选择音频设备: {device_info.get('name')}")
+            self.logger.debug(f"已选择音频设备: {device_info.get('name')}")
             return True
         except Exception as e:
             self.logger.error(f"选择音频设备失败: {e}")
@@ -174,11 +174,11 @@ class AudioCapturer:
         """
         if chunk_size:
             self.chunk_size = chunk_size
-            self.logger.info(f"已设置FunASR分块大小: {chunk_size}")
+            self.logger.debug(f"已设置FunASR分块大小: {chunk_size}")
         
         if chunk_interval:
             self.chunk_interval = chunk_interval
-            self.logger.info(f"已设置FunASR分块间隔: {chunk_interval}")
+            self.logger.debug(f"已设置FunASR分块间隔: {chunk_interval}")
 
     def start_stream(self, callback: Callable[[bytes], None]) -> bool:
         """
@@ -208,7 +208,7 @@ class AudioCapturer:
                 chunk_ms = 60 * self.chunk_size[1] / self.chunk_interval
                 frames_per_buffer = int(AUDIO_SAMPLE_RATE / 1000 * chunk_ms)
                 
-                self.logger.info(f"帧大小: {frames_per_buffer}样本, 对应约{chunk_ms}ms")
+                self.logger.debug(f"帧大小: {frames_per_buffer}样本, 对应约{chunk_ms}ms")
                 
                 # 打开音频流 - 添加错误处理和重试
                 max_retries = 3
@@ -231,7 +231,7 @@ class AudioCapturer:
                         # 启动流
                         self._stream.start_stream()
                         self._is_capturing = True
-                        self.logger.info("音频流已启动")
+                        self.logger.debug("音频流已启动")
                         return True
                     
                     except ValueError as e:
@@ -296,9 +296,9 @@ class AudioCapturer:
                 # 增加停止前的状态记录
                 if self._stream:
                     is_active = self._stream.is_active()
-                    self.logger.info(f"开始停止音频流，当前状态: 活动={is_active}")
+                    self.logger.debug(f"开始停止音频流，当前状态: 活动={is_active}")
                 else:
-                    self.logger.info("开始停止音频流，但流对象不存在")
+                    self.logger.debug("开始停止音频流，但流对象不存在")
                     self._is_capturing = False
                     return True
                     
@@ -319,7 +319,7 @@ class AudioCapturer:
                 self._is_capturing = False
                 self._stopping_stream = False
                 
-                self.logger.info("音频流已停止")
+                self.logger.debug("音频流已停止")
                 return True
                 
             except Exception as e:
@@ -331,7 +331,7 @@ class AudioCapturer:
                     self._is_capturing = False
                     self._stopping_stream = False
                     self._cleanup()
-                    self.logger.info("尽管出错，已强制清理音频资源")
+                    self.logger.debug("尽管出错，已强制清理音频资源")
                 except Exception as cleanup_e:
                     self.logger.error(f"清理音频资源时再次出错: {cleanup_e}")
                     
@@ -374,7 +374,7 @@ class AudioCapturer:
                 self._stopping_stream = False
             
             if was_capturing:
-                self.logger.info("音频资源已完全清理，捕获状态重置")
+                self.logger.debug("音频资源已完全清理，捕获状态重置")
             else:
                 self.logger.debug("音频资源已清理")
             
@@ -434,7 +434,7 @@ class AudioCapturer:
                     pass
                     
             if supported_rates:
-                self.logger.info(f"设备 {device_index} 支持的采样率: {supported_rates}")
+                self.logger.debug(f"设备 {device_index} 支持的采样率: {supported_rates}")
                 return supported_rates
             else:
                 self.logger.warning(f"无法确定设备 {device_index} 支持的采样率，使用备用列表")

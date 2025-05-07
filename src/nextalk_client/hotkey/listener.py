@@ -78,7 +78,7 @@ class HotkeyListener:
         if HAS_LINUX_INJECTOR:
             try:
                 self._text_injector = LinuxInjector()
-                logger.info("已连接到Linux文本注入器")
+                logger.debug("已连接到Linux文本注入器")
             except Exception as e:
                 logger.warning(f"无法连接到Linux文本注入器: {e}")
                 self._text_injector = None
@@ -90,7 +90,7 @@ class HotkeyListener:
         # 解析热键组合
         try:
             self._hotkey_combo = self._parse_hotkey(hotkey_combination)
-            logger.info(f"热键组合已配置: {hotkey_combination}")
+            logger.debug(f"热键组合已配置: {hotkey_combination}")
         except Exception as e:
             logger.error(f"解析热键组合失败: {e}")
             return False
@@ -103,7 +103,7 @@ class HotkeyListener:
             )
             self._listener.start()
             self._is_listening = True
-            logger.info("热键监听器已启动")
+            logger.debug("热键监听器已启动")
             return True
         except Exception as e:
             logger.error(f"启动热键监听器失败: {e}")
@@ -126,7 +126,7 @@ class HotkeyListener:
             self._is_listening = False
             self._pressed_keys.clear()
             self._is_active = False
-            logger.info("热键监听器已停止")
+            logger.debug("热键监听器已停止")
             return True
         except Exception as e:
             logger.error(f"停止热键监听器失败: {e}")
@@ -262,16 +262,16 @@ class HotkeyListener:
                 
                 # 增加详细日志输出热键组合当前状态
                 hotkey_match = self._is_hotkey_matched()
-                # logger.info(f"热键匹配状态: {hotkey_match}, 热键组合: {self._hotkey_combo}, 当前按下的键: {self._pressed_keys}")
+                # logger.debug(f"热键匹配状态: {hotkey_match}, 热键组合: {self._hotkey_combo}, 当前按下的键: {self._pressed_keys}")
                 
                 # 检查是否所有热键都被按下
                 if hotkey_match and not self._is_active:
                     self._is_active = True
-                    logger.info("热键组合被按下，触发激活回调")
+                    logger.debug("热键组合被按下，触发激活回调")
                     if self._on_activate:
                         try:
                             self._on_activate()
-                            logger.info("激活回调执行成功")
+                            logger.debug("激活回调执行成功")
                         except Exception as e:
                             logger.error(f"执行激活回调时出错: {e}")
             except Exception as e:
@@ -302,14 +302,14 @@ class HotkeyListener:
                 # 增加更多日志以便调试
                 is_active = self._is_active
                 is_in_hotkey = key in self._hotkey_combo
-                # logger.info(f"键释放状态: 热键激活={is_active}, 键在热键组合中={is_in_hotkey}, 键={key}")
+                # logger.debug(f"键释放状态: 热键激活={is_active}, 键在热键组合中={is_in_hotkey}, 键={key}")
                 
                 # 只有当热键处于激活状态时才处理热键释放
                 # 并且确保是热键组合中的键被释放时才触发停用回调
                 if is_active and is_in_hotkey:
                     # 标记热键为非激活状态（防止多次触发）
                     self._is_active = False
-                    logger.info("热键组合被释放，触发停用回调")
+                    logger.debug("热键组合被释放，触发停用回调")
                     
                     # 添加独立的标志，避免在热键处理期间重复触发回调
                     # 使用原子操作检查和设置标志
@@ -319,9 +319,9 @@ class HotkeyListener:
                         self._deactivate_in_progress = True
                         try:
                             # 处理热键释放
-                            logger.info("开始执行热键释放处理程序")
+                            logger.debug("开始执行热键释放处理程序")
                             self._handle_deactivate()
-                            logger.info("热键释放处理程序执行完成")
+                            logger.debug("热键释放处理程序执行完成")
                         finally:
                             # 在完成处理后重置标志
                             self._deactivate_in_progress = False
@@ -362,7 +362,7 @@ class HotkeyListener:
 
     def _handle_deactivate(self):
         """处理热键释放事件"""
-        logger.info(f"热键释放: {self._hotkey_combo}")
+        logger.debug(f"热键释放: {self._hotkey_combo}")
         if self._on_deactivate:
             if asyncio.iscoroutinefunction(self._on_deactivate):
                 # 如果是协程函数，使用run_coroutine_threadsafe在主事件循环中执行
