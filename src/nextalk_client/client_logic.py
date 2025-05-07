@@ -764,7 +764,7 @@ class NexTalkClient:
             text_to_inject = text
             
         # 检查是否重复注入相同的文本
-        if text_to_inject == self._text_cache.get('last_injected', ''):
+        if text_to_inject == self._text_cache.get('last_injected', '') and mode != '2pass-offline':
             logger.info(f"跳过重复文本注入: '{text_to_inject}'")
             return
             
