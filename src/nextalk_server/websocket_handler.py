@@ -61,11 +61,11 @@ class WebSocketHandler:
         # 从全局配置中获取高级参数
         if hasattr(self.config, 'encoder_chunk_look_back') and self.config.encoder_chunk_look_back is not None:
             self.funasr_config.encoder_chunk_look_back = self.config.encoder_chunk_look_back
-            logger.info(f"从配置中加载encoder_chunk_look_back: {self.funasr_config.encoder_chunk_look_back}")
+            logger.debug(f"从配置中加载encoder_chunk_look_back: {self.funasr_config.encoder_chunk_look_back}")
         
         if hasattr(self.config, 'decoder_chunk_look_back') and self.config.decoder_chunk_look_back is not None:
             self.funasr_config.decoder_chunk_look_back = self.config.decoder_chunk_look_back
-            logger.info(f"从配置中加载decoder_chunk_look_back: {self.funasr_config.decoder_chunk_look_back}")
+            logger.debug(f"从配置中加载decoder_chunk_look_back: {self.funasr_config.decoder_chunk_look_back}")
         
         # 音频帧缓存 - 与官方示例一致的命名
         self.frames = []  # 所有收到的帧
@@ -83,13 +83,13 @@ class WebSocketHandler:
         self.wav_name = f"session_{self.session_id}"
         self.funasr_config.wav_name = self.wav_name
         
-        logger.info(f"初始化WebSocket处理器，会话ID: {self.session_id}, 识别模式: {self.funasr_config.mode}")
+        logger.debug(f"初始化WebSocket处理器，会话ID: {self.session_id}, 识别模式: {self.funasr_config.mode}")
     
     async def accept(self) -> None:
         """接受WebSocket连接"""
         try:
             await self.websocket.accept()
-            logger.info("WebSocket连接已接受")
+            logger.debug("WebSocket连接已接受")
         except Exception as e:
             logger.error(f"接受WebSocket连接时出错: {str(e)}")
             raise
@@ -131,14 +131,14 @@ class WebSocketHandler:
     
     async def handle_json_message(self, message: Dict[str, Any]) -> None:
         """处理JSON消息，用于控制识别行为"""
-        logger.info(f"接收JSON控制消息: {message}")
+        logger.debug(f"接收JSON控制消息: {message}")
         
         # 处理识别模式
         if "mode" in message:
             mode = message["mode"]
             if mode in ["2pass", "online", "offline"]:
                 self.funasr_config.mode = mode
-                logger.info(f"设置识别模式为: {mode}")
+                logger.debug(f"设置识别模式为: {mode}")
             else:
                 logger.warning(f"无效的识别模式: {mode}, 使用默认模式: {self.funasr_config.mode}")
         
@@ -146,23 +146,22 @@ class WebSocketHandler:
         if "is_speaking" in message:
             is_speaking = message["is_speaking"]
             self.is_speaking = bool(is_speaking)
-            logger.info(f"设置说话状态为: {'说话中' if self.is_speaking else '停止说话'}")
+            logger.debug(f"设置说话状态为: {'说话中' if self.is_speaking else '停止说话'}")
             
             # 如果设置为不说话，处理结束当前语音段
             if not self.is_speaking:
                 # 调试：输出当前的语音状态标志
-                logger.info(f"调试 - speech_start_flag: {self.speech_start_flag}, speech_end_flag: {self.speech_end_flag}")
-                print(f"调试 - VAD状态: speech_start_flag={self.speech_start_flag}, speech_end_flag={self.speech_end_flag}", flush=True)
-                print(f"调试 - 帧数信息: frames={len(self.frames)}帧, frames_asr={len(self.frames_asr)}帧, frames_asr_online={len(self.frames_asr_online)}帧", flush=True)
+                logger.debug(f"VAD状态: speech_start_flag={self.speech_start_flag}, speech_end_flag={self.speech_end_flag}")
+                logger.debug(f"帧数信息: frames={len(self.frames)}帧, frames_asr={len(self.frames_asr)}帧, frames_asr_online={len(self.frames_asr_online)}帧")
                 
                 # 新条件：只要停止说话就处理，无论是否检测到语音
                 self.speech_end_flag = True
-                logger.info("客户端停止说话，强制结束当前语音段 (不考虑VAD状态)")
+                logger.debug("客户端停止说话，强制结束当前语音段")
                 
                 # 如果没有检测到语音开始，我们为了调试也设置它为True
                 if not self.speech_start_flag:
                     self.speech_start_flag = True
-                    logger.info("调试 - 强制设置speech_start_flag=True用于调试")
+                    logger.debug("强制设置speech_start_flag=True用于调试")
                 
                 # 核心修复：确保frames_asr包含完整的语音数据
                 # 之前的问题是VAD失效导致frames_asr没有积累有效语音
@@ -170,8 +169,7 @@ class WebSocketHandler:
                     if len(self.frames) > 0:
                         # 关键改进：使用所有历史帧，而不仅仅是最近的frames_asr_online
                         # 过滤开头可能的静音帧
-                        print(f"使用完整的历史帧数据替代VAD累积的frames_asr", flush=True)
-                        logger.info(f"使用完整的历史帧数据替代VAD累积的frames_asr")
+                        logger.debug("使用完整的历史帧数据替代VAD累积的frames_asr")
                         
                         # 计算音频特征以找到有效语音起始
                         valid_frames = []
@@ -183,17 +181,15 @@ class WebSocketHandler:
                                 valid_frames.append(frame)
                         
                         if valid_frames:
-                            print(f"找到 {len(valid_frames)} 个有效音频帧（振幅>500）", flush=True)
-                            logger.info(f"找到 {len(valid_frames)} 个有效音频帧（振幅>500）")
+                            logger.debug(f"找到 {len(valid_frames)} 个有效音频帧（振幅>500）")
                             self.frames_asr = valid_frames
                         else:
                             # 如果没有找到有效声音帧，使用所有帧
-                            print("未找到有效声音帧，使用所有历史帧", flush=True)
-                            logger.info("未找到有效声音帧，使用所有历史帧")
+                            logger.debug("未找到有效声音帧，使用所有历史帧")
                             self.frames_asr = self.frames.copy()
                     elif len(self.frames_asr_online) > 0:
                         # 备选方案：使用在线ASR的帧
-                        logger.info("调试 - frames_asr为空，正在从frames_asr_online复制")
+                        logger.debug("frames_asr为空，正在从frames_asr_online复制")
                         self.frames_asr = self.frames_asr_online.copy()
                 
                 await self._process_speech_end()
@@ -206,7 +202,7 @@ class WebSocketHandler:
                 self.model.status_dict_asr["hotword"] = message["hotwords"]
             if hasattr(self.model, 'status_dict_asr_online'):
                 self.model.status_dict_asr_online["hotword"] = message["hotwords"]
-            logger.info(f"设置热词: {self.funasr_config.hotwords}")
+            logger.debug(f"设置热词: {self.funasr_config.hotwords}")
             
         # 处理分块大小
         if "chunk_size" in message:
@@ -215,23 +211,23 @@ class WebSocketHandler:
                 self.funasr_config.chunk_size = chunk_size
             elif isinstance(chunk_size, str):
                 self.funasr_config.chunk_size = [int(x) for x in chunk_size.split(",")]
-            logger.info(f"设置分块大小为: {self.funasr_config.chunk_size}")
+            logger.debug(f"设置分块大小为: {self.funasr_config.chunk_size}")
             
         # 处理分块间隔
         if "chunk_interval" in message:
             self.funasr_config.chunk_interval = int(message["chunk_interval"])
-            logger.info(f"设置分块间隔为: {self.funasr_config.chunk_interval}")
+            logger.debug(f"设置分块间隔为: {self.funasr_config.chunk_interval}")
             
         # 处理音频名称
         if "wav_name" in message:
             self.funasr_config.wav_name = message["wav_name"]
             self.wav_name = message["wav_name"]
-            logger.info(f"设置音频名称为: {self.wav_name}")
+            logger.debug(f"设置音频名称为: {self.wav_name}")
             
         # 处理ITN设置
         if "itn" in message:
             self.funasr_config.itn = bool(message["itn"])
-            logger.info(f"设置ITN为: {self.funasr_config.itn}")
+            logger.debug(f"设置ITN为: {self.funasr_config.itn}")
             
         # 返回当前设置状态
         await self.send_status(STATUS_LISTENING, {"config": self.funasr_config.dict()})
@@ -287,7 +283,7 @@ class WebSocketHandler:
                     speech_end_i = segment[1] if segment[1] != -1 else -1
                     
                     if speech_start_i != -1 or speech_end_i != -1:
-                        logger.info(f"VAD检测结果: 起始点={speech_start_i}ms, 结束点={speech_end_i}ms")
+                        logger.debug(f"VAD检测结果: 起始点={speech_start_i}ms, 结束点={speech_end_i}ms")
             
             # 更新VAD状态字典缓存
             if "cache" in vad_result:
@@ -296,7 +292,7 @@ class WebSocketHandler:
             # 处理语音开始 - 参考官方实现逻辑
             if speech_start_i != -1 and not self.speech_start_flag:
                 self.speech_start_flag = True
-                logger.info(f"VAD检测到语音开始，帧位置: {speech_start_i}ms")
+                logger.debug(f"VAD检测到语音开始，帧位置: {speech_start_i}ms")
                 
                 # 重要修改: 添加语音起始点之前的帧到frames_asr (与官方实现一致)
                 beg_bias = (self.vad_pre_idx - speech_start_i) // duration_ms
@@ -304,7 +300,7 @@ class WebSocketHandler:
                 
                 self.frames_asr = []
                 self.frames_asr.extend(frames_pre)
-                logger.info(f"已添加 {len(frames_pre)} 帧作为前导音频")
+                logger.debug(f"已添加 {len(frames_pre)} 帧作为前导音频")
             
             # 如果语音已开始且未结束，添加当前帧到离线ASR列表
             if self.speech_start_flag and not self.speech_end_flag:
@@ -332,7 +328,7 @@ class WebSocketHandler:
             # 语音结束处理 - 与官方实现一致的条件判断
             if (speech_end_i != -1 or not self.is_speaking) and self.speech_start_flag and not self.speech_end_flag:
                 self.speech_end_flag = True
-                logger.info(f"VAD检测到语音结束{'（手动停止）' if not self.is_speaking else ''}")
+                logger.debug(f"VAD检测到语音结束{'（手动停止）' if not self.is_speaking else ''}")
                 await self._process_speech_end()
                 
         except Exception as e:
@@ -341,11 +337,11 @@ class WebSocketHandler:
     
     async def _process_speech_end(self) -> None:
         """处理语音段结束时的逻辑"""
-        logger.info("开始处理语音段结束逻辑")
+        logger.debug("开始处理语音段结束逻辑")
         
         # 处理离线ASR - 在语音结束时
         if (self.funasr_config.mode in ["2pass", "offline"]) and self.frames_asr:
-            logger.info(f"处理离线ASR，frames_asr长度: {len(self.frames_asr)}帧")
+            logger.debug(f"处理离线ASR，frames_asr长度: {len(self.frames_asr)}帧")
             
             audio_in = b"".join(self.frames_asr)
             audio_np = np.frombuffer(audio_in, dtype=np.int16)
@@ -353,7 +349,7 @@ class WebSocketHandler:
             
             try:
                 # 调用离线音频处理
-                logger.info(f"开始调用离线ASR，音频长度: {duration_s:.2f}秒")
+                logger.debug(f"开始调用离线ASR，音频长度: {duration_s:.2f}秒")
                 await self._process_offline_audio(audio_in)
             except Exception as e:
                 logger.error(f"离线ASR处理出错: {str(e)}")
@@ -419,12 +415,12 @@ class WebSocketHandler:
             
         # 日志记录
         process_time = time.time() - start_time
-        logger.info(f"在线ASR处理完成，耗时: {process_time:.3f}秒, 结果长度: {len(result.get('text', ''))}")
+        logger.debug(f"在线ASR处理完成，耗时: {process_time:.3f}秒, 结果长度: {len(result.get('text', ''))}")
         
         # 记录转录文本内容
         text = result.get("text", "")
         if text:
-            logger.info(f"在线ASR转录内容 [{'最终' if is_final else '临时'}]: '{text}'")
+            logger.debug(f"在线ASR转录内容 [{'最终' if is_final else '临时'}]: '{text}'")
         
         # 准备与官方格式一致的消息
         mode = "2pass-online" if self.funasr_config.mode == "2pass" else "online"
@@ -473,9 +469,9 @@ class WebSocketHandler:
             # 日志记录
             process_time = time.time() - start_time
             if original_text and original_text != text:
-                logger.info(f"离线ASR处理完成，耗时: {process_time:.3f}秒，标点前: '{original_text}'，标点后: '{text}'")
+                logger.debug(f"离线ASR处理完成，耗时: {process_time:.3f}秒，标点前: '{original_text}'，标点后: '{text}'")
             else:
-                logger.info(f"离线ASR处理完成，耗时: {process_time:.3f}秒, 结果: '{text}'")
+                logger.debug(f"离线ASR处理完成，耗时: {process_time:.3f}秒, 结果: '{text}'")
             
             # 准备与官方格式一致的消息
             mode = "2pass-offline" if self.funasr_config.mode == "2pass" else "offline"
@@ -525,7 +521,7 @@ class WebSocketHandler:
                 
                 if "type" in message:
                     if message["type"] == "websocket.disconnect":
-                        logger.info("客户端断开连接")
+                        logger.debug("客户端断开连接")
                         break
                     elif message["type"] == "websocket.receive":
                         if "bytes" in message:
@@ -536,9 +532,9 @@ class WebSocketHandler:
                     logger.warning(f"未知的消息格式: {message}")
                     
         except WebSocketDisconnect:
-            logger.info("WebSocket连接断开")
+            logger.debug("WebSocket连接断开")
         except asyncio.CancelledError:
-            logger.info("WebSocket处理任务被取消")
+            logger.debug("WebSocket处理任务被取消")
         except Exception as e:
             logger.error(f"WebSocket监听出错: {str(e)}")
             logger.exception(e)
@@ -556,7 +552,7 @@ class WebSocketHandler:
             # 释放模型资源
             await self.model.reset()
             
-            logger.info("WebSocket处理完成")
+            logger.debug("WebSocket处理完成")
     
     async def send_status(self, status: str, extra_data: Dict[str, Any] = None) -> None:
         """发送状态消息"""

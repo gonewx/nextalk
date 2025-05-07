@@ -51,7 +51,7 @@ def set_preloaded_model(model):
     """
     global _PRELOADED_MODEL
     _PRELOADED_MODEL = model
-    logger.info("已设置预加载模型实例到全局变量")
+    logger.debug("已设置预加载模型实例到全局变量")
 
 
 def get_preloaded_model():
@@ -181,7 +181,7 @@ class FunASRModel:
                     test_audio = np.zeros(1600, dtype=np.int16).tobytes()
                     vad_status = {"cache": {}, "is_final": False}
                     self._model_vad.generate(input=test_audio, **vad_status)
-                    logger.info("VAD模型预热完成")
+                    logger.debug("VAD模型预热完成")
                 except Exception as e:
                     logger.warning(f"VAD模型预热失败: {str(e)}")
                 
@@ -202,7 +202,7 @@ class FunASRModel:
                     # 使用简单文本触发模型真正加载
                     test_text = "测试句子预热标点模型"
                     self._model_punc.generate(input=test_text, **self.status_dict_punc)
-                    logger.info("标点模型预热完成")
+                    logger.debug("标点模型预热完成")
                 except Exception as e:
                     logger.warning(f"标点模型预热失败: {str(e)}")
             else:
@@ -225,7 +225,7 @@ class FunASRModel:
         """
         # 如果已经初始化完成，直接返回成功
         if self._initialized:
-            logger.info("模型已初始化完成")
+            logger.debug("模型已初始化完成")
             return True
             
         # 等待初始化完成或超时
@@ -237,7 +237,7 @@ class FunASRModel:
             await asyncio.sleep(0.5)
             
         if self._initialized:
-            logger.info("模型初始化完成")
+            logger.debug("模型初始化完成")
             return True
         else:
             logger.error("模型初始化超时或失败")
@@ -372,7 +372,7 @@ class FunASRModel:
             self.status_dict_asr = {}
             
             # 记录日志
-            logger.info("已重置模型状态和所有缓存")
+            logger.debug("已重置模型状态和所有缓存")
         except Exception as e:
             logger.error(f"重置模型状态时出错: {str(e)}")
             logger.exception(e)
@@ -386,7 +386,7 @@ class FunASRModel:
         self._model_vad = None
         self._model_punc = None
         self._initialized = False
-        logger.info("已释放模型资源")
+        logger.debug("已释放模型资源")
     
     async def process_vad(self, audio_data: bytes, status_dict=None) -> Dict[str, Any]:
         """
@@ -415,14 +415,14 @@ class FunASRModel:
             status_dict["cache"] = {}
         
         # 打印VAD状态字典（debug）
-        print(f"VAD状态字典: {status_dict.keys()}, cache是否为空: {not bool(status_dict.get('cache'))}", flush=True)
+        logger.debug(f"VAD状态字典: {status_dict.keys()}, cache是否为空: {not bool(status_dict.get('cache'))}")
         
         try:
             # 计算音频基本特征用于调试
             audio_np = np.frombuffer(audio_data, dtype=np.int16)
             max_amp = np.max(np.abs(audio_np)) if len(audio_np) > 0 else 0
             
-            print(f"VAD输入数据: 长度={len(audio_np)}样本, 最大振幅={max_amp}", flush=True)
+            logger.debug(f"VAD输入数据: 长度={len(audio_np)}样本, 最大振幅={max_amp}")
             
             # 在线程池中处理音频，避免阻塞事件循环
             loop = asyncio.get_event_loop()
@@ -435,15 +435,14 @@ class FunASRModel:
             
             # 调试输出VAD结果
             if "segments" in result and result["segments"]:
-                print(f"VAD返回语音段: {result['segments']}", flush=True)
+                logger.debug(f"VAD返回语音段: {result['segments']}")
             else:
-                print(f"VAD未检测到语音段", flush=True)
+                logger.debug(f"VAD未检测到语音段")
                 
             return result
             
         except Exception as e:
             logger.error(f"处理VAD出错: {str(e)}")
-            print(f"处理VAD出错: {str(e)}", flush=True)
             return {"error": str(e), "segments": []}
             
     def _process_vad_sync(self, audio_data: bytes, status_dict: Dict) -> Dict[str, Any]:
@@ -486,18 +485,18 @@ class FunASRModel:
                 # 处理不同格式的结果
                 if "value" in first_result:
                     segments = first_result["value"]
-                    print(f"VAD结果使用value字段: {segments}", flush=True)
+                    logger.debug(f"VAD结果使用value字段: {segments}")
                 elif isinstance(first_result, list):
                     segments = first_result
-                    print(f"VAD结果是列表类型: {segments}", flush=True)
+                    logger.debug(f"VAD结果是列表类型: {segments}")
                 else:
-                    print(f"VAD结果格式异常: {type(first_result)}", flush=True)
+                    logger.debug(f"VAD结果格式异常: {type(first_result)}")
                 
                 # 检查segments内容并打印
                 if segments:
-                    print(f"VAD检测到语音段: {segments}", flush=True)
+                    logger.debug(f"VAD检测到语音段: {segments}")
                 else:
-                    print("VAD返回空segments列表", flush=True)
+                    logger.debug("VAD返回空segments列表")
                 
                 # 更新cache并返回
                 if "cache" in status_dict:
@@ -512,7 +511,6 @@ class FunASRModel:
                 
         except Exception as e:
             logger.error(f"VAD处理出错: {str(e)}")
-            print(f"VAD同步处理异常: {str(e)}", flush=True)
             return {"error": str(e), "segments": []}
     
     async def _process_vad_fallback(self, audio_data: bytes, status_dict=None) -> Dict[str, Any]:
@@ -579,11 +577,11 @@ class FunASRModel:
                 logger.error("模型未初始化，超时等待，无法处理离线音频")
                 return {"error": "模型未初始化，超时等待", "text": ""}
             
-            logger.info("模型初始化已完成，继续处理离线音频")
+            logger.debug("模型初始化已完成，继续处理离线音频")
         
         try:
             # 记录音频基本信息
-            logger.info(f"准备离线处理音频数据，长度: {len(audio_data)} 字节")
+            logger.debug(f"准备离线处理音频数据，长度: {len(audio_data)} 字节")
             
             # 确保状态字典初始化
             if not hasattr(self, 'status_dict_asr') or self.status_dict_asr is None:
@@ -616,7 +614,7 @@ class FunASRModel:
             Dict[str, Any]: 离线识别结果
         """
         try:
-            logger.info("准备离线处理音频数据，长度: {0} 字节".format(len(audio_data)))
+            logger.debug(f"准备离线处理音频数据，长度: {len(audio_data)} 字节")
             
             # 检查音频数据长度，避免处理空数据
             if len(audio_data) == 0:
@@ -628,7 +626,7 @@ class FunASRModel:
             samples = len(audio_np)
             duration_s = samples / 16000
             
-            logger.info(f"离线处理音频: 长度={samples}样本，{duration_s:.3f}秒")
+            logger.debug(f"离线处理音频: 长度={samples}样本，{duration_s:.3f}秒")
             
             # 确保状态字典已初始化
             if not hasattr(self, 'status_dict_asr') or self.status_dict_asr is None:
@@ -645,7 +643,7 @@ class FunASRModel:
                     logger.debug(f"离线ASR使用decoder_chunk_look_back={self.status_dict_asr['decoder_chunk_look_back']}")
             
             # 使用离线模型处理
-            logger.info("使用离线模型处理最终音频...")
+            logger.debug("使用离线模型处理最终音频...")
             
             # 标记是否使用了标点模型
             used_punctuation = False
@@ -653,7 +651,7 @@ class FunASRModel:
                 
             try:
                 # 调用离线ASR模型
-                print("调用离线ASR模型...", flush=True)
+                logger.debug("调用离线ASR模型...")
                 offline_result = self._model_asr.generate(
                     input=audio_data,  # 使用原始字节数据
                     **self.status_dict_asr
@@ -673,13 +671,12 @@ class FunASRModel:
                         
                     # 保存原始文本结果
                     original_text = offline_text
-                    print(f"【重要调试信息】离线ASR原始结果 (标点处理前): '{offline_text}'", flush=True)
-                    logger.info(f"离线ASR原始结果 (标点处理前): '{offline_text}'")
+                    logger.debug(f"离线ASR原始结果 (标点处理前): '{offline_text}'")
                     
                     # 应用标点模型（如果有）
                     if self._model_punc is not None and offline_text.strip():
                         try:
-                            print("应用标点模型...", flush=True)
+                            logger.debug("应用标点模型...")
                             punc_result = self._model_punc.generate(
                                 input=offline_text,
                                 **self.status_dict_punc
@@ -691,14 +688,12 @@ class FunASRModel:
                                 elif isinstance(punc_result[0], str):
                                     offline_text = punc_result[0]
                             
-                            logger.info(f"已应用标点模型，结果: {offline_text}")
-                            print(f"【重要调试信息】已应用标点模型，结果: '{offline_text}'", flush=True)
+                            logger.debug(f"已应用标点模型，结果: {offline_text}")
                             used_punctuation = True
                             
                             # 修复：检查并处理标点模型可能引入的开头逗号问题
                             if offline_text.startswith('，') or offline_text.startswith(','):
                                 logger.warning(f"检测到标点模型添加了不合理的开头逗号，正在修复")
-                                print(f"【重要调试信息】检测到标点模型添加了不合理的开头逗号，正在修复", flush=True)
                                 # 去除开头的逗号
                                 offline_text = offline_text[1:].strip()
                             
@@ -706,14 +701,12 @@ class FunASRModel:
                             if original_text and original_text != offline_text:
                                 diff_ratio = abs(len(original_text) - len(offline_text)) / max(len(original_text), len(offline_text))
                                 if diff_ratio > 0.3:  # 差异超过30%
-                                    logger.info(f"标点处理前后的文本差异较大: '{original_text}' -> '{offline_text}'")
-                                    print(f"【重要调试信息】标点处理前后的文本差异较大: '{original_text}' -> '{offline_text}'", flush=True)
+                                    logger.debug(f"标点处理前后的文本差异较大: '{original_text}' -> '{offline_text}'")
                                     
                         except Exception as e:
                             logger.warning(f"标点模型处理失败，使用原始文本: {str(e)}")
                     
-                    logger.info(f"离线模型最终结果: {offline_text}")
-                    print(f"【重要调试信息】离线模型最终结果: '{offline_text}'", flush=True)
+                    logger.debug(f"离线模型最终结果: {offline_text}")
                     
                     # 构造结果
                     result = {"text": offline_text}

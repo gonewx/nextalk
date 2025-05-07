@@ -63,7 +63,14 @@ def parse_args():
     parser.add_argument(
         "--debug", 
         action="store_true", 
-        help="启用调试模式，显示更详细的日志"
+        help="启用调试模式，显示更详细的日志 (等同于 --log-level debug)"
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="info",
+        choices=["debug", "info", "warning", "error", "critical"],
+        help="设置日志级别 (debug, info, warning, error, critical)"
     )
     parser.add_argument(
         "--log-file", 
@@ -195,12 +202,15 @@ def main():
         sys.path.insert(0, str(src_path))
         os.environ["PYTHONPATH"] = f"{str(src_path)}:{os.environ.get('PYTHONPATH', '')}"
     
-    # 设置环境变量以启用调试模式
+    # 设置日志级别
     if args.debug:
-        os.environ["NEXTALK_DEBUG"] = "1"
         log_level = "debug"
+        os.environ["NEXTALK_DEBUG"] = "1"
     else:
-        log_level = "info"
+        log_level = args.log_level.lower()
+    
+    # 设置环境变量 LOG_LEVEL，这将被 app.py 中的日志配置使用
+    os.environ["LOG_LEVEL"] = log_level.upper()
     
     # 设置日志
     logger = setup_logging(log_level, args.log_file)
@@ -210,13 +220,9 @@ def main():
     
     # 打印配置源文件路径
     from nextalk_server.config import INI_PATH, CONFIG_PATH, DEFAULT_CONFIG
-    # logger.info(f"配置源文件路径:")
-    # logger.info(f"INI配置文件: {INI_PATH}")
-    # logger.info(f"JSON配置文件: {CONFIG_PATH}")
     
     # 获取当前配置
     config = get_config()
-    # logger.info(f"当前配置内容: {config.dict()}")
     
     # 如果只是打印配置，则退出
     if args.print_config:
@@ -228,16 +234,14 @@ def main():
     # 正常启动信息
     logger.info(f"正在启动NexTalk服务器，主机:{args.host}, 端口:{args.port}...")
     
-    # 添加配置文件端口信息的日志
-    # logger.info(f"配置文件中的端口值: {config.port}, 默认配置中的端口值: {DEFAULT_CONFIG['port']}")
-    # logger.info(f"INI配置文件中的端口值 (如果存在): [Server] port=...")
-    # logger.info(f"JSON配置文件中的端口值 (如果存在): ~/.nextalk/config.json - port: {config.port}")
-    # logger.info(f"最终使用的端口值: {config.port}")
-    
-    if args.debug:
+    # 显示日志级别
+    if log_level == "debug":
         print(f"\033[1;33m调试模式已启用，将显示详细日志\033[0m")
-        if args.log_file:
-            print(f"\033[1;33m日志将保存到 {args.log_file}\033[0m")
+    else:
+        print(f"\033[1;33m日志级别: {log_level.upper()}\033[0m")
+    
+    if args.log_file:
+        print(f"\033[1;33m日志将保存到 {args.log_file}\033[0m")
     
     # 设置FunASR更新检查
     funasr_disable_update = not args.enable_funasr_update
@@ -259,7 +263,6 @@ def main():
     
     # 更新后再次获取配置
     config = get_config()
-    # logger.info(f"更新后的配置内容: {config.dict()}")
     
     # 强制预加载模型，忽略skip_preload选项
     if args.skip_preload:
