@@ -132,7 +132,7 @@ NexTalk 会通过桌面通知向您反馈重要信息，例如：
 - **状态变更**：如开始监听、停止监听、模型切换成功等。
 - **转录结果**（可选）：部分关键转录信息或提示。
 
-通知的显示时长可以在配置文件中通过 `notification_timeout` 进行调整。
+通知的显示可以通过配置文件中的 `show_notifications` 选项来控制。如果您不希望看到任何桌面通知，可以将此选项设置为 `false`。
 
 ## 配置选项
 
@@ -146,6 +146,8 @@ NexTalk 的主要配置通过位于用户目录下的 `config.ini` 文件进行�
     *   定义激活/停用语音识别的全局热键组合。支持如 `alt+z`, `ctrl+alt+s` 等格式。请参考 `pynput` 文档了解可用组合。
 -   `server_url = ws://127.0.0.1:8000/ws/stream`
     *   指定 NexTalk 服务器的完整 WebSocket URL。如果服务器在另一台机器或使用 SSL (wss://)，请相应修改。
+-   `show_notifications = true`
+    *   是否显示桌面通知。设置为 `false` 将禁用所有状态变更和错误通知。
 -   `use_ssl = false`
     *   如果 `server_url` 使用 `wss://`，此项通常会自动处理，但可以明确设置为 `true` 以强制 SSL 相关行为。
 -   `enable_focus_window = true`

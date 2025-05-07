@@ -224,6 +224,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             'hotkey': 'ctrl+shift+space',
             'server_url': 'ws://127.0.0.1:8000/ws/stream',
             'locale': 'en',
+            'show_notifications': 'true',
         },
         'Server': {
             'default_model': 'small.en-int8',
@@ -458,6 +459,7 @@ def create_default_user_config() -> bool:
             config.set('Client', 'hotkey', 'ctrl+shift+space')
             config.set('Client', 'server_url', 'ws://127.0.0.1:8000/ws/stream')
             config.set('Client', 'locale', 'en')
+            config.set('Client', 'show_notifications', 'true')
             
             config.add_section('Server')
             config.set('Server', 'default_model', 'small.en-int8')

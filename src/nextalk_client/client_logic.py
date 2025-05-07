@@ -245,7 +245,7 @@ class NexTalkClient:
             
             # 显示连接错误通知
             try:
-                show_notification(
+                self._show_notification_if_enabled(
                     title="NexTalk无法激活监听",
                     message="未连接到服务器，请确保服务器正在运行",
                     urgency="normal"
@@ -356,7 +356,7 @@ class NexTalkClient:
             
             # 显示已激活通知
             try:
-                show_notification(
+                self._show_notification_if_enabled(
                     title="NexTalk已激活",
                     message="正在监听",
                     urgency="normal"
@@ -561,7 +561,7 @@ class NexTalkClient:
         
         # 显示通知
         try:
-            show_notification(
+            self._show_notification_if_enabled(
                 title="NexTalk已停用",
                 message="不再监听",
                 urgency="low"
@@ -862,7 +862,7 @@ class NexTalkClient:
         
         # 显示错误通知
         try:
-            show_notification(
+            self._show_notification_if_enabled(
                 title="NexTalk错误",
                 message=error_message,
                 urgency="critical"
@@ -969,7 +969,7 @@ class NexTalkClient:
         
         # 显示通知
         try:
-            show_notification(
+            self._show_notification_if_enabled(
                 title="NexTalk连接断开",
                 message="与服务器的连接已断开",
                 urgency="normal"
@@ -1151,3 +1151,23 @@ class NexTalkClient:
             logger.debug("状态同步任务被取消")
         except Exception as e:
             logger.error(f"状态同步任务出错: {str(e)}") 
+    
+    def _show_notification_if_enabled(self, title: str, message: str, urgency: str = "normal"):
+        """
+        根据配置决定是否显示通知。
+        
+        只有当配置项show_notifications为true时才会显示通知。
+        
+        Args:
+            title: 通知标题
+            message: 通知内容
+            urgency: 紧急程度，可以是'low', 'normal', 或 'critical'
+        """
+        # 检查是否启用了通知
+        if get_client_bool_config('show_notifications', True):
+            try:
+                show_notification(title, message, urgency)
+            except Exception as e:
+                logger.error(f"发送通知时出现异常: {e}")
+        else:
+            logger.debug(f"通知已禁用，跳过显示通知: {title} - {message}") 
