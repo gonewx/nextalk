@@ -241,26 +241,31 @@ class FunASRModel:
     
     async def process_audio_chunk(self, audio_data: bytes, is_final: bool = False) -> Dict[str, Any]:
         """
-        处理音频块数据（流式）
+        处理音频数据块（流式）
         
         Args:
-            audio_data: 音频数据（PCM格式）
-            is_final: 是否为最终帧
+            audio_data: 音频数据
+            is_final: 是否为最终块
             
         Returns:
-            Dict[str, Any]: 识别结果
+            Dict[str, Any]: 处理结果
         """
+        # 检查初始化状态
         if not self._initialized:
-            logger.error("模型未初始化，无法处理音频块")
-            return {"error": "模型未初始化"}
-        
-        try:
-            # 检查音频数据
-            if not audio_data or len(audio_data) == 0:
-                logger.warning("收到空音频数据")
-                return {"text": "", "error": "空音频数据"}
+            await self.initialize()
             
-            # 在线程池中处理音频，避免阻塞
+        try:
+            # 日志记录
+            logger.debug(f"处理音频数据块，大小: {len(audio_data)} 字节，是否最终: {is_final}")
+            
+            # 确保状态字典正确初始化
+            if not hasattr(self, 'status_dict_asr_online') or self.status_dict_asr_online is None:
+                self.status_dict_asr_online = {"cache": {}, "is_final": False}
+            
+            # 设置最终标志
+            self.status_dict_asr_online["is_final"] = is_final
+            
+            # 在线程池中处理音频，避免阻塞事件循环
             loop = asyncio.get_event_loop()
             result = await loop.run_in_executor(
                 _executor,
@@ -269,77 +274,84 @@ class FunASRModel:
                 is_final
             )
             
-            # 为结果添加额外信息
-            if "error" not in result:
-                result["timestamp"] = int(time.time())
+            # 确保文本字段存在
+            if "text" not in result:
+                result["text"] = ""
                 
             return result
             
         except Exception as e:
-            logger.error(f"处理音频块出错: {str(e)}")
+            logger.error(f"处理音频数据块出错: {str(e)}")
+            logger.exception(e)
             return {"error": str(e), "text": ""}
     
     def _process_audio_sync(self, audio_data: bytes, is_final: bool) -> Dict[str, Any]:
         """
-        同步处理音频数据
+        同步处理音频数据（在线模式）
         
         Args:
             audio_data: 音频数据
-            is_final: 是否最终帧
+            is_final: 是否为最终块
             
         Returns:
-            Dict[str, Any]: 识别结果
+            Dict[str, Any]: 处理结果
         """
-        # 检查模型是否可用
-        if not FUNASR_AVAILABLE or not self._model_asr_streaming:
-            logger.error("FunASR在线模型不可用")
-            return {"error": "FunASR在线模型不可用"}
-        
         try:
-            # 将二进制音频数据转换为NumPy数组
-            audio_np = np.frombuffer(audio_data, dtype=np.int16)
+            # 检查音频数据是否有效
+            if not audio_data or len(audio_data) == 0:
+                logger.warning("收到空音频数据，跳过在线处理")
+                return {"text": "", "error": "空音频数据"}
+                
+            # 确保状态字典正确初始化
+            if not hasattr(self, 'status_dict_asr_online') or self.status_dict_asr_online is None:
+                self.status_dict_asr_online = {"cache": {}, "is_final": False}
+                
+            # 设置是否为最终状态
+            self.status_dict_asr_online["is_final"] = is_final
             
-            # 直接使用状态字典中的参数，不做手动修改
-            if "chunk_size" not in self.status_dict_asr_online:
-                # 设置默认值 [5, 10, 5] 与官方示例一致
-                self.status_dict_asr_online["chunk_size"] = [5, 10, 5]
-            
-            # 使用在线ASR模型处理音频
+            # 记录处理时间
             start_time = time.time()
             
-            # 调用FunASR模型
-            # 注意：这里使用了**self.status_dict_asr_online将所有状态参数传递给模型
-            # 包括cache, is_final, chunk_size及其他可能的参数
+            # 直接调用流式模型处理音频
             result = self._model_asr_streaming.generate(
-                input=audio_np,
+                input=audio_data,
                 **self.status_dict_asr_online
             )
             
-            process_time = time.time() - start_time
-            logger.debug(f"在线ASR处理耗时: {process_time:.3f}秒, 第一层结果类型: {type(result)}")
-            
-            # 更新缓存状态
-            if isinstance(result, list) and len(result) > 0:
-                if isinstance(result[0], dict) and "cache" in result[0]:
-                    self.status_dict_asr_online["cache"] = result[0].get("cache", {})
+            # 处理结果
+            if result and isinstance(result, list) and len(result) > 0:
+                first_result = result[0]
                 
-                # 提取文本结果
-                text = ""
-                if isinstance(result[0], dict) and "text" in result[0]:
-                    text = result[0].get("text", "")
-                elif isinstance(result[0], str):
-                    text = result[0]
-                
-                return {"text": text}
+                if isinstance(first_result, dict):
+                    # 构造返回结果
+                    return_result = {
+                        "text": first_result.get("text", ""),
+                        "timestamp": int(time.time() * 1000),
+                        "latency": (time.time() - start_time) * 1000
+                    }
+                    
+                    # 检查标点问题
+                    if return_result["text"].startswith('，') or return_result["text"].startswith(','):
+                        logger.warning("流式ASR结果中检测到不合理的开头逗号，自动修复")
+                        return_result["text"] = return_result["text"][1:].strip()
+                    
+                    return return_result
+                else:
+                    # 如果结果不是预期的字典格式，尝试简单地提取文本
+                    text = str(first_result)
+                    if text.startswith('，') or text.startswith(','):
+                        text = text[1:].strip()
+                    return {
+                        "text": text,
+                        "timestamp": int(time.time() * 1000),
+                        "latency": (time.time() - start_time) * 1000
+                    }
             
-            # 处理空结果或异常格式
-            logger.warning(f"无法解析在线ASR结果: {result}")
-            return {"text": ""}
+            return {"text": "", "timestamp": int(time.time() * 1000)}
             
         except Exception as e:
-            logger.error(f"处理在线音频出错: {str(e)}")
-            print(f"处理在线音频出错: {str(e)}", flush=True)
-            return {"error": str(e)}
+            logger.error(f"在线ASR处理出错: {str(e)}")
+            return {"error": str(e), "text": ""}
     
     async def reset(self) -> None:
         """
@@ -678,6 +690,13 @@ class FunASRModel:
                             logger.info(f"已应用标点模型，结果: {offline_text}")
                             print(f"【重要调试信息】已应用标点模型，结果: '{offline_text}'", flush=True)
                             used_punctuation = True
+                            
+                            # 修复：检查并处理标点模型可能引入的开头逗号问题
+                            if offline_text.startswith('，') or offline_text.startswith(','):
+                                logger.warning(f"检测到标点模型添加了不合理的开头逗号，正在修复")
+                                print(f"【重要调试信息】检测到标点模型添加了不合理的开头逗号，正在修复", flush=True)
+                                # 去除开头的逗号
+                                offline_text = offline_text[1:].strip()
                             
                             # 如果标点前后文本有明显差异，记录下来
                             if original_text and original_text != offline_text:
