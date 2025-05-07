@@ -99,7 +99,7 @@ class FunASRModel:
     def _init_model_sync(self):
         """同步方式初始化模型（在单独线程中运行）"""
         try:
-            logger.info("开始初始化FunASR模型...")
+            logger.debug("开始初始化FunASR模型...")
             start_time = time.time()
             
             # 获取基本配置
@@ -120,20 +120,21 @@ class FunASRModel:
             asr_model = getattr(self.config, "asr_model", FUNASR_OFFLINE_MODEL)
             asr_model_revision = getattr(self.config, "asr_model_revision", FUNASR_MODEL_REVISION)
             if asr_model:
-                logger.info(f"加载离线ASR模型: {asr_model}")
+                logger.debug(f"加载离线ASR模型: {asr_model}")
                 self._model_asr = AutoModel(
                     model=asr_model,
                     model_revision=asr_model_revision,
+                    log_level="ERROR",
                     **common_params
                 )
                 
                 # 预热离线ASR模型
-                logger.info("预热离线ASR模型...")
+                logger.debug("预热离线ASR模型...")
                 try:
                     # 创建一个短的测试音频数据 (16kHz, 16位, 100ms)
                     test_audio = np.zeros(1600, dtype=np.int16).tobytes()
                     self._model_asr.generate(input=test_audio, **self.status_dict_asr)
-                    logger.info("离线ASR模型预热完成")
+                    logger.debug("离线ASR模型预热完成")
                 except Exception as e:
                     logger.warning(f"离线ASR模型预热失败: {str(e)}")
             
@@ -141,22 +142,25 @@ class FunASRModel:
             asr_model_streaming = getattr(self.config, "asr_model_streaming", FUNASR_ONLINE_MODEL)
             asr_model_streaming_revision = getattr(self.config, "asr_model_streaming_revision", FUNASR_MODEL_REVISION)
             if asr_model_streaming:
-                logger.info(f"加载在线ASR模型: {asr_model_streaming}")
+                logger.debug(f"加载在线ASR模型: {asr_model_streaming}")
                 self._model_asr_streaming = AutoModel(
                     model=asr_model_streaming,
                     model_revision=asr_model_streaming_revision,
-                    **common_params
+                    log_level="ERROR",
+                    disable_pbar=FUNASR_DISABLE_PBAR,
+                    disable_log=FUNASR_DISABLE_LOG,
+                    # **common_params
                 )
                 
                 # 预热在线ASR模型
-                logger.info("预热在线ASR模型...")
+                logger.debug("预热在线ASR模型...")
                 try:
                     test_audio = np.zeros(1600, dtype=np.int16)
                     self._model_asr_streaming.generate(
                         input=test_audio, 
                         cache=self.status_dict_asr_online.get("cache", {})
                     )
-                    logger.info("在线ASR模型预热完成")
+                    logger.debug("在线ASR模型预热完成")
                 except Exception as e:
                     logger.warning(f"在线ASR模型预热失败: {str(e)}")
             
@@ -164,7 +168,7 @@ class FunASRModel:
             vad_model = getattr(self.config, "vad_model", FUNASR_VAD_MODEL)
             vad_model_revision = getattr(self.config, "vad_model_revision", FUNASR_MODEL_REVISION)
             if vad_model:
-                logger.info(f"加载VAD模型: {vad_model}")
+                logger.debug(f"加载VAD模型: {vad_model}")
                 self._model_vad = AutoModel(
                     model=vad_model,
                     model_revision=vad_model_revision,
@@ -172,7 +176,7 @@ class FunASRModel:
                 )
                 
                 # 预热VAD模型
-                logger.info("预热VAD模型...")
+                logger.debug("预热VAD模型...")
                 try:
                     test_audio = np.zeros(1600, dtype=np.int16).tobytes()
                     vad_status = {"cache": {}, "is_final": False}
@@ -185,7 +189,7 @@ class FunASRModel:
             punc_model = getattr(self.config, "punc_model", FUNASR_PUNC_MODEL)
             punc_model_revision = getattr(self.config, "punc_model_revision", FUNASR_MODEL_REVISION)
             if punc_model:
-                logger.info(f"加载标点模型: {punc_model}")
+                logger.debug(f"加载标点模型: {punc_model}")
                 self._model_punc = AutoModel(
                     model=punc_model,
                     model_revision=punc_model_revision,
@@ -193,7 +197,7 @@ class FunASRModel:
                 )
                 
                 # 预热标点模型，避免懒加载
-                logger.info("预热标点模型，避免懒加载...")
+                logger.debug("预热标点模型，避免懒加载...")
                 try:
                     # 使用简单文本触发模型真正加载
                     test_text = "测试句子预热标点模型"
@@ -206,7 +210,7 @@ class FunASRModel:
             
             self._initialized = True
             elapsed_time = time.time() - start_time
-            logger.info(f"FunASR模型初始化完成，耗时: {elapsed_time:.2f}秒")
+            logger.debug(f"FunASR模型初始化完成，耗时: {elapsed_time:.2f}秒")
         except Exception as e:
             logger.error(f"初始化FunASR模型失败: {str(e)}")
             logger.exception(e)

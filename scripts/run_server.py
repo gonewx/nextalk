@@ -127,7 +127,6 @@ async def preload_models():
     logger = logging.getLogger("nextalk.preload")
     
     logger.info("在服务器启动前预加载FunASR模型...")
-    print("在服务器启动前预加载FunASR模型...")
     config = get_config()
     model = FunASRModel(config)
     
@@ -148,7 +147,6 @@ async def preload_models():
                 if success:
                     elapsed_time = time.time() - start_time
                     logger.info(f"FunASR模型预加载成功，耗时: {elapsed_time:.2f}秒")
-                    print(f"FunASR模型预加载成功，耗时: {elapsed_time:.2f}秒")
                     
                     # 保存预加载的模型到全局变量，以便应用程序可以使用
                     set_preloaded_model(model)
@@ -157,7 +155,6 @@ async def preload_models():
                 else:
                     retry_count += 1
                     logger.error(f"FunASR模型预加载失败 (尝试 {retry_count}/{max_retries})")
-                    print(f"FunASR模型预加载失败 (尝试 {retry_count}/{max_retries})")
                     if retry_count < max_retries:
                         logger.info(f"将在 {retry_delay} 秒后重试...")
                         print(f"将在 {retry_delay} 秒后重试...")
@@ -177,7 +174,6 @@ async def preload_models():
         
         # 如果所有重试都失败
         logger.critical("所有预加载尝试均失败，无法启动服务器。请检查模型配置和GPU状态。")
-        print("所有预加载尝试均失败，无法启动服务器。请检查模型配置和GPU状态。")
         return False
     finally:
         # 清除预加载标记
@@ -214,13 +210,13 @@ def main():
     
     # 打印配置源文件路径
     from nextalk_server.config import INI_PATH, CONFIG_PATH, DEFAULT_CONFIG
-    logger.info(f"配置源文件路径:")
-    logger.info(f"INI配置文件: {INI_PATH}")
-    logger.info(f"JSON配置文件: {CONFIG_PATH}")
+    # logger.info(f"配置源文件路径:")
+    # logger.info(f"INI配置文件: {INI_PATH}")
+    # logger.info(f"JSON配置文件: {CONFIG_PATH}")
     
     # 获取当前配置
     config = get_config()
-    logger.info(f"当前配置内容: {config.dict()}")
+    # logger.info(f"当前配置内容: {config.dict()}")
     
     # 如果只是打印配置，则退出
     if args.print_config:
@@ -233,10 +229,10 @@ def main():
     logger.info(f"正在启动NexTalk服务器，主机:{args.host}, 端口:{args.port}...")
     
     # 添加配置文件端口信息的日志
-    logger.info(f"配置文件中的端口值: {config.port}, 默认配置中的端口值: {DEFAULT_CONFIG['port']}")
-    logger.info(f"INI配置文件中的端口值 (如果存在): [Server] port=...")
-    logger.info(f"JSON配置文件中的端口值 (如果存在): ~/.nextalk/config.json - port: {config.port}")
-    logger.info(f"最终使用的端口值: {config.port}")
+    # logger.info(f"配置文件中的端口值: {config.port}, 默认配置中的端口值: {DEFAULT_CONFIG['port']}")
+    # logger.info(f"INI配置文件中的端口值 (如果存在): [Server] port=...")
+    # logger.info(f"JSON配置文件中的端口值 (如果存在): ~/.nextalk/config.json - port: {config.port}")
+    # logger.info(f"最终使用的端口值: {config.port}")
     
     if args.debug:
         print(f"\033[1;33m调试模式已启用，将显示详细日志\033[0m")
@@ -263,7 +259,7 @@ def main():
     
     # 更新后再次获取配置
     config = get_config()
-    logger.info(f"更新后的配置内容: {config.dict()}")
+    # logger.info(f"更新后的配置内容: {config.dict()}")
     
     # 强制预加载模型，忽略skip_preload选项
     if args.skip_preload:

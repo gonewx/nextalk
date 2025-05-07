@@ -118,7 +118,7 @@ def parse_ini_config(ini_path: str) -> dict:
     """
     解析 ini 文件，返回 [Server] 配置字典，类型自动转换
     """
-    logger.info(f"尝试从INI文件加载配置: {ini_path}")
+    logger.debug(f"尝试从INI文件加载配置: {ini_path}")
     config = configparser.ConfigParser()
     if not os.path.exists(ini_path):
         logger.warning(f"INI配置文件不存在: {ini_path}")
@@ -130,7 +130,7 @@ def parse_ini_config(ini_path: str) -> dict:
         return {}
     
     server_cfg = dict(config["Server"])
-    logger.info(f"从INI文件读取到[Server]配置: {server_cfg}")
+    logger.debug(f"从INI文件读取到[Server]配置: {server_cfg}")
     
     # 类型转换
     result = {}
@@ -138,18 +138,18 @@ def parse_ini_config(ini_path: str) -> dict:
         if k in ["port", "vad_sensitivity", "ngpu", "ncpu", "encoder_chunk_look_back", "decoder_chunk_look_back"]:
             try:
                 result[k] = int(v)
-                logger.info(f"INI配置项转换为整数: {k}={v} → {result[k]}")
+                logger.debug(f"INI配置项转换为整数: {k}={v} → {result[k]}")
             except Exception as e:
                 logger.warning(f"INI配置项转换整数失败: {k}={v}, 错误: {e}")
                 continue
         elif k in ["funasr_streaming", "funasr_disable_update"]:
             result[k] = v.lower() in ("1", "true", "yes")
-            logger.info(f"INI配置项转换为布尔值: {k}={v} → {result[k]}")
+            logger.debug(f"INI配置项转换为布尔值: {k}={v} → {result[k]}")
         else:
             result[k] = v
-            logger.info(f"INI配置项保持原值: {k}={v}")
+            logger.debug(f"INI配置项保持原值: {k}={v}")
     
-    logger.info(f"INI配置解析结果: {result}")
+    logger.debug(f"INI配置解析结果: {result}")
     return result
 
 
@@ -158,22 +158,22 @@ def load_config() -> Config:
     加载配置，优先级：ini > json > DEFAULT_CONFIG
     """
     try:
-        logger.info(f"开始加载配置...")
-        logger.info(f"INI配置文件路径: {INI_PATH}")
-        logger.info(f"JSON配置文件路径: {CONFIG_PATH}")
+        logger.debug(f"开始加载配置...")
+        logger.debug(f"INI配置文件路径: {INI_PATH}")
+        logger.debug(f"JSON配置文件路径: {CONFIG_PATH}")
         
         # 1. 先加载 ini 配置
         ini_config = parse_ini_config(INI_PATH)
         merged_config = DEFAULT_CONFIG.copy()
         
         if ini_config:
-            logger.info(f"使用INI配置覆盖默认配置")
+            logger.debug(f"使用INI配置覆盖默认配置")
             for k, v in ini_config.items():
                 if k in merged_config:
-                    logger.info(f"配置项从INI覆盖: {k}={merged_config[k]} → {v}")
+                    logger.debug(f"配置项从INI覆盖: {k}={merged_config[k]} → {v}")
                     merged_config[k] = v
                 else:
-                    logger.info(f"从INI添加新配置项: {k}={v}")
+                    logger.debug(f"从INI添加新配置项: {k}={v}")
                     merged_config[k] = v
         else:
             logger.warning("未能加载INI配置或INI配置为空")
@@ -183,23 +183,23 @@ def load_config() -> Config:
         if os.path.exists(CONFIG_PATH):
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 config_data = json.load(f)
-                logger.info(f"从JSON文件加载配置: {CONFIG_PATH}")
-                logger.info(f"JSON配置内容: {config_data}")
+                logger.debug(f"从JSON文件加载配置: {CONFIG_PATH}")
+                logger.debug(f"JSON配置内容: {config_data}")
                 
                 for k, v in config_data.items():
                     if k in merged_config:
-                        logger.info(f"配置项从JSON覆盖: {k}={merged_config[k]} → {v}")
+                        logger.debug(f"配置项从JSON覆盖: {k}={merged_config[k]} → {v}")
                     else:
-                        logger.info(f"从JSON添加新配置项: {k}={v}")
+                        logger.debug(f"从JSON添加新配置项: {k}={v}")
                 
                 merged_config.update(config_data)
         else:
-            logger.info("JSON配置文件不存在，跳过加载")
+            logger.debug("JSON配置文件不存在，跳过加载")
 
         # 3. 创建配置对象并保存
-        logger.info(f"最终合并的配置: {merged_config}")
+        logger.debug(f"最终合并的配置: {merged_config}")
         config = Config(**merged_config)
-        logger.info(f"创建的Config对象: {config}")
+        logger.debug(f"创建的Config对象: {config}")
         save_config(config)
         return config
     except Exception as e:
@@ -225,7 +225,7 @@ def save_config(config: Config) -> bool:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(config.dict(), f, indent=4, ensure_ascii=False)
             
-        logger.info(f"配置已保存到: {CONFIG_PATH}")
+        logger.debug(f"配置已保存到: {CONFIG_PATH}")
         return True
         
     except Exception as e:
@@ -248,7 +248,7 @@ def update_config(config_updates: Dict[str, Any]) -> Config:
     # 更新配置
     for key, value in config_updates.items():
         if hasattr(config, key):
-            logger.info(f"配置项更新: {key}={getattr(config, key)} → {value}")
+            logger.debug(f"配置项更新: {key}={getattr(config, key)} → {value}")
             setattr(config, key, value)
     
     # 保存更新后的配置
