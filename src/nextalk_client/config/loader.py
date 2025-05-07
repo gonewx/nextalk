@@ -251,11 +251,11 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             files_read = config.read(user_config_path)
             if files_read:
                 loaded_configs.append(user_config_path)
-                logger.info(f"已从用户配置文件加载配置: {user_config_path}")
+                logger.debug(f"已从用户配置文件加载配置: {user_config_path}")
         except Exception as e:
             logger.error(f"读取用户配置文件时出错: {str(e)}")
     else:
-        logger.info(f"用户配置文件不存在: {user_config_path}")
+        logger.debug(f"用户配置文件不存在: {user_config_path}")
     
     # 步骤2: 加载默认配置文件
     if os.path.exists(package_config_path):
@@ -263,7 +263,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
             files_read = default_config.read(package_config_path)
             if files_read:
                 loaded_configs.append(package_config_path)
-                logger.info(f"已加载默认配置文件: {package_config_path}")
+                logger.debug(f"已加载默认配置文件: {package_config_path}")
                 
                 # 填充用户配置中缺失的部分
                 for section in default_config.sections():

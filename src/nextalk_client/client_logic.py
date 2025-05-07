@@ -626,9 +626,9 @@ class NexTalkClient:
                     result = send_task.result(timeout=0.1)
                     logger.debug(f"音频数据发送结果: {'成功' if result else '失败'}")
                 except asyncio.TimeoutError:
-                    logger.warning("获取音频发送结果超时，发送可能仍在进行")
+                    logger.debug("获取音频发送结果超时，发送可能仍在进行")
                 except Exception as e:
-                    logger.warning(f"获取音频发送结果时出错: {str(e)}")
+                    logger.debug(f"获取音频发送结果时出错: {str(e)}")
         except Exception as e:
             logger.error(f"创建音频发送任务时出错: {str(e)}")
     
@@ -710,7 +710,7 @@ class NexTalkClient:
         
         # 检查转录文本是否有效
         if not text or len(text.strip()) == 0:
-            logger.warning(f"收到无效的转录文本: '{text}'")
+            logger.debug(f"收到无效的转录文本: '{text}'")
             return
             
         # 记录转录结果日志
@@ -791,10 +791,8 @@ class NexTalkClient:
         
         # 显示文本窗口（如果已配置）
         try:
-            logger.info(f"显示文本窗口: {get_client_bool_config('show_text', False)}")
             if get_client_bool_config('show_text', False):
                 # 这里我们使用一个简单的独立窗口显示文本
-                logger.info(f"显示文本窗口test: {text_to_inject}")
                 show_text(text_to_inject, is_final)
         except Exception as e:
             logger.error(f"显示文本窗口时出错: {str(e)}")
