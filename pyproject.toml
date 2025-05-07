@@ -29,6 +29,8 @@ dependencies = [
     "pyperclip>=1.8.2",
     "funasr>=1.2.6",
     "cairosvg>=2.7.0",
+    "pyautogui>=0.9.54",
+    "pyclip>=0.7.0",
 ]
 
 [build-system]
