@@ -6,99 +6,96 @@
   - [目录](#目录)
   - [基本使用](#基本使用)
     - [启动方式](#启动方式)
-      - [使用统一启动脚本（推荐）](#使用统一启动脚本推荐)
-      - [使用传统脚本](#使用传统脚本)
+      - [使用专用启动脚本 (推荐)](#使用专用启动脚本推荐)
       - [作为Python模块启动](#作为python模块启动)
     - [热键操作](#热键操作)
     - [转录控制](#转录控制)
+    - [系统托盘图标](#系统托盘图标)
+    - [通知系统](#通知系统)
   - [配置选项](#配置选项)
+    - [\[Client\] 部分 (`~/.config/nextalk/config.ini`)](#client-部分-confignextalkconfigini)
+    - [\[Server\] 部分 (`~/.config/nextalk/config.ini`)](#server-部分-confignextalkconfigini)
     - [模型选择](#模型选择)
     - [音频设置](#音频设置)
     - [界面设置](#界面设置)
-  - [故障排除](#故障排除)
-    - [连接问题](#连接问题)
-    - [识别问题](#识别问题)
-    - [模型下载问题](#模型下载问题)
-    - [文本注入问题](#文本注入问题)
-    - [日志检查](#日志检查)
-      - [使用统一脚本查看日志](#使用统一脚本查看日志)
-      - [使用传统方法查看日志](#使用传统方法查看日志)
-      - [使用调试脚本](#使用调试脚本)
-      - [常见问题调试](#常见问题调试)
-      - [调试模式启动](#调试模式启动)
-  - [高级功能](#高级功能)
+  - [FunASR 高级功能](#funasr-高级功能)
+    - [识别模式 (隐式)](#识别模式-隐式)
+    - [热词优化](#热词优化)
+    - [标点恢复](#标点恢复)
+    - [语音活动检测 (VAD)](#语音活动检测-vad)
+  - [高级功能与定制](#高级功能与定制)
     - [多语言支持](#多语言支持)
-    - [FunASR特有配置](#funasr特有配置)
-    - [性能调优](#性能调优)
+    - [性能调优 (服务器端)](#性能调优-服务器端)
+    - [客户端行为定制](#客户端行为定制)
+    - [关于"简化版客户端"](#关于简化版客户端)
   - [其他资源](#其他资源)
 
 ## 基本使用
 
 ### 启动方式
 
-NexTalk提供了多种启动方式，您可以根据需要选择最适合的方式：
+NexTalk 提供了灵活的启动方式。推荐使用项目 `scripts` 目录下的启动脚本。
 
-#### 使用统一启动脚本（推荐）
+#### 使用专用启动脚本 (推荐)
 
-NexTalk现在提供了一个统一的启动脚本`nextalk.py`，它可以启动服务器、客户端或完整的工作流：
+**1. 启动服务器:**
+
+打开一个终端，进入 NexTalk 项目根目录，然后运行 (确保您的虚拟环境已激活)：
 
 ```bash
-# 启动完整工作流（服务器+客户端）
-python nextalk/scripts/nextalk.py start
-
-# 启动服务器
-python nextalk/scripts/nextalk.py server
-
-# 启动客户端
-python nextalk/scripts/nextalk.py client
-
-# 获取帮助信息
-python nextalk/scripts/nextalk.py --help
+python scripts/run_server.py
 ```
 
-启用调试模式并指定日志文件：
+服务器将开始运行，并监听配置文件中指定的地址和端口。首次运行时，如果配置的 FunASR 模型尚未下载，服务器会尝试自动下载和缓存它们。
+
+*常用服务器启动参数 (`scripts/run_server.py`):*
+*   `--host <ip_address>`: 设置服务器监听的主机地址 (默认: `0.0.0.0`)。
+*   `--port <port_number>`: 设置服务器监听的端口 (默认: `8000`)。
+*   `--device <cpu|cuda>`: 选择计算设备 (默认: `cuda`, 如果可用)。
+*   `--model-path <path>`: 指定模型缓存/搜索路径。
+*   `--log-level <debug|info|warning|error>`: 设置日志级别。
+*   `--debug`: 快速启用调试日志级别。
+*   `--log-file <path/to/log>`: 将日志输出到文件。
+*   `--print-config`: 打印当前配置并退出，不启动服务器。
+*   `--skip-preload`: 跳过模型预加载以加快服务器启动速度 (但首次识别请求会较慢)。
+
+**2. 启动客户端:**
+
+打开另一个终端，进入 NexTalk 项目根目录，然后运行 (确保您的虚拟环境已激活)：
 
 ```bash
-# 启动调试模式的完整工作流
-python nextalk/scripts/nextalk.py start --debug
-
-# 启动调试模式的服务器，并指定日志文件
-python nextalk/scripts/nextalk.py server --debug --log-file server.log
-
-# 启动调试模式的客户端，并指定服务器地址
-python nextalk/scripts/nextalk.py client --debug --server-host 192.168.1.100
+python scripts/run_client.py
 ```
 
-#### 使用传统脚本
+客户端将尝试连接到服务器。连接成功后，您应该会看到系统托盘图标，并可以通过热键开始使用语音识别。
 
-如果您习惯使用旧的脚本，这些脚本仍然可用：
+*常用客户端启动参数 (`scripts/run_client.py`):*
+*   `--server-host <ip_address>`: 要连接的服务器主机地址 (覆盖配置文件中的 `server_url` 主机部分)。
+*   `--server-port <port_number>`: 要连接的服务器端口 (覆盖配置文件中的 `server_url` 端口部分)。
+*   `--debug`: 快速启用调试日志级别。
+*   `--log-file <path/to/log>`: 将日志输出到文件。
 
+#### 作为 Python 模块启动 (开发者/备选)
+
+您也可以直接将 NexTalk 作为 Python 模块运行：
+
+**启动服务器:**
 ```bash
-# 启动服务器
+# (激活虚拟环境后)
 python -m nextalk_server.main
-
-# 启动客户端
-python -m nextalk_client.main
-
-# 使用Shell脚本启动调试模式
-./scripts/run_server_debug.sh
-./scripts/run_client_debug.sh
-./scripts/run_debug_workflow.sh
+```
+或者更底层地 (通常用于开发 FastAPI 应用):
+```python
+# (在Python脚本中)
+# from nextalk_server.app import app
+# import uvicorn
+# uvicorn.run(app, host="0.0.0.0", port=8000) # 根据需要调整 host 和 port
 ```
 
-#### 作为Python模块启动
-
-对于开发者，您可以直接导入模块并启动：
-
-```python
-# 启动服务器
-from nextalk_server.main import app
-import uvicorn
-uvicorn.run(app, host="127.0.0.1", port=8000)
-
-# 启动客户端
-from nextalk_client.main import run_client
-run_client(debug=True)
+**启动客户端:**
+```bash
+# (激活虚拟环境后)
+python -m nextalk_client.main
 ```
 
 ### 热键操作
@@ -118,10 +115,83 @@ NexTalk提供了多种控制转录过程的方式：
 - **手动模式**: 按下热键开始录音，再次按下停止并转录
 - **持续模式**: 连续录音并实时转录，直到手动停止
 
+### 系统托盘图标
+
+NexTalk 启动后，会在系统托盘区域显示一个图标。通过右键点击托盘图标，您可以：
+
+- **查看当前状态**：图标会指示 NexTalk 是否正在监听、处理或空闲。
+- **切换识别模型**：快速在已配置的模型间进行切换。
+- **打开设置**（如果未来支持）：快速访问配置选项。
+- **退出程序**：安全关闭 NexTalk 客户端和服务器。
+
+### 通知系统
+
+NexTalk 会通过桌面通知向您反馈重要信息，例如：
+
+- **错误提示**：如连接服务器失败、模型加载失败等。
+- **状态变更**：如开始监听、停止监听、模型切换成功等。
+- **转录结果**（可选）：部分关键转录信息或提示。
+
+通知的显示时长可以在配置文件中通过 `notification_timeout` 进行调整。
+
 ## 配置选项
 
-配置文件位于 `~/.config/nextalk/config.ini`，首次运行时会自动创建。
-或者您可以将 `config/default_config.ini` 复制到该位置并进行修改。
+NexTalk 的主要配置通过位于用户目录下的 `config.ini` 文件进行管理。您需要先将项目中的 `config/default_config.ini` 复制到 `~/.config/nextalk/config.ini`，然后根据需要进行修改。
+
+命令行参数可以覆盖部分配置文件中的设置。
+
+### [Client] 部分 (`~/.config/nextalk/config.ini`)
+
+-   `hotkey = ctrl+shift+space`
+    *   定义激活/停用语音识别的全局热键组合。支持如 `alt+z`, `ctrl+alt+s` 等格式。请参考 `pynput` 文档了解可用组合。
+-   `server_url = ws://127.0.0.1:8000/ws/stream`
+    *   指定 NexTalk 服务器的完整 WebSocket URL。如果服务器在另一台机器或使用 SSL (wss://)，请相应修改。
+-   `use_ssl = false`
+    *   如果 `server_url` 使用 `wss://`，此项通常会自动处理，但可以明确设置为 `true` 以强制 SSL 相关行为。
+-   `enable_focus_window = true`
+    *   当使用 `xdotool` 的文本注入失败时，是否启用备选的 `SimpleWindow` (一个置顶的简单文本窗口) 来显示识别结果。设置为 `false` 将禁用此备选方案。
+-   `focus_window_duration = 5`
+    *   如果 `enable_focus_window` 为 `true`，此选项设置 `SimpleWindow` 显示文本的持续时间（秒），之后窗口会自动淡出或隐藏。
+
+### [Server] 部分 (`~/.config/nextalk/config.ini`)
+
+-   `host = 0.0.0.0`
+    *   服务器监听的主机地址。`0.0.0.0` 表示监听所有可用的网络接口；`127.0.0.1` 表示仅监听本地回环地址。
+-   `port = 8000`
+    *   服务器监听的 TCP 端口。
+-   `device = cuda`
+    *   FunASR 模型使用的主要计算设备。可选值为 `cuda` (推荐，使用 NVIDIA GPU) 或 `cpu`。如果选择 `cuda` 但无可用 GPU，FunASR 通常会自动回退到 `cpu` (可能伴有警告)。
+-   `ngpu = 1`
+    *   (FunASR 参数) 当 `device = cuda` 时，指定使用的 GPU 数量。通常设置为 `1`。
+-   `ncpu = 4`
+    *   (FunASR 参数) FunASR 在执行某些操作时可利用的 CPU 核心数。增加此值可能有助于 CPU 密集型任务的处理，但需根据实际硬件调整。
+-   `model_path = ~/.cache/NexTalk/funasr_models` (示例, 实际默认可能由FunASR内部决定)
+    *   (可选) 指定 FunASR 模型下载和缓存的根目录。如果未设置或 FunASR 无法识别，FunASR 通常会使用其内部默认的缓存路径 (如 `~/.cache/modelscope/hub`)。`scripts/run_server.py` 也支持通过 `--model-path` 命令行参数设置此路径。
+-   `asr_model = iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`
+    *   指定主要的 FunASR 语音识别 (ASR) 模型。这是进行语音转文本的核心模型。您可以从 ModelScope (modelscope.cn) 查找可用的 FunASR 模型名称。例如，`FUNASR_OFFLINE_MODEL` 或 `FUNASR_ONLINE_MODEL` 在 `nextalk_shared/constants.py` 中可能定义了推荐的默认值。
+-   `asr_model_revision = None`
+    *   (可选) 指定 ASR 模型的特定版本 (例如 git commit hash 或分支名)。如果为 `None` 或未指定，则使用模型的默认/最新版本。
+-   `asr_model_streaming = None`
+    *   (可选) 如果您希望为流式识别使用一个与 `asr_model` 不同的、专门优化的流式模型，请在此处指定其名称。如果 `asr_model` 本身已支持高效流式处理，则此项可能不需要或应与 `asr_model` 相同。
+-   `asr_model_streaming_revision = None`
+    *   (可选) `asr_model_streaming` 的特定版本。
+-   `vad_model = iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`
+    *   指定 FunASR 语音活动检测 (VAD) 模型。用于在音频流中检测有效的语音片段，过滤背景噪音和静默。`nextalk_shared/constants.py` 中的 `FUNASR_VAD_MODEL` 可能有默认值。
+-   `vad_model_revision = None`
+    *   (可选) VAD 模型的特定版本。
+-   `punc_model = iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`
+    *   指定 FunASR 标点恢复模型。用于在 ASR 输出的原始文本中自动添加标点符号。`nextalk_shared/constants.py` 中的 `FUNASR_PUNC_MODEL` 可能有默认值。
+-   `punc_model_revision = None`
+    *   (可选) 标点模型的特定版本。
+-   `funasr_hotwords =`
+    *   (可选) 热词列表，用于提高特定词汇或短语的识别准确率。格式通常是每个热词占一行，或者以特定方式分隔。具体格式请参考 FunASR 文档或 `FunASRModel` 中的实现。示例：
+        ```ini
+        funasr_hotwords = NexTalk
+                          FunASR
+                          自定义术语
+        ```
+
+**重要提示**: 上述列表是对主要配置项的说明。部分配置项的默认值可能在代码中 (如 `nextalk_server/config.py`, `nextalk_client/config/loader.py`, `nextalk_shared/constants.py`) 硬编码或有更复杂的确定逻辑。请务必参考 `config/default_config.ini` 文件作为最权威的配置模板，并结合代码行为来理解每个选项的精确作用。
 
 ### 模型选择
 
@@ -152,6 +222,8 @@ FunASR模型的对比：
 - 对于英文或多语言识别，推荐使用Whisper的`large-v3`或`medium`模型
 - 在资源受限的设备上，可以选择较小的模型，如Whisper的`small`或FunASR的`SenseVoiceSmall`
 
+除了通过配置文件修改，您还可以通过**系统托盘图标的菜单**快速切换已在服务器端加载或支持的识别模型。
+
 ### 音频设置
 
 调整音频设置以获得最佳识别效果：
@@ -179,231 +251,81 @@ server_port = 8765
 notification_timeout = 5
 # 自动输入文本到当前活动窗口
 auto_type = true
+# 是否启用焦点窗口作为文本注入失败时的备选方案 (true/false)
+enable_focus_window = true
+# 焦点窗口显示时长（秒）
+focus_window_duration = 5
 ```
 
-## 故障排除
+**焦点窗口 (Focus Window)**:
 
-### 连接问题
+当 `auto_type` 设置为 `true` 但 `xdotool` 文本注入失败时，如果 `enable_focus_window` 也为 `true`，NexTalk 会尝试在一个置顶的半透明"焦点窗口"中显示转录的文本。这个窗口通常出现在屏幕底部，并在 `focus_window_duration` 指定的时间后自动淡出。这确保了即使在无法直接输入到目标应用的情况下，您仍然可以看到识别结果。
 
-如果客户端无法连接到服务器：
+## FunASR 高级功能
 
-1. 确保服务器已启动并在运行
-2. 检查客户端配置中的服务器地址和端口是否正确
-3. 检查网络连接，特别是防火墙设置
-4. 尝试使用`ping`或`telnet`测试连接
+NexTalk 通过服务器端的 `FunASRModel` 封装了 FunASR 的多种高级功能。这些功能主要通过服务器配置文件 (`~/.config/nextalk/config.ini` 的 `[Server]` 部分) 进行控制。
 
-### 识别问题
+### 识别模式 (隐式)
 
-如果语音识别不准确或失败：
+FunASR 支持多种内部工作模式，例如离线 (整句识别) 和在线 (流式识别)。NexTalk 的 `FunASRModel` 会根据加载的模型 (例如，通过 `asr_model` 和 `asr_model_streaming` 配置项指定的模型) 和接收音频数据的方式 (单个完整块 vs. 连续小块) 来隐式地利用这些模式。
 
-1. 确保麦克风正常工作且未静音
-2. 尝试调整麦克风音量或距离
-3. 如果GPU内存不足，尝试使用更小的模型或切换到CPU模式
-   - 在 `~/.config/nextalk/config.ini` 中将 `device` 设置为 `cpu`
+-   **流式处理**: 当客户端持续发送小的音频块时，服务器端的 `FunASRModel` (如果加载了流式模型) 会进行流式处理，并可能实时或准实时地返回中间和最终识别结果。
+-   **离线处理**: 如果接收到较大或完整的音频片段，或者配置了仅支持离线的模型，则会进行更偏向整句的识别处理，这通常能带来更高的准确性但延迟也相应增加。
 
-### 模型下载问题
+用户通常不需要直接切换这些底层模式，而是通过选择合适的 FunASR 模型 (在服务器配置中) 和使用方式来获得期望的识别行为。
 
-首次运行NexTalk时，系统会尝试下载语音识别模型。如果自动下载失败（如出现 `basic_string::_S_construct null not valid` 错误），您可以使用我们提供的模型下载工具手动下载模型。
+### 热词优化
 
-**模型下载工具使用方法**:
+通过在服务器配置文件的 `[Server]` 部分设置 `funasr_hotwords`，可以提供一个热词列表，以提高特定词汇、短语或专业术语的识别准确率。FunASR 会在识别过程中对这些热词给予更高的权重。
 
-使用 `download_models.py` 脚本进行模型管理：
-
-```bash
-# 查看所有可用模型列表
-python nextalk/scripts/download_models.py --list
-
-# 检查已下载的模型
-python nextalk/scripts/download_models.py --check
-
-# 下载指定模型（推荐先尝试小模型）
-python nextalk/scripts/download_models.py --download small
-
-# 下载大型模型（更准确但需要更多资源）
-python nextalk/scripts/download_models.py --download large-v3
-
-# 指定自定义缓存目录
-python nextalk/scripts/download_models.py --download medium --cache-dir /path/to/custom/cache
-
-# 强制重新下载模型
-python nextalk/scripts/download_models.py --download large-v3 --force
+**配置示例 (`config.ini`):**
+```ini
+[Server]
+# ... 其他服务器配置 ...
+funasr_hotwords =
+    NexTalk
+    FunASR Pipeline
+    自定义产品名称
+    领域特定术语
 ```
+每行一个热词或短语。请参考 FunASR 的官方文档以获取关于热词格式和最佳实践的更多信息。
 
-**注意事项**:
-- 建议从小型模型开始，如 `small` 或 `base`，这些模型下载更快且资源需求较低
-- 较大的模型（如 `large-v3`）提供更高的识别精度，但需要更多的下载时间和系统资源
-- 下载后的模型会被缓存在 `~/.cache/NexTalk/models` 目录中，后续启动将直接使用已下载的模型
-- 下载需要稳定的网络连接，如果下载中断，可以使用 `--force` 选项重新开始下载
+### 标点恢复
 
-如果仍然遇到问题，可以尝试将模型配置更改为较小的模型：在 `~/.config/nextalk/config.ini` 中将 `default_model` 设置为 `small` 或 `base`。
+通过在服务器配置中指定 `punc_model` (例如, `iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`)，可以启用自动标点恢复功能。FunASR 会在 ASR 引擎输出的原始文本基础上自动添加逗号、句号、问号等标点符号，使输出的文本更自然、更易读。
 
-### 文本注入问题
+如果不需要标点恢复，可以将 `punc_model` 配置项留空或注释掉。
 
-如果识别正常但文本没有输入到应用程序：
+### 语音活动检测 (VAD)
 
-1. 确保已安装 `xdotool`（Linux系统）
-2. 检查目标应用程序是否接受键盘输入
-3. 尝试在不同的应用程序中测试
+服务器配置中的 `vad_model` (例如, `iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`) 指定了用于语音活动检测的模型。VAD 帮助系统区分语音和非语音片段（如静默、背景噪音），只将包含语音的音频数据传递给 ASR 引擎。这可以减少不必要的计算，提高识别效率，并在某些情况下改善识别准确性。
 
-### 日志检查
-
-如果遇到其他问题，您可以检查日志获取更多信息：
-
-#### 使用统一脚本查看日志
-
-```bash
-# 启动调试模式并指定日志文件
-python nextalk/scripts/nextalk.py server --debug --log-file server.log
-python nextalk/scripts/nextalk.py client --debug --log-file client.log
-
-# 启动完整工作流并自动保存日志到默认文件
-python nextalk/scripts/nextalk.py start --debug
-```
-
-这将创建 `server_debug.log` 和 `client_debug.log` 文件，包含详细的调试信息。
-
-#### 使用传统方法查看日志
-
-```bash
-# 运行客户端时重定向输出到日志文件
-python -m nextalk_client.main > client_log.txt 2>&1
-```
-
-或者：
-
-```bash
-# 设置更详细的日志级别
-export PYTHONPATH=./src
-python -m nextalk_client.main --debug
-```
-
-#### 使用调试脚本
-
-NexTalk仍然提供了传统的调试脚本，可以方便地启用详细日志并将输出保存到文件：
-
-```bash
-# 调试模式运行客户端
-./scripts/run_client_debug.sh
-
-# 调试模式运行服务器
-./scripts/run_server_debug.sh
-
-# 一键启动完整调试工作流（同时启动服务器和客户端）
-./scripts/run_debug_workflow.sh
-```
-
-调试脚本将：
-1. 启用详细的调试级别日志
-2. 将所有日志保存到`client_debug.log`和`server_debug.log`文件中
-3. 同时将输出显示在控制台上，便于实时查看
-4. 将控制台输出额外保存到`client_output.log`和`server_output.log`文件中
-
-> **提示**：推荐使用`nextalk.py start --debug`脚本进行调试，它会自动检查依赖项、启动服务器，并在正确的时机启动客户端。
-
-#### 常见问题调试
-
-1. **转录结果不显示**
-   - 检查客户端日志中是否有"接收到转录"和"转录结果"相关信息
-   - 检查服务器日志中是否有"已发送转录结果"相关信息
-   - 检查xdotool是否正确安装并可用：`which xdotool`
-   - 当识别到文本时，控制台应该直接显示"语音识别结果：xxx"
-
-2. **未安装xdotool问题**
-   - 如果看到"xdotool工具不可用"的错误，请安装：`sudo apt install xdotool`
-   - xdotool是在Linux上进行文本注入所必需的
-   - 如果不安装xdotool，识别结果仍会显示在控制台，但不会自动输入到活动窗口
-
-3. **音频捕获问题**
-   - 查看客户端日志中与音频设备相关的警告或错误
-   - 确认系统中是否有可用的麦克风设备：`arecord -l`
-   - 检查音频后端配置是否正确（pulse或alsa）
-
-4. **网络连接问题**
-   - 检查WebSocket连接状态日志
-   - 确认服务器是否正常运行并监听在正确端口：`netstat -tuln | grep 8000`
-   - 查看防火墙设置是否阻止了WebSocket连接
-
-5. **无任何输出问题**
-   - 如果程序运行后没有任何输出，请检查调试模式运行：`NEXTALK_DEBUG=1 python -m nextalk_client.main`
-   - 检查控制台是否显示了任何错误消息
-   - 检查Python版本是否兼容（需要3.10+）：`python --version`
-   - 检查依赖项是否正确安装：`pip list | grep nextalk`
-
-#### 调试模式启动
-
-您也可以不使用脚本，直接启用调试模式：
-
-```bash
-# 选项1：使用命令行参数
-python -m nextalk_client.main --debug
-
-# 选项2：使用环境变量
-NEXTALK_DEBUG=1 python -m nextalk_client.main
-
-# 选项3：同时保存日志到文件
-python -m nextalk_client.main --debug --log-file debug.log
-```
-
-## 高级功能
+## 高级功能与定制
 
 ### 多语言支持
 
-NexTalk支持多种语言的语音识别：
+FunASR 本身支持多种语言的识别。NexTalk 对多语言的支持主要取决于您在服务器配置中为 `asr_model` (以及相关的 VAD 和标点模型，如果需要特定语言版本)选择了哪个 FunASR 模型。
 
-1. 对于英语识别：
-   - 在配置文件中设置 `language=en`
-   - 使用带有语言后缀的Whisper模型（例如 `small.en`）
+例如，要识别英文，您需要选择一个英文的 FunASR ASR 模型。要识别中文，则选择中文模型。请查阅 ModelScope 上的 FunASR 模型列表，找到适合您目标语言的模型，并在 `config.ini` 中进行配置。
 
-2. 对于中文识别：
-   - 在配置文件中设置 `language=zh`
-   - 使用FunASR模型（如 `paraformer-zh`）或通用Whisper模型（如 `large-v3`）
+### 性能调优 (服务器端)
 
-3. 对于其他语言：
-   - 在配置文件中设置相应的语言代码（如 `fr` 表示法语）
-   - 使用通用Whisper模型（不带语言后缀的模型）
-   
-### FunASR特有配置
+-   **设备选择 (`device`)**: 对于生产环境或追求低延迟的场景，强烈建议使用 `cuda` (NVIDIA GPU)。CPU 推理会慢很多。
+-   **模型选择**: 不同的 FunASR 模型在速度、准确率和资源消耗之间有不同的权衡。大型模型通常更准确但更慢且占用更多资源。流式模型通常延迟更低。
+-   **预加载与预热**: `scripts/run_server.py` 默认会预加载和预热模型，这会增加服务器启动时间，但能显著减少首次识别请求的延迟。对于开发或不需要立即响应的场景，可以考虑使用 `--skip-preload` 参数启动服务器。
+-   **CPU核心数 (`ncpu`)**: 如果在 CPU 上运行或 GPU 性能有限，适当调整 `ncpu` 可能有助于提升 FunASR 的处理速度，但这需要根据具体硬件进行测试。
 
-使用FunASR模型时，您可以调整以下特有的配置选项：
+### 客户端行为定制
 
-```ini
-[Server]
-# FunASR使用的VAD模型
-funasr_vad_model=fsmn-vad
-# 是否启用流式（实时）处理模式
-funasr_streaming=true
-# 标点恢复模型（可选）
-funasr_punc_model=ct-punc
-# 时间戳预测模型（可选）
-funasr_timestamp_model=fa-zh
-```
+-   **热键 (`hotkey`)**: 自定义热键以适应您的工作流程。
+-   **注入失败备选 (`enable_focus_window`, `focus_window_duration`)**: 配置当 `xdotool` 注入失败时，简单文本窗口的显示行为。
 
-FunASR的关键配置选项：
-- **VAD模型**:
-  - `fsmn-vad`: 标准VAD模型，适用于大多数场景
-  - `silero-vad`: 替代VAD模型，在某些嘈杂环境中可能有更好表现
+### 关于"简化版客户端"
 
-- **流式处理模式**:
-  - `true`: 启用流式处理（默认），适合实时转录，支持连续音频处理
-  - `false`: 禁用流式处理，一次性处理整段音频，转录精度可能更高但延迟更大
-
-- **标点恢复**:
-  - 如果配置了标点恢复模型（如`ct-punc`），系统会自动为识别的文本添加标点符号
-  - 对中文文本特别有用，显著提高可读性
-
-- **时间戳预测**:
-  - 通过配置时间戳模型（如`fa-zh`），可以获取每个字的时间戳信息
-  - 适用于需要音频与文本精确同步的场景
-
-### 性能调优
-
-对于性能优化，您可以：
-
-1. 调整VAD敏感度（在服务器配置中设置 `vad_sensitivity`，值为1-3，默认为2）
-2. 使用适合您硬件的计算精度（在服务器配置中设置 `compute_type`，可选 `int8`、`float16` 或 `float32`）
+旧版文档中可能提及 `use_simple_client` 配置。请检查当前 `client_logic.py` 和相关UI代码，确认此选项是否仍然有效，或者其功能已被其他机制替代或移除。如果不再使用，应忽略此配置。
 
 ## 其他资源
 
 - 安装指南：查看 [setup_guide.md](setup_guide.md) 获取完整的安装说明
-- 项目架构：查看 [architecture.md](architecture.md)（即将发布）了解NexTalk的技术架构
-- 贡献指南：查看 [developer_guide.md](developer_guide.md)（即将发布）了解如何参与项目开发 
+- 项目架构：查看 [architecture.md](architecture.md) 了解NexTalk的技术架构
+- 贡献指南：查看 [developer_guide.md](developer_guide.md) 了解如何参与项目开发 

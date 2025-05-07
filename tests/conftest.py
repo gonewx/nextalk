@@ -136,22 +136,6 @@ def mock_asr_recognizer():
     
     return MockASRRecognizer
 
-
-@pytest.fixture
-def patched_asr_recognizer():
-    """
-    临时替换真实的ASR识别器为模拟版本
-    
-    使用该fixture将自动在测试中用模拟版本替换真实实现，
-    并在测试结束后恢复。
-    """
-    mock_recognizer = MagicMock()
-    mock_recognizer.return_value.transcribe.return_value = "这是一个测试转录"
-    
-    with patch('nextalk_server.models.whisper.WhisperRecognizer', mock_recognizer):
-        yield mock_recognizer
-
-
 @pytest.fixture
 def config_file_path():
     """返回配置文件的默认路径"""

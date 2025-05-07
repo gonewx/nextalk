@@ -1,50 +1,155 @@
-# NexTalk
+# NexTalk - 实时语音识别系统
 
-轻量级实时本地语音识别与输入系统。
+NexTalk 是一套轻量级的实时本地语音识别和输入解决方案，核心引擎为 FunASR。它由服务器端 (`nextalk_server`) 和客户端 (`nextalk_client`) 组成，通过 WebSocket 进行高效通信。
 
-## 功能特性
+查阅 [docs/](docs/) 目录下的详细文档：
+-   [用户指南 (user_guide.md)](docs/user_guide.md)
+-   [安装指南 (setup_guide.md)](docs/setup_guide.md)
+-   [架构概览 (architecture.md)](docs/architecture.md)
+-   [开发者指南 (developer_guide.md)](docs/developer_guide.md)
 
-- **本地语音识别**：使用Whisper和FunASR模型实现高质量的本地语音识别
-- **实时转录**：低延迟的语音-文本转换
-- **自动文本注入**：将识别的文本自动注入到当前活动窗口
-- **热键激活**：通过可自定义热键快速启动/停止语音识别
-- **多模型支持**：支持Whisper和FunASR模型，优化不同语言的识别效果
-- **系统托盘集成**：直观的状态指示和快速访问设置
-- **高效资源利用**：智能语音活动检测(VAD)降低资源消耗
-- **跨平台支持**：兼容主流操作系统(计划中)
+## 主要功能
 
-## 快速入门
+-   **实时语音识别**: 基于 FunASR，支持高质量的中文及多语言语音转文本。
+-   **流式与离线处理**: 服务器根据模型配置和音频流特性，智能采用流式（低延迟）或离线（高精度）识别。
+-   **语音活动检测 (VAD)**: 集成 FunASR VAD，有效过滤静默和噪声。
+-   **标点恢复**: 自动为识别文本添加标点。
+-   **热词优化**: 支持通过配置文件自定义热词，提升特定词汇识别率。
+-   **客户端集成**: 提供客户端实现音频捕获、文本注入（Linux下使用 `xdotool`）、系统托盘交互和热键控制。
+-   **WebSocket 通信**: 高效实时的音频和结果传输。
+-   **多平台支持**: 服务器和客户端均为 Python 实现，客户端UI和注入功能目前主要针对 Linux。
+-   **灵活配置**: 通过 `config.ini` 文件提供丰富的服务器和客户端配置选项。
+-   **GPU/CPU 支持**: FunASR 模型可在 GPU (CUDA) 或 CPU 上运行。
 
-请查看[安装指南](docs/setup_guide.md)获取完整的安装和配置说明，包括：
+## 核心组件
 
-- 系统要求
-- 依赖安装
-- 环境配置
-- 首次运行指南
+-   **`nextalk_server` (服务器端)**:
+    -   **FastAPI 应用 (`app.py`)**: Web 服务框架，管理应用生命周期。
+    -   **WebSocket 端点 (`websocket_routes.py`)**: 处理 `/ws/stream` 上的客户端连接和数据交换。
+    -   **`FunASRModel` (`funasr_model.py`)**: FunASR 核心引擎的封装，负责模型加载、管理、预热、推理（ASR, VAD, Punc）。
+    -   **配置模块 (`config.py`)**: 加载和提供服务器配置。
+-   **`nextalk_client` (客户端)**:
+    -   **`NexTalkClient` (`client_logic.py`)**: 客户端核心逻辑，状态管理，与服务器交互。
+    -   **音频捕获 (`audio/capture.py`)**: 使用 PyAudio 从麦克风获取音频。
+    -   **文本注入 (`injection/`)**: 将文本输入到活动窗口。
+    -   **UI组件 (`ui/`)**: 系统托盘 (`tray_icon.py`)、通知 (`notifications.py`)、备选文本显示 (`simple_window.py`)。
+    -   **热键监听 (`hotkey/listener.py`)**: 全局热键支持。
+-   **`nextalk_shared` (共享模块)**:
+    -   **数据模型 (`data_models.py`)**: Pydantic 模型，用于 WebSocket 通信。
+    -   **常量 (`constants.py`)**: 项目共享的常量。
 
-## 使用方法
+## 快速开始
 
-基本使用步骤：
+### 1. 环境准备与安装
 
-1. 使用统一启动脚本：`python scripts/nextalk.py start`
-2. 或单独启动组件：
-   - 服务器：`python scripts/nextalk.py server`
-   - 客户端：`python scripts/nextalk.py client`
-3. 使用默认热键(Ctrl+Shift+Space)激活语音识别
-4. 开始讲话，识别的文本将自动输入到当前活动窗口
+请参考详细的 [安装指南 (docs/setup_guide.md)](docs/setup_guide.md)。简要步骤如下：
 
-调试模式启动：`python scripts/nextalk.py start --debug`
+-   克隆仓库。
+-   安装 Python 3.10+。
+-   安装系统依赖 (如 `xdotool`, `portaudio19-dev`, `python3-tk` 等)。
+-   创建虚拟环境 (推荐使用 `uv` 或 `venv`)。
+-   在虚拟环境中安装项目依赖：
+    ```bash
+    # 使用 uv (推荐, 假设 pyproject.toml 定义了 dev extra)
+    uv pip install -e ".[dev]"
+    # 或使用 pip
+    # pip install -e ".[dev]"
+    ```
+    这将同时安装 `funasr` 等核心依赖。
 
-查看帮助信息：`python scripts/nextalk.py --help`
+### 2. 配置
 
-更多详细信息请查看[用户指南](docs/user_guide.md)获取使用说明、配置选项和故障排除方法。
+-   将 `config/default_config.ini` 复制到 `~/.config/nextalk/config.ini`。
+-   根据您的需求编辑 `~/.config/nextalk/config.ini` (详情参考用户指南和安装指南)。
+
+### 3. 运行 NexTalk
+
+**启动服务器:**
+在项目根目录下打开一个终端，激活虚拟环境后运行：
+```bash
+python scripts/run_server.py
+```
+服务器将加载模型并开始监听 (默认为 `0.0.0.0:8000`)。
+
+**启动客户端:**
+在项目根目录下打开另一个终端，激活虚拟环境后运行：
+```bash
+python scripts/run_client.py
+```
+客户端将连接到服务器，之后您可以使用热键 (默认为 `Ctrl+Shift+Space`) 进行语音识别。
+
+## WebSocket API (`ws://<host>:<port>/ws/stream`)
+
+客户端通过此 WebSocket 端点与服务器进行通信。
+
+-   **主要交互流程**:
+    1.  客户端连接到服务器的 `/ws/stream` 端点。
+    2.  连接成功后，客户端可以通过热键等方式触发音频捕获。
+    3.  客户端将捕获到的音频数据块 (通常为 PCM 16kHz, 16-bit, 单声道) 实时流式发送给服务器。
+    4.  服务器 (`FunASRModel`) 处理音频流，进行 VAD、ASR 和标点恢复。
+    5.  服务器将识别结果 (可能是中间和最终结果) 以 JSON 消息的形式发送回客户端。
+
+-   **接收识别结果示例**:
+    客户端收到的消息通常为 JSON 格式，可以解析获取识别文本。
+    ```javascript
+    // 客户端 JavaScript 示例
+    socket.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "transcription" && data.text) {
+          console.log("识别结果:", data.text);
+          if (data.is_final) {
+            console.log("这是最终结果。");
+            // 将 data.text 用于文本注入或其他处理
+          }
+        } else if (data.type === "status") {
+          console.log("服务器状态:", data.status, data.message || "");
+        } else if (data.type === "error") {
+          console.error("服务器错误:", data.message);
+        }
+      } catch (e) {
+        console.error("无法解析收到的消息:", event.data, e);
+      }
+    };
+    ```
+    实际的数据模型定义在 `nextalk_shared/data_models.py` 中 (例如 `TranscriptionResponse`, `StatusUpdate`, `ErrorMessage`)。
+
+-   **控制命令与参数配置**:
+    当前版本主要通过服务器启动时的配置文件 (`config.ini`) 和命令行参数进行 FunASR 模型及相关参数的配置。通过 WebSocket 进行的动态控制命令（如运行时切换模型、动态修改热词等）如果存在，则封装在内部通信协议中，并未作为主要的公开 API 特性在本文档中突出。主要交互是音频流和转录结果。
+
+## `scripts/run_server.py` 主要命令行参数
+
+以下是启动服务器脚本 `scripts/run_server.py` 的一些常用参数：
+
+```
+usage: run_server.py [-h] [--host HOST] [--port PORT]
+                     [--log-level {debug,info,warning,error,critical}]
+                     [--log-file LOG_FILE]
+                     [--model-path MODEL_PATH] [--device {cpu,cuda}]
+                     [--vad-sensitivity {1,2,3}]
+                     [--enable-funasr-update] [--print-config] [--skip-preload]
+                     [--asr-model ASR_MODEL] [--asr-model-revision ASR_MODEL_REVISION]
+                     [--asr-model-streaming ASR_MODEL_STREAMING]
+                     [--asr-model-streaming-revision ASR_MODEL_STREAMING_REVISION]
+                     [--vad-model VAD_MODEL] [--vad-model-revision VAD_MODEL_REVISION]
+                     [--punc-model PUNC_MODEL] [--punc-model-revision PUNC_MODEL_REVISION]
+                     [--ngpu NGPU] [--ncpu NCPU]
+                     [--model-hub {auto,modelscope,hf}]
+                     # ... 可能还有其他 FunASR 直接参数通过 kwargs 传递 ...
+```
+-   `--host`: 服务器监听的主机地址 (默认: `0.0.0.0`)。
+-   `--port`: 服务器监听的端口 (默认: `8000`)。
+-   `--device`: 计算设备 (`cpu` 或 `cuda`, 默认: `cuda`)。
+-   `--log-level`: 日志级别。
+-   `--model-path`: 模型缓存/搜索路径。
+-   `--asr-model`: 主要的 FunASR ASR 模型名称。
+-   `--vad-model`: VAD 模型名称。
+-   `--punc-model`: 标点模型名称。
+-   `--skip-preload`: 跳过模型预加载。
+-   `--print-config`: 打印配置并退出。
+
+更详细的参数说明和配置方法，请参考 [用户指南 (docs/user_guide.md)](docs/user_guide.md) 和 [安装指南 (docs/setup_guide.md)](docs/setup_guide.md)。
 
 ## 贡献
 
-欢迎贡献代码、报告问题或提出改进建议！请查看[开发者指南](docs/developer_guide.md)了解开发环境设置、代码组织和贡献流程。
-
-项目架构详情请参阅[架构文档](docs/architecture.md)。
-
-## 许可证
-
-本项目采用MIT许可证 - 详情请查看[LICENSE](LICENSE)文件。 
+欢迎参与贡献！请阅读 [开发者指南 (docs/developer_guide.md)](docs/developer_guide.md) 了解如何设置开发环境、代码风格和贡献流程。
