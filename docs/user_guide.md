@@ -1,333 +1,333 @@
-# NexTalk 用户指南
+# NexTalk User Guide
 
-## 目录
+## Table of Contents
 
-- [NexTalk 用户指南](#nextalk-用户指南)
-  - [目录](#目录)
-  - [基本使用](#基本使用)
-    - [启动方式](#启动方式)
-      - [使用专用启动脚本 (推荐)](#使用专用启动脚本推荐)
-      - [作为Python模块启动](#作为python模块启动)
-    - [热键操作](#热键操作)
-    - [转录控制](#转录控制)
-    - [系统托盘图标](#系统托盘图标)
-    - [通知系统](#通知系统)
-  - [配置选项](#配置选项)
-    - [\[Client\] 部分 (`~/.config/nextalk/config.ini`)](#client-部分-confignextalkconfigini)
-    - [\[Server\] 部分 (`~/.config/nextalk/config.ini`)](#server-部分-confignextalkconfigini)
-    - [模型选择](#模型选择)
-    - [音频设置](#音频设置)
-    - [界面设置](#界面设置)
-  - [FunASR 高级功能](#funasr-高级功能)
-    - [识别模式 (隐式)](#识别模式-隐式)
-    - [热词优化](#热词优化)
-    - [标点恢复](#标点恢复)
-    - [语音活动检测 (VAD)](#语音活动检测-vad)
-  - [高级功能与定制](#高级功能与定制)
-    - [多语言支持](#多语言支持)
-    - [性能调优 (服务器端)](#性能调优-服务器端)
-    - [客户端行为定制](#客户端行为定制)
-    - [关于"简化版客户端"](#关于简化版客户端)
-  - [其他资源](#其他资源)
+- [NexTalk User Guide](#nextalk-user-guide)
+  - [Table of Contents](#table-of-contents)
+  - [Basic Usage](#basic-usage)
+    - [Launch Methods](#launch-methods)
+      - [Using Dedicated Launch Scripts (Recommended)](#using-dedicated-launch-scripts-recommended)
+      - [Launching as Python Module (Developer/Alternative)](#launching-as-python-module-developeralternative)
+    - [Hotkey Operations](#hotkey-operations)
+    - [Transcription Control](#transcription-control)
+    - [System Tray Icon](#system-tray-icon)
+    - [Notification System](#notification-system)
+  - [Configuration Options](#configuration-options)
+    - [\[Client\] Section (`~/.config/nextalk/config.ini`)](#client-section-confignextalkconfigini)
+    - [\[Server\] Section (`~/.config/nextalk/config.ini`)](#server-section-confignextalkconfigini)
+    - [Model Selection](#model-selection)
+    - [Audio Settings](#audio-settings)
+    - [UI Settings](#ui-settings)
+  - [FunASR Advanced Features](#funasr-advanced-features)
+    - [Recognition Modes (Implicit)](#recognition-modes-implicit)
+    - [Hotword Optimization](#hotword-optimization)
+    - [Punctuation Restoration](#punctuation-restoration)
+    - [Voice Activity Detection (VAD)](#voice-activity-detection-vad)
+  - [Advanced Features \& Customization](#advanced-features--customization)
+    - [Multilingual Support](#multilingual-support)
+    - [Performance Tuning (Server Side)](#performance-tuning-server-side)
+    - [Client Behavior Customization](#client-behavior-customization)
+    - [About "Simple Client"](#about-simple-client)
+  - [Additional Resources](#additional-resources)
 
-## 基本使用
+## Basic Usage
 
-### 启动方式
+### Launch Methods
 
-NexTalk 提供了灵活的启动方式。推荐使用项目 `scripts` 目录下的启动脚本。
+NexTalk provides flexible launch options. We recommend using the launch scripts in the project's `scripts` directory.
 
-#### 使用专用启动脚本 (推荐)
+#### Using Dedicated Launch Scripts (Recommended)
 
-**1. 启动服务器:**
+**1. Launch Server:**
 
-打开一个终端，进入 NexTalk 项目根目录，然后运行 (确保您的虚拟环境已激活)：
+Open a terminal, navigate to NexTalk project root directory, then run (ensure your virtual environment is activated):
 
 ```bash
 python scripts/run_server.py
 ```
 
-服务器将开始运行，并监听配置文件中指定的地址和端口。首次运行时，如果配置的 FunASR 模型尚未下载，服务器会尝试自动下载和缓存它们。
+The server will start running and listen on the address and port specified in the configuration file. On first run, if the configured FunASR models aren't downloaded yet, the server will attempt to download and cache them automatically.
 
-*常用服务器启动参数 (`scripts/run_server.py`):*
-*   `--host <ip_address>`: 设置服务器监听的主机地址 (默认: `0.0.0.0`)。
-*   `--port <port_number>`: 设置服务器监听的端口 (默认: `8000`)。
-*   `--device <cpu|cuda>`: 选择计算设备 (默认: `cuda`, 如果可用)。
-*   `--model-path <path>`: 指定模型缓存/搜索路径。
-*   `--log-level <debug|info|warning|error>`: 设置日志级别。
-*   `--debug`: 快速启用调试日志级别。
-*   `--log-file <path/to/log>`: 将日志输出到文件。
-*   `--print-config`: 打印当前配置并退出，不启动服务器。
-*   `--skip-preload`: 跳过模型预加载以加快服务器启动速度 (但首次识别请求会较慢)。
+*Common server launch parameters (`scripts/run_server.py`):*
+- `--host <ip_address>`: Set server listening host address (default: `0.0.0.0`)
+- `--port <port_number>`: Set server listening port (default: `8000`)
+- `--device <cpu|cuda>`: Select compute device (default: `cuda` if available)
+- `--model-path <path>`: Specify model cache/search path
+- `--log-level <debug|info|warning|error>`: Set log level
+- `--debug`: Quickly enable debug log level
+- `--log-file <path/to/log>`: Output logs to file
+- `--print-config`: Print current config and exit without starting server
+- `--skip-preload`: Skip model preloading to speed up server startup (but first recognition request will be slower)
 
-**2. 启动客户端:**
+**2. Launch Client:**
 
-打开另一个终端，进入 NexTalk 项目根目录，然后运行 (确保您的虚拟环境已激活)：
+Open another terminal, navigate to NexTalk project root directory, then run (ensure your virtual environment is activated):
 
 ```bash
 python scripts/run_client.py
 ```
 
-客户端将尝试连接到服务器。连接成功后，您应该会看到系统托盘图标，并可以通过热键开始使用语音识别。
+The client will attempt to connect to the server. Upon successful connection, you should see the system tray icon and can start using voice recognition via hotkeys.
 
-*常用客户端启动参数 (`scripts/run_client.py`):*
-*   `--server-host <ip_address>`: 要连接的服务器主机地址 (覆盖配置文件中的 `server_url` 主机部分)。
-*   `--server-port <port_number>`: 要连接的服务器端口 (覆盖配置文件中的 `server_url` 端口部分)。
-*   `--debug`: 快速启用调试日志级别。
-*   `--log-file <path/to/log>`: 将日志输出到文件。
+*Common client launch parameters (`scripts/run_client.py`):*
+- `--server-host <ip_address>`: Server host address to connect to (overrides `server_url` host in config)
+- `--server-port <port_number>`: Server port to connect to (overrides `server_url` port in config)
+- `--debug`: Quickly enable debug log level
+- `--log-file <path/to/log>`: Output logs to file
 
-#### 作为 Python 模块启动 (开发者/备选)
+#### Launching as Python Module (Developer/Alternative)
 
-您也可以直接将 NexTalk 作为 Python 模块运行：
+You can also run NexTalk directly as Python module:
 
-**启动服务器:**
+**Launch Server:**
 ```bash
-# (激活虚拟环境后)
+# (After activating virtual environment)
 python -m nextalk_server.main
 ```
-或者更底层地 (通常用于开发 FastAPI 应用):
+Or at lower level (typically for FastAPI app development):
 ```python
-# (在Python脚本中)
+# (In Python script)
 # from nextalk_server.app import app
 # import uvicorn
-# uvicorn.run(app, host="0.0.0.0", port=8000) # 根据需要调整 host 和 port
+# uvicorn.run(app, host="0.0.0.0", port=8000) # Adjust host and port as needed
 ```
 
-**启动客户端:**
+**Launch Client:**
 ```bash
-# (激活虚拟环境后)
+# (After activating virtual environment)
 python -m nextalk_client.main
 ```
 
-### 热键操作
+### Hotkey Operations
 
-NexTalk使用全局热键激活语音识别。默认热键为：
+NexTalk uses global hotkeys to activate voice recognition. Default hotkeys are:
 
-- `Ctrl+Shift+Space`: 开始/停止语音识别
-- `Esc`: 取消当前转录
+- `Ctrl+Shift+Space`: Start/stop voice recognition
+- `Esc`: Cancel current transcription
 
-您可以在配置文件中自定义这些热键。
+You can customize these hotkeys in the configuration file.
 
-### 转录控制
+### Transcription Control
 
-NexTalk提供了多种控制转录过程的方式：
+NexTalk provides multiple transcription control modes:
 
-- **自动模式**: 自动检测语音开始和结束，无需手动控制
-- **手动模式**: 按下热键开始录音，再次按下停止并转录
-- **持续模式**: 连续录音并实时转录，直到手动停止
+- **Auto Mode**: Automatically detects speech start/end without manual control
+- **Manual Mode**: Press hotkey to start recording, press again to stop and transcribe
+- **Continuous Mode**: Continuously records and transcribes in real-time until manually stopped
 
-### 系统托盘图标
+### System Tray Icon
 
-NexTalk 启动后，会在系统托盘区域显示一个图标。通过右键点击托盘图标，您可以：
+After NexTalk launches, it displays an icon in the system tray area. Right-clicking the tray icon allows you to:
 
-- **查看当前状态**：图标会指示 NexTalk 是否正在监听、处理或空闲。
-- **切换识别模型**：快速在已配置的模型间进行切换。
-- **打开设置**（如果未来支持）：快速访问配置选项。
-- **退出程序**：安全关闭 NexTalk 客户端和服务器。
+- **View current status**: Icon indicates whether NexTalk is listening, processing or idle
+- **Switch recognition models**: Quickly switch between configured models
+- **Open settings** (if supported in future): Quick access to configuration options
+- **Exit program**: Safely shutdown NexTalk client and server
 
-### 通知系统
+### Notification System
 
-NexTalk 会通过桌面通知向您反馈重要信息，例如：
+NexTalk provides desktop notifications for important information, such as:
 
-- **错误提示**：如连接服务器失败、模型加载失败等。
-- **状态变更**：如开始监听、停止监听、模型切换成功等。
-- **转录结果**（可选）：部分关键转录信息或提示。
+- **Error alerts**: E.g., failed server connection, model loading failures
+- **Status changes**: E.g., started listening, stopped listening, successful model switch
+- **Transcription results** (optional): Key transcription information or prompts
 
-通知的显示可以通过配置文件中的 `show_notifications` 选项来控制。如果您不希望看到任何桌面通知，可以将此选项设置为 `false`。
+Notification display can be controlled via the `show_notifications` option in config file. Set to `false` to disable all desktop notifications.
 
-## 配置选项
+## Configuration Options
 
-NexTalk 的主要配置通过位于用户目录下的 `config.ini` 文件进行管理。您需要先将项目中的 `config/default_config.ini` 复制到 `~/.config/nextalk/config.ini`，然后根据需要进行修改。
+NexTalk's main configuration is managed via `config.ini` file in user directory. You need to copy `config/default_config.ini` to `~/.config/nextalk/config.ini` first, then modify as needed.
 
-命令行参数可以覆盖部分配置文件中的设置。
+Command line arguments can override some config file settings.
 
-### [Client] 部分 (`~/.config/nextalk/config.ini`)
+### [Client] Section (`~/.config/nextalk/config.ini`)
 
--   `hotkey = ctrl+shift+space`
-    *   定义激活/停用语音识别的全局热键组合。支持如 `alt+z`, `ctrl+alt+s` 等格式。请参考 `pynput` 文档了解可用组合。
--   `server_url = ws://127.0.0.1:8000/ws/stream`
-    *   指定 NexTalk 服务器的完整 WebSocket URL。如果服务器在另一台机器或使用 SSL (wss://)，请相应修改。
--   `show_notifications = true`
-    *   是否显示桌面通知。设置为 `false` 将禁用所有状态变更和错误通知。
--   `use_ssl = false`
-    *   如果 `server_url` 使用 `wss://`，此项通常会自动处理，但可以明确设置为 `true` 以强制 SSL 相关行为。
--   `enable_focus_window = true`
-    *   当使用 `xdotool` 的文本注入失败时，是否启用备选的 `SimpleWindow` (一个置顶的简单文本窗口) 来显示识别结果。设置为 `false` 将禁用此备选方案。
--   `focus_window_duration = 5`
-    *   如果 `enable_focus_window` 为 `true`，此选项设置 `SimpleWindow` 显示文本的持续时间（秒），之后窗口会自动淡出或隐藏。
+- `hotkey = ctrl+shift+space`
+  * Defines global hotkey combination to activate/deactivate voice recognition. Supports formats like `alt+z`, `ctrl+alt+s`. Refer to `pynput` docs for available combinations.
+- `server_url = ws://127.0.0.1:8000/ws/stream`
+  * Specifies full WebSocket URL for NexTalk server. Modify if server is on another machine or using SSL (wss://).
+- `show_notifications = true`
+  * Whether to show desktop notifications. Set to `false` to disable all status change and error notifications.
+- `use_ssl = false`
+  * If `server_url` uses `wss://`, this is typically handled automatically but can be explicitly set to `true` to enforce SSL behavior.
+- `enable_focus_window = true`
+  * When `xdotool` text injection fails, whether to enable fallback `SimpleWindow` (a topmost simple text window) to display recognition results. Set to `false` to disable this fallback.
+- `focus_window_duration = 5`
+  * If `enable_focus_window` is `true`, this sets how long (seconds) the `SimpleWindow` displays text before automatically fading/hiding.
 
-### [Server] 部分 (`~/.config/nextalk/config.ini`)
+### [Server] Section (`~/.config/nextalk/config.ini`)
 
--   `host = 0.0.0.0`
-    *   服务器监听的主机地址。`0.0.0.0` 表示监听所有可用的网络接口；`127.0.0.1` 表示仅监听本地回环地址。
--   `port = 8000`
-    *   服务器监听的 TCP 端口。
--   `device = cuda`
-    *   FunASR 模型使用的主要计算设备。可选值为 `cuda` (推荐，使用 NVIDIA GPU) 或 `cpu`。如果选择 `cuda` 但无可用 GPU，FunASR 通常会自动回退到 `cpu` (可能伴有警告)。
--   `ngpu = 1`
-    *   (FunASR 参数) 当 `device = cuda` 时，指定使用的 GPU 数量。通常设置为 `1`。
--   `ncpu = 4`
-    *   (FunASR 参数) FunASR 在执行某些操作时可利用的 CPU 核心数。增加此值可能有助于 CPU 密集型任务的处理，但需根据实际硬件调整。
--   `model_path = ~/.cache/NexTalk/funasr_models` (示例, 实际默认可能由FunASR内部决定)
-    *   (可选) 指定 FunASR 模型下载和缓存的根目录。如果未设置或 FunASR 无法识别，FunASR 通常会使用其内部默认的缓存路径 (如 `~/.cache/modelscope/hub`)。`scripts/run_server.py` 也支持通过 `--model-path` 命令行参数设置此路径。
--   `asr_model = iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`
-    *   指定主要的 FunASR 语音识别 (ASR) 模型。这是进行语音转文本的核心模型。您可以从 ModelScope (modelscope.cn) 查找可用的 FunASR 模型名称。例如，`FUNASR_OFFLINE_MODEL` 或 `FUNASR_ONLINE_MODEL` 在 `nextalk_shared/constants.py` 中可能定义了推荐的默认值。
--   `asr_model_revision = None`
-    *   (可选) 指定 ASR 模型的特定版本 (例如 git commit hash 或分支名)。如果为 `None` 或未指定，则使用模型的默认/最新版本。
--   `asr_model_streaming = None`
-    *   (可选) 如果您希望为流式识别使用一个与 `asr_model` 不同的、专门优化的流式模型，请在此处指定其名称。如果 `asr_model` 本身已支持高效流式处理，则此项可能不需要或应与 `asr_model` 相同。
--   `asr_model_streaming_revision = None`
-    *   (可选) `asr_model_streaming` 的特定版本。
--   `vad_model = iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`
-    *   指定 FunASR 语音活动检测 (VAD) 模型。用于在音频流中检测有效的语音片段，过滤背景噪音和静默。`nextalk_shared/constants.py` 中的 `FUNASR_VAD_MODEL` 可能有默认值。
--   `vad_model_revision = None`
-    *   (可选) VAD 模型的特定版本。
--   `punc_model = iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`
-    *   指定 FunASR 标点恢复模型。用于在 ASR 输出的原始文本中自动添加标点符号。`nextalk_shared/constants.py` 中的 `FUNASR_PUNC_MODEL` 可能有默认值。
--   `punc_model_revision = None`
-    *   (可选) 标点模型的特定版本。
--   `funasr_hotwords =`
-    *   (可选) 热词列表，用于提高特定词汇或短语的识别准确率。格式通常是每个热词占一行，或者以特定方式分隔。具体格式请参考 FunASR 文档或 `FunASRModel` 中的实现。示例：
-        ```ini
-        funasr_hotwords = NexTalk
-                          FunASR
-                          自定义术语
-        ```
+- `host = 0.0.0.0`
+  * Server listening host address. `0.0.0.0` listens on all available network interfaces; `127.0.0.1` listens only on local loopback.
+- `port = 8000`
+  * Server listening TCP port.
+- `device = cuda`
+  * Primary compute device for FunASR models. Options: `cuda` (recommended, uses NVIDIA GPU) or `cpu`. If `cuda` is selected but no GPU available, FunASR typically falls back to `cpu` (with warning).
+- `ngpu = 1`
+  * (FunASR parameter) When `device = cuda`, specifies number of GPUs to use. Typically set to `1`.
+- `ncpu = 4`
+  * (FunASR parameter) Number of CPU cores FunASR can utilize for certain operations. Increasing may help CPU-intensive tasks but should be adjusted based on actual hardware.
+- `model_path = ~/.cache/NexTalk/funasr_models` (example, actual default may be determined by FunASR)
+  * (Optional) Specifies root directory for FunASR model download/cache. If unset or unrecognized by FunASR, it typically uses internal default cache path (e.g., `~/.cache/modelscope/hub`). `scripts/run_server.py` also supports setting this via `--model-path` command line argument.
+- `asr_model = iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch`
+  * Specifies primary FunASR speech recognition (ASR) model. This is the core model for speech-to-text conversion. You can find available FunASR model names on ModelScope (modelscope.cn). For example, `FUNASR_OFFLINE_MODEL` or `FUNASR_ONLINE_MODEL` in `nextalk_shared/constants.py` may define recommended defaults.
+- `asr_model_revision = None`
+  * (Optional) Specifies specific version of ASR model (e.g., git commit hash or branch name). If `None` or unspecified, uses model's default/latest version.
+- `asr_model_streaming = None`
+  * (Optional) If you want to use a different, streaming-optimized model for streaming recognition, specify its name here. If `asr_model` itself supports efficient streaming, this may not be needed or should match `asr_model`.
+- `asr_model_streaming_revision = None`
+  * (Optional) Specific version for `asr_model_streaming`.
+- `vad_model = iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`
+  * Specifies FunASR voice activity detection (VAD) model. Used to detect valid speech segments in audio streams, filtering background noise and silence. `nextalk_shared/constants.py`'s `FUNASR_VAD_MODEL` may have default value.
+- `vad_model_revision = None`
+  * (Optional) Specific version for VAD model.
+- `punc_model = iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`
+  * Specifies FunASR punctuation restoration model. Automatically adds punctuation marks (commas, periods, question marks etc.) to raw text output from ASR engine, making it more natural and readable.
+- `punc_model_revision = None`
+  * (Optional) Specific version for punctuation model.
+- `funasr_hotwords =`
+  * (Optional) Hotword list to improve recognition accuracy for specific words/phrases. Typically one hotword per line or specific delimiter. Refer to FunASR docs or `FunASRModel` implementation for exact format. Example:
+    ```ini
+    funasr_hotwords = NexTalk
+                      FunASR
+                      CustomTerm
+    ```
 
-**重要提示**: 上述列表是对主要配置项的说明。部分配置项的默认值可能在代码中 (如 `nextalk_server/config.py`, `nextalk_client/config/loader.py`, `nextalk_shared/constants.py`) 硬编码或有更复杂的确定逻辑。请务必参考 `config/default_config.ini` 文件作为最权威的配置模板，并结合代码行为来理解每个选项的精确作用。
+**Important Note**: Above list explains main configuration items. Some defaults may be hardcoded in code (e.g., `nextalk_server/config.py`, `nextalk_client/config/loader.py`, `nextalk_shared/constants.py`). Always refer to `config/default_config.ini` as authoritative config template, and consult code behavior to understand each option's exact effect.
 
-### 模型选择
+### Model Selection
 
-您可以在配置文件中选择不同的语音识别模型：
+You can select different speech recognition models in config file:
 
 ```ini
 [server]
-# Whisper模型可选值: tiny, base, small, medium, large, large-v3, distil-large-v3
-# FunASR模型可选值: paraformer-zh, paraformer-zh-streaming, SenseVoiceSmall
+# Whisper model options: tiny, base, small, medium, large, large-v3, distil-large-v3
+# FunASR model options: paraformer-zh, paraformer-zh-streaming, SenseVoiceSmall
 default_model = large-v3
-# 可选值: cpu, cuda
+# Options: cpu, cuda
 device = cuda
 ```
 
-Whisper模型的对比：
-- `tiny`: 最小，速度最快，精度最低
-- `base`/`small`: 平衡速度和精度
-- `medium`/`large`: 高精度，但需要更多计算资源
-- `large-v3`/`distil-large-v3`: 最新模型，支持更多语言
+Whisper model comparison:
+- `tiny`: Smallest, fastest, lowest accuracy
+- `base`/`small`: Balanced speed and accuracy
+- `medium`/`large`: High accuracy but more resource-intensive
+- `large-v3`/`distil-large-v3`: Latest models supporting more languages
 
-FunASR模型的对比：
-- `paraformer-zh`: 标准中文模型，精度较高，速度适中
-- `paraformer-zh-streaming`: 流式中文模型，实时性好，适合持续转录
-- `SenseVoiceSmall`: 小型通用模型，资源占用少，速度快
+FunASR model comparison:
+- `paraformer-zh`: Standard Chinese model, higher accuracy, moderate speed
+- `paraformer-zh-streaming`: Streaming Chinese model, better real-time performance
+- `SenseVoiceSmall`: Small general-purpose model, low resource usage, fast
 
-选择模型时的建议：
-- 对于中文识别，推荐使用FunASR的`paraformer-zh`或`paraformer-zh-streaming`模型
-- 对于英文或多语言识别，推荐使用Whisper的`large-v3`或`medium`模型
-- 在资源受限的设备上，可以选择较小的模型，如Whisper的`small`或FunASR的`SenseVoiceSmall`
+Selection recommendations:
+- For Chinese recognition, recommend FunASR's `paraformer-zh` or `paraformer-zh-streaming`
+- For English/multilingual, recommend Whisper's `large-v3` or `medium`
+- On resource-constrained devices, choose smaller models like Whisper's `small` or FunASR's `SenseVoiceSmall`
 
-除了通过配置文件修改，您还可以通过**系统托盘图标的菜单**快速切换已在服务器端加载或支持的识别模型。
+Besides config file, you can quickly switch between already-loaded or server-supported recognition models via the **system tray icon menu**.
 
-### 音频设置
+### Audio Settings
 
-调整音频设置以获得最佳识别效果：
+Adjust audio settings for optimal recognition:
 
 ```ini
 [audio]
-# 音频后端选择 (pulseaudio, alsa, portaudio)
+# Audio backend (pulseaudio, alsa, portaudio)
 audio_backend = pulseaudio
-# 采样率 (16000推荐)
+# Sample rate (16000 recommended)
 sample_rate = 16000
-# 声道数 (1=单声道)
+# Channels (1=mono)
 channels = 1
 ```
 
-### 界面设置
+### UI Settings
 
-客户端界面和行为设置：
+Client UI and behavior settings:
 
 ```ini
 [client]
-# 服务器连接设置
+# Server connection
 server_host = 127.0.0.1
 server_port = 8765
-# 转录结果显示时间(秒)
+# Transcription result display time (seconds)
 notification_timeout = 5
-# 自动输入文本到当前活动窗口
+# Auto-type text to active window
 auto_type = true
-# 是否启用焦点窗口作为文本注入失败时的备选方案 (true/false)
+# Enable focus window as fallback when text injection fails (true/false)
 enable_focus_window = true
-# 焦点窗口显示时长（秒）
+# Focus window display duration (seconds)
 focus_window_duration = 5
 ```
 
-**焦点窗口 (Focus Window)**:
+**Focus Window**:
 
-当 `auto_type` 设置为 `true` 但 `xdotool` 文本注入失败时，如果 `enable_focus_window` 也为 `true`，NexTalk 会尝试在一个置顶的半透明"焦点窗口"中显示转录的文本。这个窗口通常出现在屏幕底部，并在 `focus_window_duration` 指定的时间后自动淡出。这确保了即使在无法直接输入到目标应用的情况下，您仍然可以看到识别结果。
+When `auto_type` is `true` but `xdotool` text injection fails, if `enable_focus_window` is also `true`, NexTalk will attempt to display transcribed text in a topmost semi-transparent "focus window". This window typically appears at screen bottom and automatically fades after `focus_window_duration` seconds. Ensures you can still see recognition results even when direct input to target app fails.
 
-## FunASR 高级功能
+## FunASR Advanced Features
 
-NexTalk 通过服务器端的 `FunASRModel` 封装了 FunASR 的多种高级功能。这些功能主要通过服务器配置文件 (`~/.config/nextalk/config.ini` 的 `[Server]` 部分) 进行控制。
+NexTalk encapsulates various FunASR advanced features via server-side `FunASRModel`. These are primarily controlled through server config file (`~/.config/nextalk/config.ini` [Server] section).
 
-### 识别模式 (隐式)
+### Recognition Modes (Implicit)
 
-FunASR 支持多种内部工作模式，例如离线 (整句识别) 和在线 (流式识别)。NexTalk 的 `FunASRModel` 会根据加载的模型 (例如，通过 `asr_model` 和 `asr_model_streaming` 配置项指定的模型) 和接收音频数据的方式 (单个完整块 vs. 连续小块) 来隐式地利用这些模式。
+FunASR supports multiple internal modes like offline (full-sentence recognition) and online (streaming). NexTalk's `FunASRModel` implicitly utilizes these based on loaded models (e.g., specified via `asr_model` and `asr_model_streaming` configs) and audio data reception method (single complete chunk vs. continuous small chunks).
 
--   **流式处理**: 当客户端持续发送小的音频块时，服务器端的 `FunASRModel` (如果加载了流式模型) 会进行流式处理，并可能实时或准实时地返回中间和最终识别结果。
--   **离线处理**: 如果接收到较大或完整的音频片段，或者配置了仅支持离线的模型，则会进行更偏向整句的识别处理，这通常能带来更高的准确性但延迟也相应增加。
+- **Streaming**: When client sends continuous small audio chunks, server-side `FunASRModel` (if streaming model loaded) performs streaming processing, potentially returning intermediate/final results in real/near-real time.
+- **Offline**: If receiving larger/complete audio segments, or if configured with offline-only model, performs more sentence-oriented recognition, typically more accurate but with higher latency.
 
-用户通常不需要直接切换这些底层模式，而是通过选择合适的 FunASR 模型 (在服务器配置中) 和使用方式来获得期望的识别行为。
+Users generally don't need to directly switch these underlying modes, but rather select appropriate FunASR models (in server config) and usage patterns to get desired recognition behavior.
 
-### 热词优化
+### Hotword Optimization
 
-通过在服务器配置文件的 `[Server]` 部分设置 `funasr_hotwords`，可以提供一个热词列表，以提高特定词汇、短语或专业术语的识别准确率。FunASR 会在识别过程中对这些热词给予更高的权重。
+By setting `funasr_hotwords` in server config [Server] section, you can provide a hotword list to improve recognition accuracy for specific words, phrases or technical terms. FunASR gives these hotwords higher weight during recognition.
 
-**配置示例 (`config.ini`):**
+**Config Example (`config.ini`):**
 ```ini
 [Server]
-# ... 其他服务器配置 ...
+# ... other server configs ...
 funasr_hotwords =
     NexTalk
     FunASR Pipeline
-    自定义产品名称
-    领域特定术语
+    CustomProductName
+    DomainSpecificTerm
 ```
-每行一个热词或短语。请参考 FunASR 的官方文档以获取关于热词格式和最佳实践的更多信息。
+One hotword/phrase per line. Refer to FunASR official docs for more on hotword formats and best practices.
 
-### 标点恢复
+### Punctuation Restoration
 
-通过在服务器配置中指定 `punc_model` (例如, `iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`)，可以启用自动标点恢复功能。FunASR 会在 ASR 引擎输出的原始文本基础上自动添加逗号、句号、问号等标点符号，使输出的文本更自然、更易读。
+By specifying `punc_model` in server config (e.g., `iic/punc_ct-transformer_zh-cn-common-vocab272727-pytorch`), you enable automatic punctuation restoration. FunASR automatically adds commas, periods, question marks etc. to raw ASR output text, making it more natural and readable.
 
-如果不需要标点恢复，可以将 `punc_model` 配置项留空或注释掉。
+If punctuation restoration isn't needed, leave `punc_model` config empty or commented out.
 
-### 语音活动检测 (VAD)
+### Voice Activity Detection (VAD)
 
-服务器配置中的 `vad_model` (例如, `iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`) 指定了用于语音活动检测的模型。VAD 帮助系统区分语音和非语音片段（如静默、背景噪音），只将包含语音的音频数据传递给 ASR 引擎。这可以减少不必要的计算，提高识别效率，并在某些情况下改善识别准确性。
+Server config's `vad_model` (e.g., `iic/speech_fsmn_vad_zh-cn-16k-common-pytorch`) specifies model for voice activity detection. VAD helps system distinguish speech from non-speech segments (like silence, background noise), only passing speech-containing audio to ASR engine. This reduces unnecessary computation, improves recognition efficiency, and in some cases enhances accuracy.
 
-## 高级功能与定制
+## Advanced Features & Customization
 
-### 多语言支持
+### Multilingual Support
 
-FunASR 本身支持多种语言的识别。NexTalk 对多语言的支持主要取决于您在服务器配置中为 `asr_model` (以及相关的 VAD 和标点模型，如果需要特定语言版本)选择了哪个 FunASR 模型。
+FunASR natively supports multiple languages. NexTalk's multilingual support mainly depends on which FunASR model you select for `asr_model` (and related VAD/punctuation models if language-specific versions needed) in server config.
 
-例如，要识别英文，您需要选择一个英文的 FunASR ASR 模型。要识别中文，则选择中文模型。请查阅 ModelScope 上的 FunASR 模型列表，找到适合您目标语言的模型，并在 `config.ini` 中进行配置。
+For example, to recognize English, you need an English FunASR ASR model. For Chinese, select Chinese model. Check ModelScope's FunASR model list for models suited to your target language, and configure in `config.ini`.
 
-### 性能调优 (服务器端)
+### Performance Tuning (Server Side)
 
--   **设备选择 (`device`)**: 对于生产环境或追求低延迟的场景，强烈建议使用 `cuda` (NVIDIA GPU)。CPU 推理会慢很多。
--   **模型选择**: 不同的 FunASR 模型在速度、准确率和资源消耗之间有不同的权衡。大型模型通常更准确但更慢且占用更多资源。流式模型通常延迟更低。
--   **预加载与预热**: `scripts/run_server.py` 默认会预加载和预热模型，这会增加服务器启动时间，但能显著减少首次识别请求的延迟。对于开发或不需要立即响应的场景，可以考虑使用 `--skip-preload` 参数启动服务器。
--   **CPU核心数 (`ncpu`)**: 如果在 CPU 上运行或 GPU 性能有限，适当调整 `ncpu` 可能有助于提升 FunASR 的处理速度，但这需要根据具体硬件进行测试。
+- **Device selection (`device`)**: For production or low-latency scenarios, strongly recommend `cuda` (NVIDIA GPU). CPU inference is much slower.
+- **Model selection**: Different FunASR models trade off between speed, accuracy and resource usage. Larger models typically more accurate but slower/resource-heavy. Streaming models usually lower latency.
+- **Preloading & warmup**: `scripts/run_server.py` preloads/warms up models by default, increasing server startup time but significantly reducing first-request latency. For development or non-immediate-response needs, consider `--skip-preload` server launch.
+- **CPU cores (`ncpu`)**: When running on CPU or with limited GPU, adjusting `ncpu` may help improve FunASR processing speed, but requires testing on specific hardware.
 
-### 客户端行为定制
+### Client Behavior Customization
 
--   **热键 (`hotkey`)**: 自定义热键以适应您的工作流程。
--   **注入失败备选 (`enable_focus_window`, `focus_window_duration`)**: 配置当 `xdotool` 注入失败时，简单文本窗口的显示行为。
+- **Hotkeys (`hotkey`)**: Customize hotkeys to fit your workflow.
+- **Injection fallback (`enable_focus_window`, `focus_window_duration`)**: Configure simple text window behavior when `xdotool` injection fails.
 
-### 关于"简化版客户端"
+### About "Simple Client"
 
-旧版文档中可能提及 `use_simple_client` 配置。请检查当前 `client_logic.py` 和相关UI代码，确认此选项是否仍然有效，或者其功能已被其他机制替代或移除。如果不再使用，应忽略此配置。
+Older docs may mention `use_simple_client` config. Check current `client_logic.py` and related UI code to confirm if this option remains valid, or if its functionality has been replaced/removed. If no longer used, ignore this config.
 
-## 其他资源
+## Additional Resources
 
-- 安装指南：查看 [setup_guide.md](setup_guide.md) 获取完整的安装说明
-- 项目架构：查看 [architecture.md](architecture.md) 了解NexTalk的技术架构
-- 贡献指南：查看 [developer_guide.md](developer_guide.md) 了解如何参与项目开发 
+- Installation Guide: See [setup_guide.md](setup_guide.md) for complete installation instructions
+- Project Architecture: See [architecture.md](architecture.md) for NexTalk's technical architecture
+- Contribution Guide: See [developer_guide.md](developer_guide.md) for how to contribute to project development
