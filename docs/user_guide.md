@@ -13,8 +13,8 @@
     - [System Tray Icon](#system-tray-icon)
     - [Notification System](#notification-system)
   - [Configuration Options](#configuration-options)
-    - [\[Client\] Section (`~/.config/nextalk/config.ini`)](#client-section-confignextalkconfigini)
-    - [\[Server\] Section (`~/.config/nextalk/config.ini`)](#server-section-confignextalkconfigini)
+    - [\[Client\] Section (`~/.config/nextalk/client.ini`)](#client-section-confignextalk-clientini)
+    - [\[Server\] Section (`~/.config/nextalk/server.ini`)](#server-section-confignextalk-serverini)
     - [Model Selection](#model-selection)
     - [Audio Settings](#audio-settings)
     - [UI Settings](#ui-settings)
@@ -136,11 +136,11 @@ Notification display can be controlled via the `show_notifications` option in co
 
 ## Configuration Options
 
-NexTalk's main configuration is managed via `config.ini` file in user directory. You need to copy `config/default_config.ini` to `~/.config/nextalk/config.ini` first, then modify as needed.
+NexTalk's main configuration is managed via `config.ini` file in user directory. You need to copy `config/default_config.ini` to `~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini` first, then modify as needed.
 
 Command line arguments can override some config file settings.
 
-### [Client] Section (`~/.config/nextalk/config.ini`)
+### [Client] Section (`~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini`)
 
 - `hotkey = ctrl+shift+space`
   * Defines global hotkey combination to activate/deactivate voice recognition. Supports formats like `alt+z`, `ctrl+alt+s`. Refer to `pynput` docs for available combinations.
@@ -155,7 +155,7 @@ Command line arguments can override some config file settings.
 - `focus_window_duration = 5`
   * If `enable_focus_window` is `true`, this sets how long (seconds) the `SimpleWindow` displays text before automatically fading/hiding.
 
-### [Server] Section (`~/.config/nextalk/config.ini`)
+### [Server] Section (`~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini`)
 
 - `host = 0.0.0.0`
   * Server listening host address. `0.0.0.0` listens on all available network interfaces; `127.0.0.1` listens only on local loopback.
@@ -265,7 +265,7 @@ When `auto_type` is `true` but `xdotool` text injection fails, if `enable_focus_
 
 ## FunASR Advanced Features
 
-NexTalk encapsulates various FunASR advanced features via server-side `FunASRModel`. These are primarily controlled through server config file (`~/.config/nextalk/config.ini` [Server] section).
+NexTalk encapsulates various FunASR advanced features via server-side `FunASRModel`. These are primarily controlled through server config file (`~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini` [Server] section).
 
 ### Recognition Modes (Implicit)
 

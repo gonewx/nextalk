@@ -20,7 +20,7 @@ NexTalk 是一套轻量级的实时本地语音识别和输入解决方案，核
 -   **客户端集成**: 提供客户端实现音频捕获、文本注入（Linux下使用 `xdotool`）、系统托盘交互和热键控制。
 -   **WebSocket 通信**: 高效实时的音频和结果传输。
 -   **多平台支持**: 服务器和客户端均为 Python 实现，客户端UI和注入功能目前主要针对 Linux。
--   **灵活配置**: 通过 `config.ini` 文件提供丰富的服务器和客户端配置选项。
+-   **灵活配置**: 通过单独的INI文件 (`~/.config/nextalk/server.ini` 和 `~/.config/nextalk/client.ini`) 提供丰富的服务器和客户端配置选项。
 -   **GPU/CPU 支持**: FunASR 模型可在 GPU (CUDA) 或 CPU 上运行。
 
 ## 核心组件
@@ -61,8 +61,8 @@ NexTalk 是一套轻量级的实时本地语音识别和输入解决方案，核
 
 ### 2. 配置
 
--   将 `config/default_config.ini` 复制到 `~/.config/nextalk/config.ini`。
--   根据您的需求编辑 `~/.config/nextalk/config.ini` (详情参考用户指南和安装指南)。
+-   将 `config/default_config.ini` 复制到 `~/.config/nextalk/client.ini` 和 `~/.config/nextalk/server.ini`。
+-   根据您的需求编辑配置文件 (详情参考用户指南和安装指南)。
 
 ### 3. 运行 NexTalk
 
@@ -117,7 +117,7 @@ python scripts/run_client.py
     实际的数据模型定义在 `nextalk_shared/data_models.py` 中 (例如 `TranscriptionResponse`, `StatusUpdate`, `ErrorMessage`)。
 
 -   **控制命令与参数配置**:
-    当前版本主要通过服务器启动时的配置文件 (`config.ini`) 和命令行参数进行 FunASR 模型及相关参数的配置。通过 WebSocket 进行的动态控制命令（如运行时切换模型、动态修改热词等）如果存在，则封装在内部通信协议中，并未作为主要的公开 API 特性在本文档中突出。主要交互是音频流和转录结果。
+    当前版本主要通过服务器启动时的配置文件 (`~/.config/nextalk/server.ini`) 和命令行参数进行 FunASR 模型及相关参数的配置。通过 WebSocket 进行的动态控制命令（如运行时切换模型、动态修改热词等）如果存在，则封装在内部通信协议中，并未作为主要的公开 API 特性在本文档中突出。主要交互是音频流和转录结果。
 
 ## `scripts/run_server.py` 主要命令行参数
 

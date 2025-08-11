@@ -15,7 +15,7 @@ from typing import Optional, List, Union
 
 class BaseModelWithDict(BaseModel):
     """为所有模型提供兼容v1和v2版本的基类"""
-    
+
     def dict(self, *args, **kwargs):
         """
         Pydantic v1兼容性方法。在v2中调用model_dump方法。
@@ -27,6 +27,7 @@ class BaseModelWithDict(BaseModel):
 
 class TranscriptionResponse(BaseModelWithDict):
     """语音转文本结果响应模型。"""
+
     type: str = "transcription"
     text: str
     mode: Optional[str] = None  # offline, online, 2pass, 2pass-online, 2pass-offline
@@ -37,18 +38,21 @@ class TranscriptionResponse(BaseModelWithDict):
 
 class ErrorMessage(BaseModelWithDict):
     """错误消息模型。"""
+
     type: str = "error"
     message: str
 
 
 class StatusUpdate(BaseModelWithDict):
     """状态更新消息模型。"""
+
     type: str = "status"
     state: str
 
 
 class CommandMessage(BaseModelWithDict):
     """客户端到服务器的命令消息模型。"""
+
     type: str = "command"
     command: str
     payload: str = ""
@@ -56,22 +60,22 @@ class CommandMessage(BaseModelWithDict):
 
 class FunASRConfig(BaseModel):
     """FunASR配置类，用于控制语音识别参数"""
-    
+
     # 识别模式: 2pass(先在线后离线), online(纯在线), offline(纯离线)
     mode: str = "2pass"
-    
+
     # 在线模型参数
     chunk_size: List[int] = [5, 10]  # 用于在线流式模型的分块大小
     chunk_interval: int = 10  # 处理音频块的间隔（帧数）
     encoder_chunk_look_back: Optional[int] = 4  # 编码器回看窗口大小，默认4（与FunASR示例相同）
     decoder_chunk_look_back: Optional[int] = 0  # 解码器回看窗口大小，默认0（与FunASR示例相同）
-    
+
     # 状态控制
     is_speaking: bool = True  # 是否正在说话
-    
+
     # 增强特性
     hotwords: Optional[str] = None  # 热词，增强特定词语的识别
     itn: bool = True  # 是否使用逆文本正规化（数字转换等）
-    
+
     # 其他参数
-    wav_name: str = "microphone"  # 音频名称标识 
+    wav_name: str = "microphone"  # 音频名称标识

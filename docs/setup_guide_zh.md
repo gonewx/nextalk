@@ -118,16 +118,20 @@ NexTalk 的配置文件是 `config.ini`。
     您需要将其复制到用户配置目录并根据需要进行修改：
     ```bash
     mkdir -p ~/.config/nextalk
-    cp config/default_config.ini ~/.config/nextalk/config.ini
+    cp config/default_config.ini ~/.config/nextalk/client.ini
+    cp config/default_config.ini ~/.config/nextalk/server.ini
     ```
-2.  **修改配置**: 编辑 `~/.config/nextalk/config.ini` 以符合您的设置。
+2.  **修改配置**: 分别编辑 `~/.config/nextalk/client.ini` 和 `~/.config/nextalk/server.ini` 以符合您的设置。
     关键配置项将在下一节中解释。
 
     **注意**: `scripts/run_server.py` 和 `scripts/run_client.py` 脚本也支持通过命令行参数或环境变量覆盖部分配置项，这对于临时测试或特定部署场景很有用。
 
-## 配置文件 (`~/.config/nextalk/config.ini`)
+## 配置文件
 
-默认配置文件位于 `~/.config/nextalk/config.ini` (您需要从 `config/default_config.ini` 复制并创建它)。
+- **客户端配置**: `~/.config/nextalk/client.ini`
+- **服务端配置**: `~/.config/nextalk/server.ini`
+
+默认配置文件位于 `~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini` (您需要从 `config/default_config.ini` 复制并创建它)。
 您可以根据需要修改以下设置。
 
 **[Client]**
@@ -459,5 +463,6 @@ model_path = ~/.cache/funasr/models
 - **punc_model**: 标点恢复模型
 
 设备选择指南：
-- 有NVIDIA GPU: 使用`device = cuda`
-- 仅CPU环境: 使用`device = cpu`并适当增加`ncpu`值
+- 有NVIDIA GPU: 使用`device = cuda:0`并设置`use_fp16 = true`（推荐，节省显存）
+- 仅CPU环境: 使用`device = cpu`，`use_fp16 = false`并适当增加`ncpu`值
+- **注意**: 不要使用`compute_type`参数，FunASR官方不支持此参数

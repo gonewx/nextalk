@@ -13,8 +13,8 @@
     - [系统托盘图标](#系统托盘图标)
     - [通知系统](#通知系统)
   - [配置选项](#配置选项)
-    - [\[Client\] 部分 (`~/.config/nextalk/config.ini`)](#client-部分-confignextalkconfigini)
-    - [\[Server\] 部分 (`~/.config/nextalk/config.ini`)](#server-部分-confignextalkconfigini)
+    - [\[Client\] 部分 (`~/.config/nextalk/client.ini`)](#client-部分-confignextalk-clientini)
+    - [\[Server\] 部分 (`~/.config/nextalk/server.ini`)](#server-部分-confignextalk-serverini)
     - [模型选择](#模型选择)
     - [音频设置](#音频设置)
     - [界面设置](#界面设置)
@@ -136,11 +136,11 @@ NexTalk 会通过桌面通知向您反馈重要信息，例如：
 
 ## 配置选项
 
-NexTalk 的主要配置通过位于用户目录下的 `config.ini` 文件进行管理。您需要先将项目中的 `config/default_config.ini` 复制到 `~/.config/nextalk/config.ini`，然后根据需要进行修改。
+NexTalk 的主要配置通过位于用户目录下的 `config.ini` 文件进行管理。您需要先将项目中的 `config/default_config.ini` 复制到 `~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini`，然后根据需要进行修改。
 
 命令行参数可以覆盖部分配置文件中的设置。
 
-### [Client] 部分 (`~/.config/nextalk/config.ini`)
+### [Client] 部分 (`~/.config/nextalk/client.ini`)
 
 -   `hotkey = ctrl+shift+space`
     *   定义激活/停用语音识别的全局热键组合。支持如 `alt+z`, `ctrl+alt+s` 等格式。请参考 `pynput` 文档了解可用组合。
@@ -155,14 +155,16 @@ NexTalk 的主要配置通过位于用户目录下的 `config.ini` 文件进行�
 -   `focus_window_duration = 5`
     *   如果 `enable_focus_window` 为 `true`，此选项设置 `SimpleWindow` 显示文本的持续时间（秒），之后窗口会自动淡出或隐藏。
 
-### [Server] 部分 (`~/.config/nextalk/config.ini`)
+### [Server] 部分 (`~/.config/nextalk/server.ini`)
 
 -   `host = 0.0.0.0`
     *   服务器监听的主机地址。`0.0.0.0` 表示监听所有可用的网络接口；`127.0.0.1` 表示仅监听本地回环地址。
 -   `port = 8000`
     *   服务器监听的 TCP 端口。
--   `device = cuda`
-    *   FunASR 模型使用的主要计算设备。可选值为 `cuda` (推荐，使用 NVIDIA GPU) 或 `cpu`。如果选择 `cuda` 但无可用 GPU，FunASR 通常会自动回退到 `cpu` (可能伴有警告)。
+-   `device = cuda:0`
+    *   FunASR 模型使用的主要计算设备。可选值为 `cuda:0` (推荐，使用 NVIDIA GPU) 或 `cpu`。如果选择 `cuda` 但无可用 GPU，FunASR 通常会自动回退到 `cpu` (可能伴有警告)。
+-   `use_fp16 = true`
+    *   GPU 环境下是否启用 FP16 半精度推理。设置为 `true` 可显著减少显存占用并提升性能。CPU 环境下此参数无效，自动使用 FP32 精度。
 -   `ngpu = 1`
     *   (FunASR 参数) 当 `device = cuda` 时，指定使用的 GPU 数量。通常设置为 `1`。
 -   `ncpu = 4`
@@ -265,7 +267,7 @@ focus_window_duration = 5
 
 ## FunASR 高级功能
 
-NexTalk 通过服务器端的 `FunASRModel` 封装了 FunASR 的多种高级功能。这些功能主要通过服务器配置文件 (`~/.config/nextalk/config.ini` 的 `[Server]` 部分) 进行控制。
+NexTalk 通过服务器端的 `FunASRModel` 封装了 FunASR 的多种高级功能。这些功能主要通过服务器配置文件 (`~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini` 的 `[Server]` 部分) 进行控制。
 
 ### 识别模式 (隐式)
 
@@ -312,7 +314,7 @@ FunASR 本身支持多种语言的识别。NexTalk 对多语言的支持主要�
 
 ### 性能调优 (服务器端)
 
--   **设备选择 (`device`)**: 对于生产环境或追求低延迟的场景，强烈建议使用 `cuda` (NVIDIA GPU)。CPU 推理会慢很多。
+-   **设备选择 (`device`)**: 对于生产环境或追求低延迟的场景，强烈建议使用 `cuda:0` (NVIDIA GPU) 并启用 `use_fp16=true`。CPU 推理会慢很多。
 -   **模型选择**: 不同的 FunASR 模型在速度、准确率和资源消耗之间有不同的权衡。大型模型通常更准确但更慢且占用更多资源。流式模型通常延迟更低。
 -   **预加载与预热**: `scripts/run_server.py` 默认会预加载和预热模型，这会增加服务器启动时间，但能显著减少首次识别请求的延迟。对于开发或不需要立即响应的场景，可以考虑使用 `--skip-preload` 参数启动服务器。
 -   **CPU核心数 (`ncpu`)**: 如果在 CPU 上运行或 GPU 性能有限，适当调整 `ncpu` 可能有助于提升 FunASR 的处理速度，但这需要根据具体硬件进行测试。

@@ -35,3 +35,5 @@ Thumbs.db
 *.sublime-workspace
 .project
 .pydevproject 
+
+*.bak

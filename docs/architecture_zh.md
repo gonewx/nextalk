@@ -92,7 +92,7 @@ NexTalk系统由以下主要组件组成：
     *   用于报告重要事件，如连接错误、状态变更或关键识别信息。
 
 9.  **Configuration Loader** (`config/loader.py`):
-    *   负责加载客户端的配置文件 (通常是 `~/.config/nextalk/config.ini` 中的 `[Client]`部分)。
+    *   负责加载客户端的配置文件 (通常是 `~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini` 中的 `[Client]`部分)。
     *   为其他客户端组件提供配置参数。
 
 ### 2.2 服务器组件 (`nextalk_server`)
@@ -122,7 +122,7 @@ NexTalk系统由以下主要组件组成：
     *   **异步执行**: 将耗时的模型推理操作放在 `ThreadPoolExecutor` 中执行，避免阻塞服务器主事件循环。
 
 4.  **Configuration** (`config.py`):
-    *   负责加载和管理服务器的配置信息 (通常来自 `~/.config/nextalk/config.ini` 中的 `[Server]` 部分，或 `config/default_config.ini`)。
+    *   负责加载和管理服务器的配置信息 (通常来自 `~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini` 中的 `[Server]` 部分，或 `config/default_config.ini`)。
     *   为其他服务器组件（主要是 `FunASRModel` 和 `app.py`）提供配置访问接口。
 
 ### 2.3 共享组件

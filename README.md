@@ -20,7 +20,7 @@ Refer to detailed documentation in the [docs/](docs/) directory:
 - **Client Integration**: Provides client implementation for audio capture, text injection (using `xdotool` on Linux), system tray interaction and hotkey control.
 - **WebSocket Communication**: Efficient real-time audio and result transmission.
 - **Multi-platform Support**: Both server and client are Python-based, with client UI and injection currently targeting Linux.
-- **Flexible Configuration**: Rich server and client configuration options via `config.ini` file.
+- **Flexible Configuration**: Rich server and client configuration options via separate INI files (`~/.config/nextalk/server.ini` and `~/.config/nextalk/client.ini`).
 - **GPU/CPU Support**: FunASR models can run on GPU (CUDA) or CPU.
 
 ## Core Components
@@ -63,8 +63,8 @@ Refer to detailed [Setup Guide (docs/setup_guide.md)](docs/setup_guide.md). Brie
 
 ### 2. Configuration
 
-- Copy `config/default_config.ini` to `~/.config/nextalk/config.ini`
-- Edit `~/.config/nextalk/config.ini` per your needs (details in User Guide and Setup Guide)
+- Copy `config/default_config.ini` to `~/.config/nextalk/client.ini` and `~/.config/nextalk/server.ini`
+- Edit configuration files per your needs (details in User Guide and Setup Guide)
 
 ### 3. Running NexTalk
 
@@ -119,7 +119,7 @@ Client communicates with server via this WebSocket endpoint.
   Actual data models are defined in `nextalk_shared/data_models.py` (e.g. `TranscriptionResponse`, `StatusUpdate`, `ErrorMessage`).
 
 - **Control Commands & Parameter Configuration**:
-  Current version primarily uses server startup config file (`config.ini`) and command line arguments for FunASR model and parameter configuration. Any dynamic control commands via WebSocket (e.g. runtime model switching, dynamic hotword modification) are encapsulated in internal protocol and not highlighted as main public API features in this documentation. Main interaction is audio streaming and transcription results.
+  Current version primarily uses server startup config file (`~/.config/nextalk/server.ini`) and command line arguments for FunASR model and parameter configuration. Any dynamic control commands via WebSocket (e.g. runtime model switching, dynamic hotword modification) are encapsulated in internal protocol and not highlighted as main public API features in this documentation. Main interaction is audio streaming and transcription results.
 
 ## `scripts/run_server.py` Main Command Line Arguments
 

@@ -12,11 +12,11 @@ from .funasr_model import FunASRModel
 from .config import get_config, update_config
 
 __all__ = [
-    'app',
-    'create_app',
-    'WebSocketHandler',
-    'FunASRModel',
-    'AudioBuffer',
-    'get_config',
-    'update_config',
-] 
+    "app",
+    "create_app",
+    "WebSocketHandler",
+    "FunASRModel",
+    "AudioBuffer",
+    "get_config",
+    "update_config",
+]

@@ -94,7 +94,7 @@ The NexTalk system consists of the following main components:
     *   Used to report important events such as connection errors, state changes, or critical recognition information.
 
 9.  **Configuration Loader** (`config/loader.py`):
-    *   Loads client configuration files (typically the `[Client]` section in `~/.config/nextalk/config.ini`).
+    *   Loads client configuration files (typically the `[Client]` section in `~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini`).
     *   Provides configuration parameters for other client components.
 
 ### 2.2 Server Components (`nextalk_server`)

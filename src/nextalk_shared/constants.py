@@ -31,8 +31,8 @@ FUNASR_MODEL_REVISION = "v2.0.4"  # 模型版本
 
 # FunASR模型配置常量
 FUNASR_DISABLE_UPDATE = True  # 是否禁用FunASR模型更新检查
-FUNASR_DISABLE_LOG = True     # 是否禁用FunASR内部日志输出
-FUNASR_DISABLE_PBAR = True    # 是否禁用FunASR进度条
+FUNASR_DISABLE_LOG = True  # 是否禁用FunASR内部日志输出
+FUNASR_DISABLE_PBAR = True  # 是否禁用FunASR进度条
 
 # Status strings
 STATUS_LISTENING = "listening"
@@ -40,4 +40,4 @@ STATUS_PROCESSING = "processing"
 STATUS_IDLE = "idle"
 STATUS_ERROR = "error"
 STATUS_DISCONNECTED = "disconnected"
-STATUS_CONNECTED = "connected" 
+STATUS_CONNECTED = "connected"

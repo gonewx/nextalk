@@ -20,7 +20,7 @@ FunASR models are automatically downloaded from default ModelScope source (or ot
 
 When testing FunASR-related features, note:
 - Ensure FunASR and its dependencies are properly installed in dev environment
-- Server config files (`config/default_config.ini` or `~/.config/nextalk/config.ini`) point to correct, accessible model names
+- Server config files (`config/default_config.ini` or `~/.config/nextalk/server.ini`) point to correct, accessible model names
 - If using GPU (`device=cuda`), ensure CUDA environment is properly configured and compatible with FunASR's PyTorch version
 
 ## Troubleshooting

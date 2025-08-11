@@ -295,7 +295,7 @@ FunASR 模型通常在首次使用时会自动从其默认的 ModelScope 源（�
 
 测试 FunASR 相关功能时，需要注意：
 -   确保开发环境中已正确安装 FunASR 及其依赖。
--   服务器配置文件 (`config/default_config.ini` 或 `~/.config/nextalk/config.ini`) 中指向了正确的、可访问的模型名称。
+-   服务器配置文件 (`config/default_config.ini` 或 `~/.config/nextalk/client.ini 和 ~/.config/nextalk/server.ini`) 中指向了正确的、可访问的模型名称。
 -   如果使用 GPU (`device=cuda`)，确保 CUDA 环境已正确配置并与 FunASR 使用的 PyTorch 版本兼容。
 
 ## 常见问题解决

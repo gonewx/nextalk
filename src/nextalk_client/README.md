@@ -79,7 +79,7 @@ pip install websockets numpy pyaudio pynput pillow
 
 ## 配置
 
-客户端配置位于`~/.config/nextalk/config.ini`，主要配置项包括：
+客户端配置位于`~/.config/nextalk/client.ini`，主要配置项包括：
 
 ```ini
 [Client]
