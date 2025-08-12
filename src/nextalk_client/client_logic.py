@@ -76,7 +76,23 @@ class NexTalkClient:
         self.websocket_client = WebSocketClient()
 
         # 初始化文本注入器
-        self.injector: Optional[BaseInjector] = get_injector()
+        injector_type = self.client_config.get("injector_type", "smart").lower()
+        fallback_method = self.client_config.get("fallback_method", "auto").lower()
+        
+        # 根据配置选择注入器类型
+        if injector_type == "legacy":
+            self.injector: Optional[BaseInjector] = get_injector(use_smart=False, legacy=True)
+            logger.info("使用旧版注入器")
+        elif injector_type == "fallback":
+            # 使用后备注入器
+            from .injection.injector_fallback import FallbackInjector
+            method = fallback_method if fallback_method != "auto" else None
+            self.injector = FallbackInjector(method=method)
+            logger.info(f"使用后备注入器，方法: {fallback_method}")
+        else:  # 默认使用智能注入器
+            self.injector = get_injector(use_smart=True, legacy=False)
+            logger.info("使用智能注入器")
+            
         if self.injector is None:
             logger.warning("无法初始化文本注入器，文本注入功能将不可用")
         else:

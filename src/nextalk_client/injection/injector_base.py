@@ -35,11 +35,13 @@ class BaseInjector(abc.ABC):
         pass
 
 
-def get_injector() -> Optional[BaseInjector]:
+def get_injector(use_smart: bool = True, legacy: bool = False) -> Optional[BaseInjector]:
     """
     工厂函数，返回适合当前平台的文本注入器实例。
 
-    目前仅支持Linux平台。未来将添加Windows和macOS支持。
+    Args:
+        use_smart: 是否使用智能注入器（自动选择最佳方法）
+        legacy: 是否使用旧版注入器（兼容性选项）
 
     Returns:
         BaseInjector: 文本注入器实例，如果平台不支持则返回None
@@ -47,15 +49,44 @@ def get_injector() -> Optional[BaseInjector]:
     os_name = platform.system().lower()
 
     if os_name == "linux":
-        try:
-            # 动态导入，避免未使用Linux注入器时的导入错误
-            from .injector_linux import LinuxInjector
+        # 如果指定使用旧版注入器
+        if legacy:
+            try:
+                from .injector_linux import LinuxInjector
 
-            logger.info("使用Linux文本注入器")
-            return LinuxInjector()
-        except ImportError as e:
-            logger.error(f"无法导入Linux文本注入器: {e}")
-            return None
+                logger.info("使用旧版Linux文本注入器")
+                return LinuxInjector()
+            except ImportError as e:
+                logger.error(f"无法导入旧版Linux文本注入器: {e}")
+                return None
+
+        # 使用智能注入器
+        if use_smart:
+            try:
+                from .injector_manager import SmartInjector
+
+                logger.info("使用智能文本注入器")
+                return SmartInjector()
+            except ImportError as e:
+                logger.error(f"无法导入智能注入器: {e}")
+                # 尝试后备到旧版
+                try:
+                    from .injector_linux import LinuxInjector
+
+                    logger.info("后备到旧版Linux文本注入器")
+                    return LinuxInjector()
+                except ImportError:
+                    return None
+        else:
+            # 直接使用后备注入器
+            try:
+                from .injector_fallback import FallbackInjector
+
+                logger.info("使用后备文本注入器")
+                return FallbackInjector()
+            except ImportError as e:
+                logger.error(f"无法导入后备注入器: {e}")
+                return None
     else:
         logger.warning(f"平台 '{os_name}' 目前不支持文本注入")
         return None
