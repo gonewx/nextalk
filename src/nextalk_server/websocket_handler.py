@@ -88,6 +88,7 @@ class WebSocketHandler:
         self.speech_end_flag = False  # 表示检测到语音结束
         self.vad_pre_idx = 0  # 当前VAD处理的位置索引，与官方示例一致
         self.is_speaking = True  # 客户端手动控制的说话状态
+        self.speech_start_time = 0  # 语音开始的时间戳，用于缓冲
 
         # 会话ID
         self.session_id = int(time.time())
@@ -313,6 +314,7 @@ class WebSocketHandler:
             # 处理语音开始 - 参考官方实现逻辑
             if speech_start_i != -1 and not self.speech_start_flag:
                 self.speech_start_flag = True
+                self.speech_start_time = time.time()  # 记录语音开始时间
                 logger.debug(f"VAD检测到语音开始，帧位置: {speech_start_i}ms")
 
                 # 重要修改: 添加语音起始点之前的帧到frames_asr (与官方实现一致)
@@ -350,13 +352,19 @@ class WebSocketHandler:
                 self.frames_asr_online = []
 
             # 语音结束处理 - 与官方实现一致的条件判断
+            # 添加最小语音持续时间检查，避免VAD过早结束
+            min_speech_duration = 0.5  # 最小语音持续时间500ms
+            current_time = time.time()
+            speech_duration = current_time - self.speech_start_time if self.speech_start_flag else 0
+            
             if (
                 (speech_end_i != -1 or not self.is_speaking)
                 and self.speech_start_flag
                 and not self.speech_end_flag
+                and (not self.is_speaking or speech_duration >= min_speech_duration)  # 手动停止时忽略时间限制
             ):
                 self.speech_end_flag = True
-                logger.debug(f"VAD检测到语音结束{'（手动停止）' if not self.is_speaking else ''}")
+                logger.debug(f"VAD检测到语音结束{'（手动停止）' if not self.is_speaking else ''}，语音持续时间: {speech_duration:.2f}秒")
                 await self._process_speech_end()
 
         except Exception as e:
@@ -366,6 +374,15 @@ class WebSocketHandler:
     async def _process_speech_end(self) -> None:
         """处理语音段结束时的逻辑"""
         logger.debug("开始处理语音段结束逻辑")
+
+        # 在语音段结束前，先发送最后一个在线识别的最终结果
+        if self.frames_asr_online:
+            logger.debug("发送最后的在线识别最终结果")
+            audio_in = b"".join(self.frames_asr_online)
+            try:
+                await self._process_online_audio(audio_in, is_final=True)
+            except Exception as e:
+                logger.error(f"发送最终在线结果出错: {str(e)}")
 
         # 处理离线ASR - 在语音结束时
         if (self.funasr_config.mode in ["2pass", "offline"]) and self.frames_asr:
@@ -386,6 +403,7 @@ class WebSocketHandler:
         self.frames_asr = []
         self.speech_start_flag = False
         self.speech_end_flag = False
+        self.speech_start_time = 0  # 重置语音开始时间
         self.frames_asr_online = []
 
         # 重置模型缓存
@@ -415,7 +433,8 @@ class WebSocketHandler:
             return
 
         # 检查基本状态 - 如果已完成语音段且是2pass模式，不要处理
-        if self.funasr_config.mode == "2pass" and self.speech_end_flag:
+        # 但如果仍在说话（is_speaking=True），则继续处理
+        if self.funasr_config.mode == "2pass" and self.speech_end_flag and not self.is_speaking:
             return
 
         start_time = time.time()

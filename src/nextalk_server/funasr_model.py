@@ -365,7 +365,7 @@ class FunASRModel:
         """
         try:
             # 完全重置在线状态字典
-            self.status_dict_asr_online = {"cache": {}, "is_final": True}
+            self.status_dict_asr_online = {"cache": {}, "is_final": False}
 
             # 重置标点状态字典
             self.status_dict_punc = {"cache": {}}
