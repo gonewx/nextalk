@@ -106,6 +106,11 @@ class FunASRModel:
             device = getattr(self.config, "device", "cuda")
             use_fp16 = getattr(self.config, "use_fp16", False)
 
+            # 确保device=cpu时ngpu为0，避免GPU资源占用
+            if device == "cpu" and ngpu > 0:
+                logger.warning(f"device设为cpu但ngpu={ngpu}，自动修正为ngpu=0")
+                ngpu = 0
+
             # 通用参数，与官方示例保持一致
             common_params = {
                 "ngpu": ngpu,
