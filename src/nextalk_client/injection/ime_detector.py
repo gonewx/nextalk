@@ -5,9 +5,9 @@
 """
 
 import logging
-import subprocess
 import os
-from typing import Optional, Literal
+import subprocess
+from typing import Literal
 
 logger = logging.getLogger(__name__)
 

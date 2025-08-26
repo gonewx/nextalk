@@ -8,11 +8,12 @@
 """
 
 import logging
-import time
 import platform
-import subprocess
 import shutil
-from typing import Optional, Literal
+import subprocess
+import time
+from typing import Literal, Optional
+
 from .injector_base import BaseInjector
 
 logger = logging.getLogger(__name__)
@@ -161,18 +162,47 @@ class FallbackInjector(BaseInjector):
             # 短暂延迟确保复制完成
             time.sleep(0.05)
 
-            # 执行粘贴操作
+            # 执行粘贴操作 - 先尝试终端快捷键，再尝试普通快捷键
+            paste_success = False
+
             if HAS_PYAUTOGUI:
                 if platform.system() == "Darwin":
                     pyautogui.hotkey("command", "v")
+                    paste_success = True
                 else:
-                    pyautogui.hotkey("ctrl", "v")
+                    # Linux: 先尝试终端粘贴快捷键
+                    try:
+                        pyautogui.hotkey("ctrl", "shift", "v")
+                        paste_success = True
+                    except Exception:
+                        # 如果失败，尝试普通粘贴快捷键
+                        try:
+                            pyautogui.hotkey("ctrl", "v")
+                            paste_success = True
+                        except Exception:
+                            paste_success = False
             else:
                 # 使用xdotool作为后备
                 if self.has_xdotool:
-                    subprocess.run(["xdotool", "key", "ctrl+v"], check=True)
+                    # 先尝试终端粘贴快捷键
+                    result = subprocess.run(
+                        ["xdotool", "key", "ctrl+shift+v"],
+                        capture_output=True, timeout=3
+                    )
+                    if result.returncode == 0:
+                        paste_success = True
+                    else:
+                        # 尝试普通粘贴快捷键
+                        result = subprocess.run(
+                            ["xdotool", "key", "ctrl+v"],
+                            capture_output=True, timeout=3
+                        )
+                        paste_success = result.returncode == 0
                 else:
                     return False
+
+            if not paste_success:
+                return False
 
             # 恢复原剪贴板内容
             if original_clipboard is not None:
@@ -182,7 +212,7 @@ class FallbackInjector(BaseInjector):
                         pyclip.copy(original_clipboard)
                     else:  # pyperclip
                         pyperclip.copy(original_clipboard)
-                except:
+                except Exception:
                     pass
 
             logger.debug(f"通过剪贴板粘贴成功注入文本，长度: {len(text)}")

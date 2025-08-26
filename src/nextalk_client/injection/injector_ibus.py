@@ -5,8 +5,7 @@ IBus输入法框架的文本注入器实现。
 """
 
 import logging
-import subprocess
-from typing import Optional
+
 from .injector_base import BaseInjector
 
 try:
@@ -130,7 +129,7 @@ class IBusInjector(BaseInjector):
                     self.input_context, "org.freedesktop.IBus.InputContext"
                 )
                 context_iface.CommitText(dbus.String(text))
-                logger.debug(f"通过IBus备用方法成功注入文本")
+                logger.debug("通过IBus备用方法成功注入文本")
                 return True
             except:
                 pass

@@ -7,7 +7,6 @@
 import abc
 import logging
 import platform
-import sys
 from typing import Optional
 
 # 设置日志记录器
@@ -32,7 +31,6 @@ class BaseInjector(abc.ABC):
         Returns:
             bool: 注入是否成功
         """
-        pass
 
 
 def get_injector(use_smart: bool = True, legacy: bool = False) -> Optional[BaseInjector]:

@@ -5,8 +5,7 @@ Fcitx输入法框架的文本注入器实现。
 """
 
 import logging
-import subprocess
-from typing import Optional
+
 from .injector_base import BaseInjector
 
 try:

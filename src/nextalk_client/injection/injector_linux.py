@@ -5,17 +5,15 @@ Linux平台的文本注入器实现。
 """
 
 import logging
+import platform
 import threading
-import subprocess
-import shutil
 import time
-from typing import Optional
-from .injector_base import BaseInjector
 
 # 新增依赖导入
 import pyautogui
 import pyclip
-import platform
+
+from .injector_base import BaseInjector
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)

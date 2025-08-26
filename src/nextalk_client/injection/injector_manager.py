@@ -5,12 +5,14 @@
 """
 
 import logging
-from typing import Optional, List
+from typing import List, Optional
+
+from .ime_detector import IMEDetector
 from .injector_base import BaseInjector
+from .injector_fallback import FallbackInjector
 from .injector_fcitx import FcitxInjector
 from .injector_ibus import IBusInjector
-from .injector_fallback import FallbackInjector
-from .ime_detector import IMEDetector
+from .injector_terminal import TerminalInjector
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +22,11 @@ class SmartInjector(BaseInjector):
     智能文本注入器，自动选择最佳注入方法。
 
     优先级：
-    1. 输入法框架（Fcitx/IBus）- 最可靠，支持中文
-    2. 剪贴板粘贴 - 快速，支持所有字符
-    3. xdotool - Linux特定，较可靠
-    4. 模拟键入 - 最慢，可能有编码问题
+    1. 终端注入器（检测到终端环境时）- 专为终端优化
+    2. 输入法框架（Fcitx/IBus）- 最可靠，支持中文
+    3. 剪贴板粘贴 - 快速，支持所有字符
+    4. xdotool - Linux特定，较可靠
+    5. 模拟键入 - 最慢，可能有编码问题
     """
 
     def __init__(self, prefer_ime: bool = True, fallback_method: Optional[str] = None):
@@ -38,11 +41,23 @@ class SmartInjector(BaseInjector):
         self.fallback_method = fallback_method
         self.injectors: List[BaseInjector] = []
         self.primary_injector: Optional[BaseInjector] = None
+        self.terminal_injector: Optional[TerminalInjector] = None
+        self.is_terminal_focused = False
 
         self._init_injectors()
 
     def _init_injectors(self):
         """初始化所有可用的注入器。"""
+
+        # 首先尝试初始化终端注入器
+        try:
+            terminal_injector = TerminalInjector()
+            if terminal_injector.is_available():
+                self.terminal_injector = terminal_injector
+                self.injectors.append(terminal_injector)
+                logger.info("终端注入器初始化成功")
+        except Exception as e:
+            logger.debug(f"初始化终端注入器失败: {e}")
 
         if self.prefer_ime:
             # 获取输入法优先级列表
@@ -104,8 +119,22 @@ class SmartInjector(BaseInjector):
             logger.error("没有可用的注入器")
             return False
 
+        # 检测终端环境
+        self._update_terminal_status()
+
+        # 如果检测到终端环境，优先使用终端注入器
+        if self.is_terminal_focused and self.terminal_injector:
+            try:
+                logger.debug("检测到终端环境，使用终端专用注入器")
+                if self.terminal_injector.inject_text(text):
+                    # 成功后更新主要注入器
+                    self.primary_injector = self.terminal_injector
+                    return True
+            except Exception as e:
+                logger.debug(f"终端注入器失败: {e}")
+
         # 首先尝试主要注入器
-        if self.primary_injector:
+        if self.primary_injector and not self.is_terminal_focused:
             try:
                 if self.primary_injector.inject_text(text):
                     return True
@@ -116,6 +145,11 @@ class SmartInjector(BaseInjector):
         for injector in self.injectors:
             if injector == self.primary_injector:
                 continue  # 已经尝试过了
+
+            # 如果是终端环境但不是终端注入器，跳过输入法注入器
+            if self.is_terminal_focused and isinstance(injector, (FcitxInjector, IBusInjector)):
+                logger.debug(f"终端环境下跳过输入法注入器: {type(injector).__name__}")
+                continue
 
             try:
                 if injector.inject_text(text):
@@ -129,17 +163,37 @@ class SmartInjector(BaseInjector):
         logger.error("所有注入方法均失败")
         return False
 
+    def _update_terminal_status(self):
+        """更新终端焦点状态。"""
+        if self.terminal_injector:
+            try:
+                self.is_terminal_focused = self.terminal_injector.is_terminal_focused()
+                logger.debug(f"终端焦点状态: {self.is_terminal_focused}")
+            except Exception as e:
+                logger.debug(f"检测终端焦点失败: {e}")
+                self.is_terminal_focused = False
+        else:
+            self.is_terminal_focused = False
+
     def is_available(self) -> bool:
         """检查是否有可用的注入器。"""
         return len(self.injectors) > 0
 
     def get_status(self) -> dict:
         """获取注入器状态信息。"""
-        return {
+        status = {
             "available": self.is_available(),
             "injector_count": len(self.injectors),
             "primary_injector": type(self.primary_injector).__name__
             if self.primary_injector
             else None,
             "all_injectors": [type(inj).__name__ for inj in self.injectors],
+            "is_terminal_focused": self.is_terminal_focused,
+            "has_terminal_injector": self.terminal_injector is not None,
         }
+
+        # 如果有终端注入器，添加终端信息
+        if self.terminal_injector:
+            status["terminal_info"] = self.terminal_injector.get_terminal_info()
+
+        return status
