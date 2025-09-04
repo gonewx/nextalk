@@ -5,20 +5,20 @@ WebSocket处理器模块
 简化实现，专注于FunASR模型的支持。
 """
 
-import logging
 import asyncio
 import json
+import logging
 import time
-import os
+from typing import Any, Dict
+
 import numpy as np
-import wave  # 添加wave模块用于保存音频文件
-from typing import Dict, Any, Optional, List, Tuple
 from fastapi import WebSocket, WebSocketDisconnect
 
-from .funasr_model import FunASRModel
-from .config import get_config
+from nextalk_shared.constants import STATUS_LISTENING, STATUS_READY
 from nextalk_shared.data_models import FunASRConfig
-from nextalk_shared.constants import STATUS_LISTENING, STATUS_PROCESSING, STATUS_ERROR
+
+from .config import get_config
+from .funasr_model import FunASRModel
 
 # 使用全局日志配置
 logger = logging.getLogger("nextalk_server.websocket_handler")
@@ -45,7 +45,15 @@ class WebSocketHandler:
         self.config = get_config()
 
         # 创建VAD状态字典，与官方实现一致
-        self.vad_status_dict = {"cache": {}, "is_final": False}
+        self.vad_status_dict = {
+            "cache": {},
+            "is_final": False,
+            # 优化VAD检测参数，提高语音起始点检测精度
+            "max_start_silence_time": 300,  # 最大起始静音时间300ms
+            "sil_to_speech_time_thres": 150,  # 静音到语音阈值150ms
+            "speech_to_sil_time_thres": 500,  # 语音到静音阈值500ms
+            "max_end_silence_time": 800,  # 最大结束静音时间800ms
+        }
 
         # 任务控制
         self.processing_task = None
@@ -90,10 +98,13 @@ class WebSocketHandler:
         self.is_speaking = True  # 客户端手动控制的说话状态
         self.speech_start_time = 0  # 语音开始的时间戳，用于缓冲
 
-        # 会话ID
+        # 会话ID和预热状态
         self.session_id = int(time.time())
         self.wav_name = f"session_{self.session_id}"
         self.funasr_config.wav_name = self.wav_name
+
+        # 首次语音标志，用于判断是否需要额外预热
+        self.first_speech_chunk = True
 
         logger.debug(
             f"初始化WebSocket处理器，会话ID: {self.session_id}, 识别模式: {self.funasr_config.mode}"
@@ -147,6 +158,44 @@ class WebSocketHandler:
         """处理JSON消息，用于控制识别行为"""
         logger.debug(f"接收JSON控制消息: {message}")
 
+        # 处理命令消息
+        if "command" in message:
+            command = message["command"]
+            if command == "start":
+                start_cmd_time = time.time()
+                logger.info(f"🚀 收到开始识别命令，时间戳: {start_cmd_time:.3f}")
+
+                # 确保模型已经完全初始化
+                if not hasattr(self.model, "_initialized") or not self.model._initialized:
+                    logger.warning("⚠️ 模型尚未初始化，等待初始化完成...")
+                    init_start = time.time()
+                    await self.model.initialize()
+                    init_duration = (time.time() - init_start) * 1000
+                    logger.info(f"⚡ 模型初始化完成，耗时: {init_duration:.1f}ms")
+                else:
+                    logger.info("✅ 模型已初始化，跳过初始化步骤")
+
+                # 重置模型状态以确保清洁的开始
+                reset_start = time.time()
+                await self.model.reset()
+                reset_duration = (time.time() - reset_start) * 1000
+                logger.info(f"🔄 模型状态重置完成，耗时: {reset_duration:.1f}ms")
+
+                # 关键优化：在发送ready状态前进行流式模型预热
+                warmup_start = time.time()
+                await self._warmup_streaming_model()
+                warmup_duration = (time.time() - warmup_start) * 1000
+                logger.info(f"🔥 流式模型预热完成，耗时: {warmup_duration:.1f}ms")
+
+                # 发送就绪状态，告知客户端可以开始发送音频
+                ready_time = time.time()
+                await self.send_status(STATUS_READY)
+                total_prep_duration = (ready_time - start_cmd_time) * 1000
+                logger.info(f"🟢 已发送就绪信号给客户端，总准备时间: {total_prep_duration:.1f}ms")
+                return
+            else:
+                logger.debug(f"收到未知命令: {command}")
+
         # 处理识别模式
         if "mode" in message:
             mode = message["mode"]
@@ -166,10 +215,12 @@ class WebSocketHandler:
             if not self.is_speaking:
                 # 调试：输出当前的语音状态标志
                 logger.debug(
-                    f"VAD状态: speech_start_flag={self.speech_start_flag}, speech_end_flag={self.speech_end_flag}"
+                    f"VAD状态: speech_start_flag={self.speech_start_flag}, "
+                    f"speech_end_flag={self.speech_end_flag}"
                 )
                 logger.debug(
-                    f"帧数信息: frames={len(self.frames)}帧, frames_asr={len(self.frames_asr)}帧, frames_asr_online={len(self.frames_asr_online)}帧"
+                    f"帧数信息: frames={len(self.frames)}帧, frames_asr={len(self.frames_asr)}帧, "
+                    f"frames_asr_online={len(self.frames_asr_online)}帧"
                 )
 
                 # 新条件：只要停止说话就处理，无论是否检测到语音
@@ -248,7 +299,47 @@ class WebSocketHandler:
             logger.debug(f"设置ITN为: {self.funasr_config.itn}")
 
         # 返回当前设置状态
-        await self.send_status(STATUS_LISTENING, {"config": self.funasr_config.dict()})
+        await self.send_status(STATUS_LISTENING, {"config": self.funasr_config.model_dump()})
+
+    async def _warmup_streaming_model(self) -> None:
+        """
+        在会话开始前预热流式识别模型，解决首次识别不准的问题
+
+        这个方法在发送ready状态之前被调用，确保客户端开始发送音频时
+        模型已经完全预热并建立了内部cache状态
+        """
+        try:
+            logger.info("开始预热流式识别模型...")
+
+            # 计算chunk大小
+            chunk_samples = self.funasr_config.chunk_size[1] * 960  # 默认10 * 960 = 9600样本
+
+            # 创建静音音频数据用于预热
+            silent_chunk = np.zeros(chunk_samples, dtype=np.int16).tobytes()
+
+            # 进行多轮预热，建立模型内部状态和cache
+            warmup_rounds = 3  # 增加预热轮数确保充分预热
+            logger.info(f"进行{warmup_rounds}轮流式模型预热，chunk大小: {chunk_samples}样本")
+
+            for i in range(warmup_rounds):
+                warmup_start = time.time()
+
+                # 前几轮为非最终状态，最后一轮为最终状态
+                is_final = i == warmup_rounds - 1
+
+                # 调用音频处理进行预热
+                await self.model.process_audio_chunk(silent_chunk, is_final)
+
+                warmup_round_duration = (time.time() - warmup_start) * 1000
+                logger.info(
+                    f"预热轮{i + 1}完成，耗时: {warmup_round_duration:.1f}ms, is_final: {is_final}"
+                )
+
+            logger.info("流式识别模型预热完成，模型已准备好处理真实音频")
+
+        except Exception as e:
+            logger.warning(f"流式模型预热失败，但会话将继续: {str(e)}")
+            # 预热失败不应该阻止会话继续，只是可能影响初始识别质量
 
     async def handle_binary_message(self, binary_data: bytes) -> None:
         """处理二进制音频数据"""
@@ -257,9 +348,14 @@ class WebSocketHandler:
             logger.warning("收到空的二进制数据")
             return
 
-        # 日志记录接收到的音频数据
-        data_len = len(binary_data)
-        logger.debug(f"处理二进制音频数据: {data_len} 字节")
+        # 初始化音频数据计数器
+        if not hasattr(self, "_audio_counter"):
+            self._audio_counter = 0
+            self._first_audio_server_time = time.time()
+            logger.info(f"🎵 服务器首次接收音频数据，时间戳: {self._first_audio_server_time:.3f}")
+
+        self._audio_counter += 1
+        current_time = time.time()
 
         # 将音频数据转换为numpy数组并计算基本信息
         audio_np = np.frombuffer(binary_data, dtype=np.int16)
@@ -269,10 +365,24 @@ class WebSocketHandler:
         non_zero_ratio = non_zero / samples if samples > 0 else 0
         max_amp = np.max(np.abs(audio_np)) if samples > 0 else 0
 
-        # 只在音频数据有实质内容时详细记录
-        if max_amp > 500:
+        # 前5个音频块详细记录
+        if self._audio_counter <= 5:
+            elapsed_since_first = (current_time - self._first_audio_server_time) * 1000
+            logger.info(
+                f"🎤 服务器音频块 #{self._audio_counter}: "
+                f"时间戳={current_time:.3f}, "
+                f"距首块={elapsed_since_first:.1f}ms, "
+                f"大小={len(binary_data)}字节, "
+                f"样本数={samples}, 非零比例={non_zero_ratio:.4f}, "
+                f"最大振幅={max_amp}"
+            )
+        elif max_amp > 500:
+            # 只在音频数据有实质内容时详细记录
+            elapsed_since_first = (current_time - self._first_audio_server_time) * 1000
             logger.debug(
-                f"音频数据: 样本数={samples}, 非零样本={non_zero}, "
+                f"🎤 服务器音频块 #{self._audio_counter}: "
+                f"距首块={elapsed_since_first:.1f}ms, "
+                f"样本数={samples}, 非零样本={non_zero}, "
                 f"非零比例={non_zero_ratio:.4f}, 最大振幅={max_amp}"
             )
 
@@ -323,7 +433,9 @@ class WebSocketHandler:
 
                 self.frames_asr = []
                 self.frames_asr.extend(frames_pre)
-                logger.debug(f"已添加 {len(frames_pre)} 帧作为前导音频")
+                logger.debug(
+                    f"已添加 {len(frames_pre)} 帧作为前导跨上下文音频，提供更好的识别上下文"
+                )
 
             # 如果语音已开始且未结束，添加当前帧到离线ASR列表
             if self.speech_start_flag and not self.speech_end_flag:
@@ -332,6 +444,8 @@ class WebSocketHandler:
             # 手动停止时强制设置结束点
             if not self.is_speaking:
                 self.model.status_dict_asr_online["is_final"] = True
+                # 强制停止VAD检测以快速结束
+                self.vad_status_dict["is_final"] = True
 
             # 处理在线ASR - 与官方实现一致的条件判断
             if (
@@ -341,6 +455,12 @@ class WebSocketHandler:
                 # 只在支持的模式下处理在线ASR
                 if self.funasr_config.mode in ["2pass", "online"]:
                     audio_in = b"".join(self.frames_asr_online)
+
+                    # 移除首次语音预热逻辑，因为预热已在ready状态前完成
+                    if self.first_speech_chunk:
+                        logger.debug("首次语音处理，预热已在会话开始时完成")
+                        self.first_speech_chunk = False
+
                     try:
                         await self._process_online_audio(
                             audio_in, self.model.status_dict_asr_online["is_final"]
@@ -356,15 +476,18 @@ class WebSocketHandler:
             min_speech_duration = 0.5  # 最小语音持续时间500ms
             current_time = time.time()
             speech_duration = current_time - self.speech_start_time if self.speech_start_flag else 0
-            
+
             if (
                 (speech_end_i != -1 or not self.is_speaking)
                 and self.speech_start_flag
                 and not self.speech_end_flag
-                and (not self.is_speaking or speech_duration >= min_speech_duration)  # 手动停止时忽略时间限制
+                and (
+                    not self.is_speaking or speech_duration >= min_speech_duration
+                )  # 手动停止时忽略时间限制
             ):
                 self.speech_end_flag = True
-                logger.debug(f"VAD检测到语音结束{'（手动停止）' if not self.is_speaking else ''}，语音持续时间: {speech_duration:.2f}秒")
+                status_msg = "（手动停止）" if not self.is_speaking else ""
+                logger.debug(f"VAD检测到语音结束{status_msg}，持续时间: {speech_duration:.2f}秒")
                 await self._process_speech_end()
 
         except Exception as e:
@@ -414,6 +537,7 @@ class WebSocketHandler:
             self.vad_pre_idx = 0
             self.frames = []
             self.vad_status_dict["cache"] = {}
+            self.first_speech_chunk = True  # 重置首次语音标志，但预热已在ready前完成
         else:
             # 保留最近的帧做为上下文 - 与官方实现一致
             self.frames = self.frames[-20:] if len(self.frames) > 20 else self.frames
@@ -529,7 +653,8 @@ class WebSocketHandler:
             process_time = time.time() - start_time
             if original_text and original_text != text:
                 logger.debug(
-                    f"离线ASR处理完成，耗时: {process_time:.3f}秒，标点前: '{original_text}'，标点后: '{text}'"
+                    f"离线ASR处理完成，耗时: {process_time:.3f}秒，"
+                    f"标点前: '{original_text}'，标点后: '{text}'"
                 )
             else:
                 logger.debug(f"离线ASR处理完成，耗时: {process_time:.3f}秒, 结果: '{text}'")

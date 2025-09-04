@@ -11,6 +11,7 @@ NexTalk客户端核心逻辑。
 import asyncio
 import logging
 import threading
+import time
 from typing import Optional, Dict, Any, Callable
 import numpy as np
 import os
@@ -33,6 +34,7 @@ from nextalk_shared.constants import (
     STATUS_ERROR,
     STATUS_DISCONNECTED,
     STATUS_CONNECTED,
+    STATUS_READY,
 )
 from nextalk_shared.data_models import TranscriptionResponse, ErrorMessage, StatusUpdate
 
@@ -61,6 +63,10 @@ class NexTalkClient:
 
         # 添加等待最终结果的标志
         self._waiting_for_final_result = False
+        
+        # 添加等待服务器就绪的标志
+        self._waiting_for_server_ready = False
+        self._server_ready_event = None  # 将在start()方法中初始化
 
         # 状态同步任务
         self._state_sync_task = None
@@ -136,6 +142,9 @@ class NexTalkClient:
 
         # 保存当前事件循环的引用
         self.loop = asyncio.get_event_loop()
+        
+        # 初始化服务器就绪事件（需要在事件循环中创建）
+        self._server_ready_event = asyncio.Event()
 
         # 启动系统托盘图标
         tray_started = self.tray_icon.start(on_quit=self._handle_quit_request)
@@ -241,7 +250,7 @@ class NexTalkClient:
         """
         激活音频监听。
 
-        开始捕获音频并发送到服务器。
+        首先发送开始命令给服务器，等待就绪确认后再开始音频捕获。
         """
         logger.debug("正在激活音频监听...")
 
@@ -257,17 +266,11 @@ class NexTalkClient:
 
         if not self.is_connected:
             logger.error("未连接到服务器，无法激活音频监听")
-
-            # 显示连接错误通知
-            try:
-                self._show_notification_if_enabled(
-                    title="NexTalk无法激活监听",
-                    message="未连接到服务器，请确保服务器正在运行",
-                    urgency="normal",
-                )
-            except Exception as e:
-                logger.error(f"发送监听错误通知时出现异常: {e}")
-
+            self._show_notification_if_enabled(
+                title="NexTalk无法激活监听",
+                message="未连接到服务器，请确保服务器正在运行",
+                urgency="normal",
+            )
             return False
 
         # 启动语音识别过程
@@ -275,6 +278,8 @@ class NexTalkClient:
             # 重置所有相关状态
             self._waiting_for_final_result = False
             self._stop_signal_sent = False
+            self._waiting_for_server_ready = True
+            self._server_ready_event.clear()
 
             # 取消任何可能存在的超时任务
             if hasattr(self, "_stop_timeout_task") and not self._stop_timeout_task.done():
@@ -302,58 +307,31 @@ class NexTalkClient:
                 )
                 logger.debug("状态同步任务已启动")
 
-            # 启动音频捕获
-            logger.debug("正在启动音频捕获...")
-            capture_started = self.audio_capturer.start_stream(self._handle_audio_chunk)
-
-            if not capture_started:
-                logger.error("无法启动音频捕获，音频监听激活失败")
-                # 恢复状态
-                self.is_listening = False
-                self._listening_state_locked = False
-                self._update_state(STATUS_IDLE)
-                return False
-
-            # 通知服务器开始识别
-            logger.debug("正在通知服务器开始识别...")
-
-            # 创建异步任务以不阻塞当前线程
-            if self.loop and self.loop.is_running():
-                # 使用run_coroutine_threadsafe在事件循环中执行
-                start_recognition_task = asyncio.run_coroutine_threadsafe(
-                    self.websocket_client.start_recognition(), self.loop
+                # 创建握手任务
+                handshake_task = asyncio.run_coroutine_threadsafe(
+                    self._perform_recognition_handshake(), self.loop
                 )
 
-                # 添加回调以处理任务完成
-                def start_recognition_callback(fut):
+                # 添加握手完成回调
+                def handshake_callback(fut):
                     try:
-                        result = fut.result()
-                        logger.debug(f"启动识别结果: {result}")
-                        if not result:
-                            logger.error("服务器拒绝开始识别")
-                            # 如果服务器拒绝，需要恢复状态
+                        success = fut.result()
+                        if success:
+                            logger.debug("握手成功，音频监听已激活")
+                        else:
+                            logger.error("握手失败，重置状态")
+                            # 恢复状态
                             self.is_listening = False
                             self._listening_state_locked = False
                             self._update_state(STATUS_IDLE)
-                            # 停止音频捕获
-                            try:
-                                self.audio_capturer.stop_stream()
-                            except Exception as stop_err:
-                                logger.error(f"重置状态时停止音频捕获失败: {str(stop_err)}")
                     except Exception as e:
-                        logger.error(f"通知服务器开始识别时出错: {str(e)}")
-                        # 出现错误时重置状态，避免卡在错误状态
+                        logger.error(f"握手过程出错: {str(e)}")
+                        # 出现错误时重置状态
                         self.is_listening = False
                         self._listening_state_locked = False
                         self._update_state(STATUS_ERROR)
 
-                        # 尝试停止音频捕获
-                        try:
-                            self.audio_capturer.stop_stream()
-                        except Exception as stop_err:
-                            logger.error(f"重置状态时停止音频捕获失败: {str(stop_err)}")
-
-                start_recognition_task.add_done_callback(start_recognition_callback)
+                handshake_task.add_done_callback(handshake_callback)
             else:
                 logger.error("事件循环未运行，无法启动识别")
                 # 恢复状态
@@ -362,35 +340,81 @@ class NexTalkClient:
                 self._update_state(STATUS_IDLE)
                 return False
 
-            # 强制重新设置状态为LISTENING，以防在回调期间被修改
-            logger.debug("强制重新确认状态为LISTENING")
-            self.is_listening = True
-            self._update_state(STATUS_LISTENING)
-
-            # 显示已激活通知
-            try:
-                self._show_notification_if_enabled(
-                    title="NexTalk已激活", message="正在监听", urgency="normal"
-                )
-            except Exception as e:
-                logger.error(f"发送监听激活通知时出现异常: {str(e)}")
-
-            logger.debug("音频监听已成功激活")
+            logger.debug("音频监听激活流程已启动")
             return True
         except Exception as e:
             logger.error(f"激活音频监听时出错: {str(e)}")
-
             # 确保在出错时清理资源
-            try:
-                self.is_listening = False
-                self._listening_state_locked = False
-                self._update_state(STATUS_ERROR)
-                if self.audio_capturer.is_capturing():
-                    self.audio_capturer.stop_stream()
-            except Exception as cleanup_err:
-                logger.error(f"清理资源时出错: {str(cleanup_err)}")
-
+            self.is_listening = False
+            self._listening_state_locked = False
+            self._update_state(STATUS_ERROR)
             return False
+
+    async def _perform_recognition_handshake(self) -> bool:
+        """
+        执行识别握手流程：发送开始命令，等待服务器就绪，然后启动音频捕获。
+        
+        Returns:
+            bool: 握手是否成功
+        """
+        logger.info("🤝 ===== 开始执行识别握手流程 =====")
+        handshake_start_time = time.time()
+        
+        try:
+            # 1. 发送开始识别命令
+            logger.info("📤 步骤1: 发送开始识别命令给服务器...")
+            cmd_send_time = time.time()
+            start_result = await self.websocket_client.start_recognition()
+            cmd_send_duration = (time.time() - cmd_send_time) * 1000
+            
+            if not start_result:
+                logger.error("❌ 发送开始识别命令失败")
+                return False
+            
+            logger.info(f"✅ 开始命令发送成功，耗时: {cmd_send_duration:.1f}ms")
+            
+            # 2. 等待服务器就绪确认，设置超时
+            logger.info("⏳ 步骤2: 等待服务器就绪确认...")
+            wait_start_time = time.time()
+            
+            try:
+                await asyncio.wait_for(self._server_ready_event.wait(), timeout=10.0)
+                wait_duration = (time.time() - wait_start_time) * 1000
+                logger.info(f"✅ 收到服务器就绪确认，等待耗时: {wait_duration:.1f}ms")
+            except asyncio.TimeoutError:
+                wait_duration = (time.time() - wait_start_time) * 1000
+                logger.error(f"❌ 等待服务器就绪超时（10秒），等待时间: {wait_duration:.1f}ms")
+                return False
+            
+            # 3. 服务器就绪后，启动音频捕获
+            logger.info("🎤 步骤3: 服务器已就绪，正在启动音频捕获...")
+            capture_start_time = time.time()
+            
+            capture_started = self.audio_capturer.start_stream(self._handle_audio_chunk)
+            capture_duration = (time.time() - capture_start_time) * 1000
+            
+            if not capture_started:
+                logger.error("❌ 无法启动音频捕获")
+                return False
+            
+            total_handshake_duration = (time.time() - handshake_start_time) * 1000
+            logger.info(f"✅ 音频捕获已启动，耗时: {capture_duration:.1f}ms")
+            logger.info(f"🎉 握手完成! 总耗时: {total_handshake_duration:.1f}ms")
+            
+            # 显示已激活通知
+            self._show_notification_if_enabled(
+                title="NexTalk已激活", message="正在监听", urgency="normal"
+            )
+            
+            return True
+            
+        except Exception as e:
+            total_duration = (time.time() - handshake_start_time) * 1000
+            logger.error(f"❌ 执行识别握手时出错: {str(e)}, 总耗时: {total_duration:.1f}ms")
+            return False
+        finally:
+            # 重置握手状态
+            self._waiting_for_server_ready = False
 
     async def _deactivate_listening(self) -> None:
         """
@@ -592,20 +616,37 @@ class NexTalkClient:
 
         # 记录收到的音频数据信息
         try:
-            # 为避免日志过多，每10个数据块记录一次
-            if hasattr(self, "_audio_chunk_counter"):
-                self._audio_chunk_counter += 1
-            else:
-                self._audio_chunk_counter = 1
+            # 初始化音频块计数器和时间戳
+            if not hasattr(self, "_audio_chunk_counter"):
+                self._audio_chunk_counter = 0
+                self._first_audio_time = time.time()
+                logger.info(f"🎵 首个音频块接收，时间戳: {self._first_audio_time:.3f}")
+                
+            self._audio_chunk_counter += 1
+            current_time = time.time()
 
-            if self._audio_chunk_counter % 10 == 0:
-                # 检查音频数据
-                audio_int16 = np.frombuffer(data, dtype=np.int16)
-                non_zero_ratio = np.count_nonzero(audio_int16) / len(audio_int16)
-                max_amplitude = np.max(np.abs(audio_int16))
+            # 检查音频数据质量
+            audio_int16 = np.frombuffer(data, dtype=np.int16)
+            non_zero_ratio = np.count_nonzero(audio_int16) / len(audio_int16) if len(audio_int16) > 0 else 0
+            max_amplitude = np.max(np.abs(audio_int16)) if len(audio_int16) > 0 else 0
 
+            # 前5个音频块总是记录详细信息
+            if self._audio_chunk_counter <= 5:
+                elapsed_since_first = (current_time - self._first_audio_time) * 1000
+                logger.info(
+                    f"🎤 音频块 #{self._audio_chunk_counter}: "
+                    f"时间戳={current_time:.3f}, "
+                    f"距首块={elapsed_since_first:.1f}ms, "
+                    f"大小={len(data)}字节, "
+                    f"非零比例={non_zero_ratio:.4f}, "
+                    f"最大振幅={max_amplitude}"
+                )
+            elif self._audio_chunk_counter % 10 == 0:
+                # 后续每10个数据块记录一次
+                elapsed_since_first = (current_time - self._first_audio_time) * 1000
                 logger.debug(
-                    f"处理音频块 #{self._audio_chunk_counter}: "
+                    f"🎤 音频块 #{self._audio_chunk_counter}: "
+                    f"距首块={elapsed_since_first:.1f}ms, "
                     f"大小={len(data)}字节, "
                     f"非零比例={non_zero_ratio:.4f}, "
                     f"最大振幅={max_amplitude}"
@@ -620,19 +661,22 @@ class NexTalkClient:
 
         try:
             # 创建异步任务发送音频数据
+            send_start_time = time.time()
             send_task = asyncio.run_coroutine_threadsafe(
                 self.websocket_client.send_audio(data), self.loop
             )
 
-            # 每个数据块记录一次发送状态
-            logger.debug(f"音频块 #{self._audio_chunk_counter} 发送任务已创建")
+            # 前5个音频块记录发送时间
+            if self._audio_chunk_counter <= 5:
+                logger.info(f"📤 音频块 #{self._audio_chunk_counter} 发送任务已创建，时间戳: {send_start_time:.3f}")
 
             # 每10个数据块检查一次发送结果
             if self._audio_chunk_counter % 10 == 0:
                 try:
                     # 等待发送完成并获取结果(最多等待0.1秒)
                     result = send_task.result(timeout=0.1)
-                    logger.debug(f"音频数据发送结果: {'成功' if result else '失败'}")
+                    send_duration = (time.time() - send_start_time) * 1000
+                    logger.debug(f"📤 音频数据发送结果: {'成功' if result else '失败'}, 耗时: {send_duration:.1f}ms")
                 except asyncio.TimeoutError:
                     logger.debug("获取音频发送结果超时，发送可能仍在进行")
                 except Exception as e:
@@ -938,6 +982,15 @@ class NexTalkClient:
             self.is_connected = False
             # 断开连接时解除状态锁定
             self._listening_state_locked = False
+        elif status == STATUS_READY:
+            # 服务器就绪状态 - 触发ready事件
+            ready_time = time.time()
+            logger.info(f"🟢 收到服务器就绪状态，时间戳: {ready_time:.3f}")
+            if hasattr(self, '_server_ready_event') and self._server_ready_event:
+                logger.info("🚨 触发ready事件，唤醒等待的握手流程")
+                self._server_ready_event.set()
+            else:
+                logger.warning("⚠️ ready事件对象不存在，无法触发")
         elif status == STATUS_LISTENING:
             self.is_listening = True
             # 设置为LISTENING状态时自动锁定状态

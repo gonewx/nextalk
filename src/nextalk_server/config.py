@@ -44,6 +44,14 @@ DEFAULT_CONFIG = {
     # FunASR在线模型高级设置
     "encoder_chunk_look_back": 4,  # 编码器回看块数，用于提升在线识别准确度
     "decoder_chunk_look_back": 0,  # 解码器回看块数，用于提升在线识别准确度
+    "chunk_size": [0, 10, 8],  # 流式识别chunk大小: [look_back, chunk_length, look_ahead] (优化版)
+    "recognition_mode": "accuracy",  # 识别模式: accuracy/balanced/speed
+    "enable_cache_warmup": True,  # 是否启用缓存预热
+    "warmup_rounds": 3,  # 预热轮数
+    # VAD高级参数
+    "vad_max_start_silence_time": 200,
+    "vad_sil_to_speech_time": 100, 
+    "vad_speech_to_sil_time": 400,
 }
 
 # 新的统一配置路径
@@ -96,6 +104,14 @@ class Config(BaseModel):
     # FunASR在线模型高级设置
     encoder_chunk_look_back: Optional[int] = 4  # 编码器回看块数，参考FunASR wss client的默认值
     decoder_chunk_look_back: Optional[int] = 0  # 解码器回看块数，参考FunASR wss client的默认值
+    chunk_size: list = [0, 10, 8]  # 流式识别chunk大小参数(优化版)
+    recognition_mode: str = "accuracy"  # 识别模式
+    enable_cache_warmup: bool = True  # 缓存预热
+    warmup_rounds: int = 3  # 预热轮数
+    # VAD高级参数
+    vad_max_start_silence_time: int = 200
+    vad_sil_to_speech_time: int = 100
+    vad_speech_to_sil_time: int = 400
 
 
 # 全局配置实例
@@ -136,7 +152,19 @@ def parse_ini_config(ini_path: str) -> dict:
     # 类型转换
     result = {}
     for k, v in server_cfg.items():
-        if k in [
+        if k == "chunk_size":
+            # 特殊chunk_size参数解析
+            try:
+                if isinstance(v, str) and "," in v:
+                    result[k] = [int(x.strip()) for x in v.split(",")]
+                    logger.debug(f"INI配置项解析为chunk_size列表: {k}={v} → {result[k]}")
+                else:
+                    logger.warning(f"chunk_size配置格式错误: {v}, 使用默认值")
+                    result[k] = [0, 10, 5]
+            except Exception as e:
+                logger.warning(f"chunk_size解析失败: {v}, 错误: {e}, 使用默认值")
+                result[k] = [0, 10, 5]
+        elif k in [
             "port",
             "vad_sensitivity",
             "ngpu",
@@ -144,6 +172,10 @@ def parse_ini_config(ini_path: str) -> dict:
             "encoder_chunk_look_back",
             "decoder_chunk_look_back",
             "device_id",
+            "warmup_rounds",
+            "vad_max_start_silence_time", 
+            "vad_sil_to_speech_time",
+            "vad_speech_to_sil_time",
         ]:
             try:
                 result[k] = int(v)
@@ -151,12 +183,41 @@ def parse_ini_config(ini_path: str) -> dict:
             except Exception as e:
                 logger.warning(f"INI配置项转换整数失败: {k}={v}, 错误: {e}")
                 continue
-        elif k in ["funasr_streaming", "funasr_disable_update", "use_fp16"]:
+        elif k in ["funasr_streaming", "funasr_disable_update", "use_fp16", "enable_cache_warmup"]:
             result[k] = v.lower() in ("1", "true", "yes")
             logger.debug(f"INI配置项转换为布尔值: {k}={v} → {result[k]}")
+        elif k == "recognition_mode":
+            result[k] = v
+            logger.debug(f"INI配置项识别模式: {k}={v}")
         else:
             result[k] = v
             logger.debug(f"INI配置项保持原值: {k}={v}")
+
+    # 应用recognition_mode预设配置
+    mode = result.get('recognition_mode', 'accuracy')
+    if mode == 'speed':
+        # 低延迟模式
+        result['chunk_size'] = [0, 10, 5]
+        result['encoder_chunk_look_back'] = 0
+        result['decoder_chunk_look_back'] = 1
+        logger.info("应用速度优先模式: chunk_size=[0,10,5], 低延迟但准确度略低")
+    elif mode == 'balanced':
+        # 平衡模式
+        result['chunk_size'] = [0, 10, 6]
+        result['encoder_chunk_look_back'] = 1
+        result['decoder_chunk_look_back'] = 1
+        logger.info("应用平衡模式: chunk_size=[0,10,6], 延迟和准确度平衡")
+    elif mode == 'accuracy':
+        # 高准确度模式（默认）
+        result['chunk_size'] = [0, 10, 8]
+        result['encoder_chunk_look_back'] = 2
+        result['decoder_chunk_look_back'] = 2
+        logger.info("应用准确度优先模式: chunk_size=[0,10,8], 高准确度但延迟略高")
+    else:
+        logger.warning(f"未知的识别模式: {mode}, 使用默认accuracy模式")
+        result['chunk_size'] = [0, 10, 8]
+        result['encoder_chunk_look_back'] = 2
+        result['decoder_chunk_look_back'] = 2
 
     logger.debug(f"INI配置解析结果: {result}")
     return result
@@ -284,9 +345,13 @@ def save_config(config: Config) -> bool:
         ini_config.add_section("Server")
 
         # 转换配置项
-        config_dict = config.dict()
+        config_dict = config.model_dump()
         for key, value in config_dict.items():
-            ini_config.set("Server", key, str(value))
+            if key == "chunk_size" and isinstance(value, list):
+                # 特殊处理chunk_size列表
+                ini_config.set("Server", key, ",".join(map(str, value)))
+            else:
+                ini_config.set("Server", key, str(value))
 
         # 保存到文件
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:

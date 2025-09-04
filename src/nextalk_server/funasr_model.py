@@ -4,16 +4,13 @@ FunASR模型模块
 提供FunASR模型封装，负责模型的加载和音频处理。
 """
 
-import os
 import logging
 import asyncio
 import time
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from concurrent.futures import ThreadPoolExecutor
 import threading
-
-from .config import get_config
 from nextalk_shared.constants import (
     FUNASR_OFFLINE_MODEL,
     FUNASR_ONLINE_MODEL,
@@ -157,21 +154,67 @@ class FunASRModel:
             )
             if asr_model_streaming:
                 logger.debug(f"加载在线ASR模型: {asr_model_streaming}")
+                
+                # 流式模型专用参数
+                streaming_params = common_params.copy()
+                
+                # 配置流式识别的chunk_size参数
+                chunk_size = getattr(self.config, "chunk_size", [0, 10, 5])
+                streaming_params["chunk_size"] = chunk_size
+                logger.debug(f"配置流式模型chunk_size: {chunk_size}")
+                
                 self._model_asr_streaming = AutoModel(
                     model=asr_model_streaming,
                     model_revision=asr_model_streaming_revision,
                     log_level="ERROR",
-                    **common_params,
+                    **streaming_params,
                 )
 
-                # 预热在线ASR模型
+                # 预热在线ASR模型 - 发送多个chunk进行充分预热
                 logger.debug("预热在线ASR模型...")
                 try:
-                    test_audio = np.zeros(1600, dtype=np.int16)
-                    self._model_asr_streaming.generate(
-                        input=test_audio, cache=self.status_dict_asr_online.get("cache", {})
-                    )
-                    logger.debug("在线ASR模型预热完成")
+                    # 计算每个chunk的样本数 (chunk_size[1] * 960)
+                    chunk_samples = chunk_size[1] * 960
+                    
+                    # 根据配置发送静音chunk进行预热，建立模型cache状态
+                    warmup_rounds = getattr(self.config, "warmup_rounds", 3)
+                    enable_warmup = getattr(self.config, "enable_cache_warmup", True)
+                    
+                    if enable_warmup:
+                        logger.debug(f"缓存预热已启用，将进行{warmup_rounds}轮预热")
+                        for i in range(warmup_rounds):
+                            test_audio = np.zeros(chunk_samples, dtype=np.int16)
+                            result = self._model_asr_streaming.generate(
+                                input=test_audio, 
+                                cache=self.status_dict_asr_online.get("cache", {}),
+                                is_final=False,
+                                chunk_size=chunk_size
+                            )
+                            logger.debug(f"在线ASR模型预热第{i+1}轮完成")
+                            
+                        # 最后一个预热chunk设为final以完成初始化
+                        final_test_audio = np.zeros(chunk_samples, dtype=np.int16)
+                        result = self._model_asr_streaming.generate(
+                            input=final_test_audio, 
+                            cache=self.status_dict_asr_online.get("cache", {}),
+                            is_final=True,
+                            chunk_size=chunk_size
+                        )
+                        
+                        logger.debug("在线ASR模型缓存预热完成，已建立cache状态")
+                    else:
+                        logger.debug("缓存预热已禁用")
+                        # 传统预热方式，只进行一轮基础预热
+                        test_audio = np.zeros(chunk_samples, dtype=np.int16)
+                        result = self._model_asr_streaming.generate(
+                            input=test_audio, 
+                            cache=self.status_dict_asr_online.get("cache", {}),
+                            is_final=True,
+                            chunk_size=chunk_size
+                        )
+                        logger.debug("在线ASR模型基础预热完成")
+                    
+                    logger.debug("在线ASR模型预热完成，已建立cache状态")
                 except Exception as e:
                     logger.warning(f"在线ASR模型预热失败: {str(e)}")
 
@@ -180,8 +223,24 @@ class FunASRModel:
             vad_model_revision = getattr(self.config, "vad_model_revision", FUNASR_MODEL_REVISION)
             if vad_model:
                 logger.debug(f"加载VAD模型: {vad_model}")
+                
+                # VAD模型专用参数
+                vad_params = common_params.copy()
+                
+                # 优化VAD检测参数 - 从配置文件加载
+                vad_kwargs = {
+                    "max_start_silence_time": getattr(self.config, "vad_max_start_silence_time", 200),
+                    "sil_to_speech_time_thres": getattr(self.config, "vad_sil_to_speech_time", 100), 
+                    "speech_to_sil_time_thres": getattr(self.config, "vad_speech_to_sil_time", 400),
+                    "max_end_silence_time": 800,  # 固定参数
+                }
+                vad_params["vad_kwargs"] = vad_kwargs
+                logger.debug(f"配置VAD参数: {vad_kwargs}")
+                
                 self._model_vad = AutoModel(
-                    model=vad_model, model_revision=vad_model_revision, **common_params
+                    model=vad_model, 
+                    model_revision=vad_model_revision, 
+                    **vad_params
                 )
 
                 # 预热VAD模型
@@ -323,8 +382,15 @@ class FunASRModel:
             start_time = time.time()
 
             # 直接调用流式模型处理音频
+            # 确保传递chunk_size参数
+            generate_params = self.status_dict_asr_online.copy()
+            if "chunk_size" not in generate_params:
+                # 使用默认的chunk_size参数
+                generate_params["chunk_size"] = [0, 10, 5]
+                logger.debug(f"流式识别使用默认chunk_size: {generate_params['chunk_size']}")
+            
             result = self._model_asr_streaming.generate(
-                input=audio_data, **self.status_dict_asr_online
+                input=audio_data, **generate_params
             )
 
             # 处理结果
