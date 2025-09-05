@@ -4,11 +4,11 @@
 此模块使用pynput库实现全局热键监听功能，用于激活和停用NexTalk的语音识别。
 """
 
+import asyncio
 import logging
 import threading
-import asyncio
 import time
-from typing import Callable, Dict, List, Optional, Set, Tuple, Union, Any
+from typing import Any, Callable, List, Optional, Set, Union
 
 from pynput import keyboard
 

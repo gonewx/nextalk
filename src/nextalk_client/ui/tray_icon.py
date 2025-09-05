@@ -8,24 +8,25 @@ NexTalk系统托盘图标实现。
 - 模型选择子菜单（可以切换语音识别模型）
 """
 
-import os
 import logging
-import threading
 import platform
-from pathlib import Path
-from PIL import Image
-import cairosvg
+import threading
 from io import BytesIO
+from pathlib import Path
+from typing import Callable, Dict, Optional
+
+import cairosvg
+from PIL import Image
 from pystray import Icon, Menu, MenuItem
-from typing import Callable, Dict, Optional, List
 
 from nextalk_shared.constants import (
+    STATUS_CONNECTED,
+    STATUS_DISCONNECTED,
+    STATUS_ERROR,
     STATUS_IDLE,
     STATUS_LISTENING,
+    STATUS_PREPARING,
     STATUS_PROCESSING,
-    STATUS_ERROR,
-    STATUS_DISCONNECTED,
-    STATUS_CONNECTED,
 )
 
 # 设置日志记录器
@@ -86,6 +87,7 @@ class SystemTrayIcon:
             STATUS_LISTENING: "listening.svg",
             STATUS_PROCESSING: "processing.svg",
             STATUS_ERROR: "error.svg",
+            STATUS_PREPARING: "processing.svg",  # 准备状态使用processing图标
         }
 
         # 在Ubuntu上pystray的AppIndicator后端可能会忽略图标的实际尺寸

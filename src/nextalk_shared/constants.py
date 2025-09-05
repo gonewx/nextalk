@@ -42,3 +42,4 @@ STATUS_ERROR = "error"
 STATUS_DISCONNECTED = "disconnected"
 STATUS_CONNECTED = "connected"
 STATUS_READY = "ready"  # 服务器模型已就绪，可以开始音频捕获
+STATUS_PREPARING = "preparing"  # 正在准备中（客户端已激活，等待服务器就绪）

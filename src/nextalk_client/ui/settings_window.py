@@ -5,12 +5,10 @@ NexTalk设置窗口实现。
 如热键、语音识别模型、VAD敏感度等。
 """
 
-import os
 import logging
 import tkinter as tk
-from tkinter import ttk, messagebox
-from typing import Callable, Dict, Optional, Any
-from pathlib import Path
+from tkinter import messagebox, ttk
+from typing import Any, Callable, Dict, Optional
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)

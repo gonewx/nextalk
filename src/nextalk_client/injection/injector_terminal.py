@@ -15,6 +15,7 @@ from .injector_base import BaseInjector
 
 try:
     import psutil
+
     HAS_PSUTIL = True
 except ImportError:
     HAS_PSUTIL = False
@@ -24,18 +25,21 @@ logger = logging.getLogger(__name__)
 # 尝试导入可选依赖
 try:
     import pyautogui
+
     HAS_PYAUTOGUI = True
 except ImportError:
     HAS_PYAUTOGUI = False
 
 try:
     import pyclip
+
     HAS_PYCLIP = True
 except ImportError:
     HAS_PYCLIP = False
 
 try:
     import pyperclip
+
     HAS_PYPERCLIP = True
 except ImportError:
     HAS_PYPERCLIP = False
@@ -44,7 +48,7 @@ except ImportError:
 class TerminalInjector(BaseInjector):
     """
     终端专用文本注入器。
-    
+
     专门针对终端应用程序进行优化，支持：
     - 终端特有的粘贴快捷键 (Ctrl+Shift+V)
     - 活动窗口检测
@@ -53,16 +57,29 @@ class TerminalInjector(BaseInjector):
 
     # 已知的终端应用程序
     TERMINAL_PROCESSES = {
-        'gnome-terminal', 'konsole', 'xfce4-terminal', 'lxterminal',
-        'mate-terminal', 'terminator', 'tilix', 'alacritty', 'kitty',
-        'urxvt', 'rxvt', 'xterm', 'aterm', 'eterm', 'wezterm',
-        'terminal', 'iterm2', 'hyper', 'tabby'
+        "gnome-terminal",
+        "konsole",
+        "xfce4-terminal",
+        "lxterminal",
+        "mate-terminal",
+        "terminator",
+        "tilix",
+        "alacritty",
+        "kitty",
+        "urxvt",
+        "rxvt",
+        "xterm",
+        "aterm",
+        "eterm",
+        "wezterm",
+        "terminal",
+        "iterm2",
+        "hyper",
+        "tabby",
     }
 
     # 终端窗口标题模式
-    TERMINAL_WINDOW_PATTERNS = {
-        'terminal', 'console', 'shell', 'bash', 'zsh', 'fish', 'cmd'
-    }
+    TERMINAL_WINDOW_PATTERNS = {"terminal", "console", "shell", "bash", "zsh", "fish", "cmd"}
 
     def __init__(self):
         """初始化终端注入器。"""
@@ -82,18 +99,17 @@ class TerminalInjector(BaseInjector):
 
         # 检查工具
         if platform.system() == "Linux":
-            self.has_xdotool = subprocess.run(
-                ["which", "xdotool"], capture_output=True
-            ).returncode == 0
+            self.has_xdotool = (
+                subprocess.run(["which", "xdotool"], capture_output=True).returncode == 0
+            )
 
-            self.has_ydotool = subprocess.run(
-                ["which", "ydotool"], capture_output=True
-            ).returncode == 0
+            self.has_ydotool = (
+                subprocess.run(["which", "ydotool"], capture_output=True).returncode == 0
+            )
 
         # 确定可用性
-        self.available = (
-            self.clipboard_module is not None and
-            (HAS_PYAUTOGUI or self.has_xdotool or self.has_ydotool)
+        self.available = self.clipboard_module is not None and (
+            HAS_PYAUTOGUI or self.has_xdotool or self.has_ydotool
         )
 
         if self.available:
@@ -113,8 +129,7 @@ class TerminalInjector(BaseInjector):
 
             # 获取活动窗口ID
             result = subprocess.run(
-                ["xdotool", "getactivewindow"],
-                capture_output=True, text=True, timeout=2
+                ["xdotool", "getactivewindow"], capture_output=True, text=True, timeout=2
             )
 
             if result.returncode != 0:
@@ -126,11 +141,11 @@ class TerminalInjector(BaseInjector):
             window_info = self._get_window_info(window_id)
 
             # 检查进程名
-            if window_info.get('process_name', '').lower() in self.TERMINAL_PROCESSES:
+            if window_info.get("process_name", "").lower() in self.TERMINAL_PROCESSES:
                 return True
 
             # 检查窗口标题
-            window_title = window_info.get('window_title', '').lower()
+            window_title = window_info.get("window_title", "").lower()
             for pattern in self.TERMINAL_WINDOW_PATTERNS:
                 if pattern in window_title:
                     return True
@@ -148,16 +163,14 @@ class TerminalInjector(BaseInjector):
         try:
             # 获取窗口标题
             result = subprocess.run(
-                ["xdotool", "getwindowname", window_id],
-                capture_output=True, text=True, timeout=2
+                ["xdotool", "getwindowname", window_id], capture_output=True, text=True, timeout=2
             )
             if result.returncode == 0:
-                info['window_title'] = result.stdout.strip()
+                info["window_title"] = result.stdout.strip()
 
             # 获取进程PID
             result = subprocess.run(
-                ["xdotool", "getwindowpid", window_id],
-                capture_output=True, text=True, timeout=2
+                ["xdotool", "getwindowpid", window_id], capture_output=True, text=True, timeout=2
             )
 
             if result.returncode == 0:
@@ -165,15 +178,15 @@ class TerminalInjector(BaseInjector):
                 if HAS_PSUTIL:
                     try:
                         process = psutil.Process(pid)
-                        info['process_name'] = process.name()
-                        info['process_exe'] = process.exe()
+                        info["process_name"] = process.name()
+                        info["process_exe"] = process.exe()
                     except Exception:
                         pass
                 else:
                     # 后备方法：通过 /proc 文件系统获取进程信息
                     try:
-                        with open(f'/proc/{pid}/comm', 'r') as f:
-                            info['process_name'] = f.read().strip()
+                        with open(f"/proc/{pid}/comm", "r") as f:
+                            info["process_name"] = f.read().strip()
                     except Exception:
                         pass
 
@@ -185,27 +198,27 @@ class TerminalInjector(BaseInjector):
     def get_terminal_info(self) -> Dict[str, Any]:
         """获取终端环境信息。"""
         info = {
-            'is_terminal_focused': self.is_terminal_focused(),
-            'terminal_env_vars': {},
-            'available_tools': []
+            "is_terminal_focused": self.is_terminal_focused(),
+            "terminal_env_vars": {},
+            "available_tools": [],
         }
 
         # 检查终端相关环境变量
-        terminal_vars = ['TERM', 'TERMINAL', 'COLORTERM', 'TERM_PROGRAM']
+        terminal_vars = ["TERM", "TERMINAL", "COLORTERM", "TERM_PROGRAM"]
         for var in terminal_vars:
             value = os.environ.get(var)
             if value:
-                info['terminal_env_vars'][var] = value
+                info["terminal_env_vars"][var] = value
 
         # 可用工具
         if HAS_PYAUTOGUI:
-            info['available_tools'].append('pyautogui')
+            info["available_tools"].append("pyautogui")
         if self.has_xdotool:
-            info['available_tools'].append('xdotool')
+            info["available_tools"].append("xdotool")
         if self.has_ydotool:
-            info['available_tools'].append('ydotool')
+            info["available_tools"].append("ydotool")
         if self.clipboard_module:
-            info['available_tools'].append(self.clipboard_module)
+            info["available_tools"].append(self.clipboard_module)
 
         return info
 
@@ -261,18 +274,16 @@ class TerminalInjector(BaseInjector):
 
             if HAS_PYAUTOGUI:
                 # 尝试终端粘贴快捷键 (Ctrl+Shift+V)
-                pyautogui.hotkey('ctrl', 'shift', 'v')
+                pyautogui.hotkey("ctrl", "shift", "v")
                 success = True
             elif self.has_xdotool:
                 result = subprocess.run(
-                    ["xdotool", "key", "ctrl+shift+v"],
-                    capture_output=True, timeout=3
+                    ["xdotool", "key", "ctrl+shift+v"], capture_output=True, timeout=3
                 )
                 success = result.returncode == 0
             elif self.has_ydotool:
                 result = subprocess.run(
-                    ["ydotool", "key", "ctrl+shift+v"],
-                    capture_output=True, timeout=3
+                    ["ydotool", "key", "ctrl+shift+v"], capture_output=True, timeout=3
                 )
                 success = result.returncode == 0
 
@@ -307,18 +318,16 @@ class TerminalInjector(BaseInjector):
             success = False
 
             if HAS_PYAUTOGUI:
-                pyautogui.hotkey('ctrl', 'v')
+                pyautogui.hotkey("ctrl", "v")
                 success = True
             elif self.has_xdotool:
                 result = subprocess.run(
-                    ["xdotool", "key", "ctrl+v"],
-                    capture_output=True, timeout=3
+                    ["xdotool", "key", "ctrl+v"], capture_output=True, timeout=3
                 )
                 success = result.returncode == 0
             elif self.has_ydotool:
                 result = subprocess.run(
-                    ["ydotool", "key", "ctrl+v"],
-                    capture_output=True, timeout=3
+                    ["ydotool", "key", "ctrl+v"], capture_output=True, timeout=3
                 )
                 success = result.returncode == 0
 
@@ -341,8 +350,7 @@ class TerminalInjector(BaseInjector):
         try:
             if self.has_xdotool:
                 result = subprocess.run(
-                    ["xdotool", "type", "--", text],
-                    capture_output=True, text=True, timeout=10
+                    ["xdotool", "type", "--", text], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     logger.debug(f"通过xdotool键入成功注入文本，长度: {len(text)}")
@@ -350,8 +358,7 @@ class TerminalInjector(BaseInjector):
 
             elif self.has_ydotool:
                 result = subprocess.run(
-                    ["ydotool", "type", text],
-                    capture_output=True, text=True, timeout=10
+                    ["ydotool", "type", text], capture_output=True, text=True, timeout=10
                 )
                 if result.returncode == 0:
                     logger.debug(f"通过ydotool键入成功注入文本，长度: {len(text)}")

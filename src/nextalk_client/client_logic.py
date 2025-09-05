@@ -12,32 +12,32 @@ import asyncio
 import logging
 import threading
 import time
-from typing import Optional, Dict, Any, Callable
+from typing import Optional
+
 import numpy as np
-import os
+
+from nextalk_shared.constants import (
+    STATUS_CONNECTED,
+    STATUS_DISCONNECTED,
+    STATUS_ERROR,
+    STATUS_IDLE,
+    STATUS_LISTENING,
+    STATUS_PREPARING,
+    STATUS_PROCESSING,
+    STATUS_READY,
+)
+from nextalk_shared.data_models import StatusUpdate
 
 from .audio.capture import AudioCapturer
-from .network.client import WebSocketClient
-from .config.loader import load_config, get_client_bool_config
-from .injection.injector_base import get_injector, BaseInjector
+from .config.loader import get_client_bool_config, load_config
 from .hotkey.listener import HotkeyListener
-from .ui.tray_icon import SystemTrayIcon
+from .injection.injector_base import BaseInjector, get_injector
+from .network.client import WebSocketClient
 from .ui.notifications import show_notification
 
 # 导入简单窗口作为唯一的文本显示方法
 from .ui.simple_window import show_text
-
-from nextalk_shared.constants import (
-    STATUS_IDLE,
-    STATUS_LISTENING,
-    STATUS_PROCESSING,
-    STATUS_ERROR,
-    STATUS_DISCONNECTED,
-    STATUS_CONNECTED,
-    STATUS_READY,
-)
-from nextalk_shared.data_models import TranscriptionResponse, ErrorMessage, StatusUpdate
-
+from .ui.tray_icon import SystemTrayIcon
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class NexTalkClient:
 
         # 添加等待最终结果的标志
         self._waiting_for_final_result = False
-        
+
         # 添加等待服务器就绪的标志
         self._waiting_for_server_ready = False
         self._server_ready_event = None  # 将在start()方法中初始化
@@ -84,7 +84,7 @@ class NexTalkClient:
         # 初始化文本注入器
         injector_type = self.client_config.get("injector_type", "smart").lower()
         fallback_method = self.client_config.get("fallback_method", "auto").lower()
-        
+
         # 根据配置选择注入器类型
         if injector_type == "legacy":
             self.injector: Optional[BaseInjector] = get_injector(use_smart=False, legacy=True)
@@ -92,13 +92,14 @@ class NexTalkClient:
         elif injector_type == "fallback":
             # 使用后备注入器
             from .injection.injector_fallback import FallbackInjector
+
             method = fallback_method if fallback_method != "auto" else None
             self.injector = FallbackInjector(method=method)
             logger.info(f"使用后备注入器，方法: {fallback_method}")
         else:  # 默认使用智能注入器
             self.injector = get_injector(use_smart=True, legacy=False)
             logger.info("使用智能注入器")
-            
+
         if self.injector is None:
             logger.warning("无法初始化文本注入器，文本注入功能将不可用")
         else:
@@ -142,7 +143,7 @@ class NexTalkClient:
 
         # 保存当前事件循环的引用
         self.loop = asyncio.get_event_loop()
-        
+
         # 初始化服务器就绪事件（需要在事件循环中创建）
         self._server_ready_event = asyncio.Event()
 
@@ -182,7 +183,7 @@ class NexTalkClient:
         )
 
         if not hotkey_started:
-            logger.error(f"无法启动热键监听器，但客户端仍会继续运行")
+            logger.error("无法启动热键监听器，但客户端仍会继续运行")
         else:
             logger.debug(f"热键监听器已启动，使用 {hotkey} 可以切换音频识别状态")
 
@@ -290,10 +291,9 @@ class NexTalkClient:
             self._listening_state_locked = True
             logger.debug("状态已锁定为LISTENING")
 
-            # 先标记状态为正在监听，使UI立即响应
-            logger.debug("立即更新状态为正在监听...")
-            self.is_listening = True
-            self._update_state(STATUS_LISTENING)
+            # 显示准备中状态，表示客户端已激活但等待服务器就绪
+            logger.debug("显示准备中状态，等待服务器就绪确认...")
+            self._update_state(STATUS_PREPARING)
 
             # 启动状态同步任务
             if self.loop and self.loop.is_running():
@@ -353,30 +353,30 @@ class NexTalkClient:
     async def _perform_recognition_handshake(self) -> bool:
         """
         执行识别握手流程：发送开始命令，等待服务器就绪，然后启动音频捕获。
-        
+
         Returns:
             bool: 握手是否成功
         """
         logger.info("🤝 ===== 开始执行识别握手流程 =====")
         handshake_start_time = time.time()
-        
+
         try:
             # 1. 发送开始识别命令
             logger.info("📤 步骤1: 发送开始识别命令给服务器...")
             cmd_send_time = time.time()
             start_result = await self.websocket_client.start_recognition()
             cmd_send_duration = (time.time() - cmd_send_time) * 1000
-            
+
             if not start_result:
                 logger.error("❌ 发送开始识别命令失败")
                 return False
-            
+
             logger.info(f"✅ 开始命令发送成功，耗时: {cmd_send_duration:.1f}ms")
-            
+
             # 2. 等待服务器就绪确认，设置超时
             logger.info("⏳ 步骤2: 等待服务器就绪确认...")
             wait_start_time = time.time()
-            
+
             try:
                 await asyncio.wait_for(self._server_ready_event.wait(), timeout=10.0)
                 wait_duration = (time.time() - wait_start_time) * 1000
@@ -385,29 +385,34 @@ class NexTalkClient:
                 wait_duration = (time.time() - wait_start_time) * 1000
                 logger.error(f"❌ 等待服务器就绪超时（10秒），等待时间: {wait_duration:.1f}ms")
                 return False
-            
+
             # 3. 服务器就绪后，启动音频捕获
             logger.info("🎤 步骤3: 服务器已就绪，正在启动音频捕获...")
             capture_start_time = time.time()
-            
+
             capture_started = self.audio_capturer.start_stream(self._handle_audio_chunk)
             capture_duration = (time.time() - capture_start_time) * 1000
-            
+
             if not capture_started:
                 logger.error("❌ 无法启动音频捕获")
                 return False
-            
+
+            # 音频捕获成功启动后才显示LISTENING状态
+            self.is_listening = True
+            self._update_state(STATUS_LISTENING)
+            logger.info("🎤 音频捕获已启动，UI状态已更新为LISTENING")
+
             total_handshake_duration = (time.time() - handshake_start_time) * 1000
             logger.info(f"✅ 音频捕获已启动，耗时: {capture_duration:.1f}ms")
             logger.info(f"🎉 握手完成! 总耗时: {total_handshake_duration:.1f}ms")
-            
+
             # 显示已激活通知
             self._show_notification_if_enabled(
                 title="NexTalk已激活", message="正在监听", urgency="normal"
             )
-            
+
             return True
-            
+
         except Exception as e:
             total_duration = (time.time() - handshake_start_time) * 1000
             logger.error(f"❌ 执行识别握手时出错: {str(e)}, 总耗时: {total_duration:.1f}ms")
@@ -621,13 +626,15 @@ class NexTalkClient:
                 self._audio_chunk_counter = 0
                 self._first_audio_time = time.time()
                 logger.info(f"🎵 首个音频块接收，时间戳: {self._first_audio_time:.3f}")
-                
+
             self._audio_chunk_counter += 1
             current_time = time.time()
 
             # 检查音频数据质量
             audio_int16 = np.frombuffer(data, dtype=np.int16)
-            non_zero_ratio = np.count_nonzero(audio_int16) / len(audio_int16) if len(audio_int16) > 0 else 0
+            non_zero_ratio = (
+                np.count_nonzero(audio_int16) / len(audio_int16) if len(audio_int16) > 0 else 0
+            )
             max_amplitude = np.max(np.abs(audio_int16)) if len(audio_int16) > 0 else 0
 
             # 前5个音频块总是记录详细信息
@@ -668,7 +675,9 @@ class NexTalkClient:
 
             # 前5个音频块记录发送时间
             if self._audio_chunk_counter <= 5:
-                logger.info(f"📤 音频块 #{self._audio_chunk_counter} 发送任务已创建，时间戳: {send_start_time:.3f}")
+                logger.info(
+                    f"📤 音频块 #{self._audio_chunk_counter} 发送任务已创建，时间戳: {send_start_time:.3f}"
+                )
 
             # 每10个数据块检查一次发送结果
             if self._audio_chunk_counter % 10 == 0:
@@ -676,7 +685,9 @@ class NexTalkClient:
                     # 等待发送完成并获取结果(最多等待0.1秒)
                     result = send_task.result(timeout=0.1)
                     send_duration = (time.time() - send_start_time) * 1000
-                    logger.debug(f"📤 音频数据发送结果: {'成功' if result else '失败'}, 耗时: {send_duration:.1f}ms")
+                    logger.debug(
+                        f"📤 音频数据发送结果: {'成功' if result else '失败'}, 耗时: {send_duration:.1f}ms"
+                    )
                 except asyncio.TimeoutError:
                     logger.debug("获取音频发送结果超时，发送可能仍在进行")
                 except Exception as e:
@@ -986,7 +997,7 @@ class NexTalkClient:
             # 服务器就绪状态 - 触发ready事件
             ready_time = time.time()
             logger.info(f"🟢 收到服务器就绪状态，时间戳: {ready_time:.3f}")
-            if hasattr(self, '_server_ready_event') and self._server_ready_event:
+            if hasattr(self, "_server_ready_event") and self._server_ready_event:
                 logger.info("🚨 触发ready事件，唤醒等待的握手流程")
                 self._server_ready_event.set()
             else:

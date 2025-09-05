@@ -5,17 +5,15 @@ NexTalk WebSocket 客户端。
 发送音频数据并接收转录结果。
 """
 
+import asyncio
 import json
 import logging
-import asyncio
-from typing import Callable, Optional, Dict, Any, Union
-import numpy as np
+from typing import Callable, Optional
 
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-from nextalk_shared.data_models import TranscriptionResponse, ErrorMessage, StatusUpdate
-from nextalk_shared.constants import AUDIO_SILENCE_THRESHOLD, AUDIO_INIT_FRAME_COUNT
+from nextalk_shared.data_models import ErrorMessage, StatusUpdate, TranscriptionResponse
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)

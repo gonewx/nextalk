@@ -14,9 +14,9 @@ from .injector_manager import SmartInjector
 from .injector_terminal import TerminalInjector
 
 __all__ = [
-    'BaseInjector',
-    'get_injector',
-    'SmartInjector',
-    'TerminalInjector',
-    'IMEDetector',
+    "BaseInjector",
+    "get_injector",
+    "SmartInjector",
+    "TerminalInjector",
+    "IMEDetector",
 ]

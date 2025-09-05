@@ -227,15 +227,19 @@ class FunASRModel:
                 # VAD模型专用参数
                 vad_params = common_params.copy()
                 
-                # 优化VAD检测参数 - 从配置文件加载
+                # 关键修复：VAD参数必须在AutoModel初始化时传递，不是在generate时
+                # 从配置文件读取VAD参数，使用官方推荐的保守设置
                 vad_kwargs = {
-                    "max_start_silence_time": getattr(self.config, "vad_max_start_silence_time", 200),
-                    "sil_to_speech_time_thres": getattr(self.config, "vad_sil_to_speech_time", 100), 
-                    "speech_to_sil_time_thres": getattr(self.config, "vad_speech_to_sil_time", 400),
-                    "max_end_silence_time": 800,  # 固定参数
+                    "max_start_silence_time": getattr(self.config, "vad_max_start_silence_time", 3000),  # 官方默认3000ms
+                    "sil_to_speech_time_thres": getattr(self.config, "vad_sil_to_speech_time", 150),   # 官方默认150ms，平衡准确性和响应性
+                    "speech_to_sil_time_thres": getattr(self.config, "vad_speech_to_sil_time", 150),   # 官方默认150ms
+                    "max_end_silence_time": getattr(self.config, "vad_max_end_silence_time", 800),     # 官方默认800ms
+                    "speech_noise_thres": getattr(self.config, "vad_speech_noise_thres", 0.6),        # 提高阈值减少误检测
+                    "max_single_segment_time": 60000, # 最大单段时长60s
+                    "lookback_time_start_point": getattr(self.config, "vad_lookback_time_start_point", 200), # 官方默认200ms
                 }
                 vad_params["vad_kwargs"] = vad_kwargs
-                logger.debug(f"配置VAD参数: {vad_kwargs}")
+                logger.info(f"🔧 配置VAD参数(初始化时): {vad_kwargs}")  # 改为info级别确保可见
                 
                 self._model_vad = AutoModel(
                     model=vad_model, 
@@ -382,15 +386,14 @@ class FunASRModel:
             start_time = time.time()
 
             # 直接调用流式模型处理音频
-            # 确保传递chunk_size参数
-            generate_params = self.status_dict_asr_online.copy()
-            if "chunk_size" not in generate_params:
+            # 关键修复：直接传递状态字典引用，让FunASR更新cache状态
+            if "chunk_size" not in self.status_dict_asr_online:
                 # 使用默认的chunk_size参数
-                generate_params["chunk_size"] = [0, 10, 5]
-                logger.debug(f"流式识别使用默认chunk_size: {generate_params['chunk_size']}")
+                self.status_dict_asr_online["chunk_size"] = [0, 10, 5]
+                logger.debug(f"流式识别使用默认chunk_size: {self.status_dict_asr_online['chunk_size']}")
             
             result = self._model_asr_streaming.generate(
-                input=audio_data, **generate_params
+                input=audio_data, **self.status_dict_asr_online
             )
 
             # 处理结果
@@ -539,12 +542,21 @@ class FunASRModel:
             audio_np = np.frombuffer(audio_data, dtype=np.int16)
 
             # 使用VAD模型进行检测
-            # 添加chunk_size参数，与官方示例一致（每60秒检测一次）
-            if "chunk_size" not in status_dict:
-                # 使用默认参数
-                vad_result = self._model_vad.generate(input=audio_np, **status_dict)
+            # 根据官方文档，实时VAD需要chunk_size参数
+            if "chunk_size" in status_dict:
+                # 实时VAD模式：使用传入的chunk_size参数
+                chunk_size = status_dict["chunk_size"]
+                is_final = status_dict.get("is_final", False)
+                logger.debug(f"实时VAD检测: chunk_size={chunk_size}ms, is_final={is_final}")
+                vad_result = self._model_vad.generate(
+                    input=audio_np, 
+                    cache=status_dict.get("cache", {}),
+                    is_final=is_final,
+                    chunk_size=chunk_size
+                )
             else:
-                # 使用传入的参数
+                # 非实时VAD模式：使用所有状态字典参数
+                logger.debug("非实时VAD检测模式")
                 vad_result = self._model_vad.generate(input=audio_np, **status_dict)
 
             # 解析结果
@@ -570,10 +582,10 @@ class FunASRModel:
                 else:
                     logger.debug("VAD返回空segments列表")
 
-                # 更新cache并返回
-                if "cache" in status_dict:
-                    # 返回结果
-                    return {"segments": segments, "cache": status_dict.get("cache", {})}
+                # 更新cache并返回 - 按照官方实现
+                # FunASR的model.generate会自动更新传入的status_dict中的cache
+                # 我们只需要返回segments即可，cache已由模型内部更新
+                return {"segments": segments, "cache": status_dict.get("cache", {})}
 
             # 默认结果 - 无语音段
             return {"segments": [], "cache": status_dict.get("cache", {})}

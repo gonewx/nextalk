@@ -186,16 +186,14 @@ class FallbackInjector(BaseInjector):
                 if self.has_xdotool:
                     # 先尝试终端粘贴快捷键
                     result = subprocess.run(
-                        ["xdotool", "key", "ctrl+shift+v"],
-                        capture_output=True, timeout=3
+                        ["xdotool", "key", "ctrl+shift+v"], capture_output=True, timeout=3
                     )
                     if result.returncode == 0:
                         paste_success = True
                     else:
                         # 尝试普通粘贴快捷键
                         result = subprocess.run(
-                            ["xdotool", "key", "ctrl+v"],
-                            capture_output=True, timeout=3
+                            ["xdotool", "key", "ctrl+v"], capture_output=True, timeout=3
                         )
                         paste_success = result.returncode == 0
                 else:

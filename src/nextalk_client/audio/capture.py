@@ -6,24 +6,21 @@
 """
 
 import ctypes
-import os
 import logging
+import os
 import threading
 import time
-from typing import Callable, Optional, List
+from typing import Callable, List
 
-import numpy as np
 import pyaudio
 
 from nextalk_shared.constants import (
     AUDIO_CHANNELS,
-    AUDIO_SAMPLE_RATE,
     AUDIO_FALLBACK_SAMPLE_RATES,
-    AUDIO_FRAME_DURATION_MS,
-    FUNASR_DEFAULT_CHUNK_SIZE,
+    AUDIO_SAMPLE_RATE,
     FUNASR_DEFAULT_CHUNK_INTERVAL,
+    FUNASR_DEFAULT_CHUNK_SIZE,
 )
-
 
 # 抑制ALSA错误信息
 # 创建一个错误处理函数来捕获错误信息
@@ -71,6 +68,9 @@ class AudioCapturer:
         # FunASR兼容配置
         self.chunk_size = FUNASR_DEFAULT_CHUNK_SIZE  # [5, 10, 5] 对应600ms
         self.chunk_interval = FUNASR_DEFAULT_CHUNK_INTERVAL  # 默认为10，即60ms一块
+
+        # 音频增益控制，优化信号强度避免饱和
+        self.audio_gain = 0.8  # 降低增益避免饱和，但保持足够信号强度
 
         self.logger.debug("音频捕获器已初始化，使用默认设置")
 
@@ -163,14 +163,48 @@ class AudioCapturer:
             self.logger.warning("收到空音频数据，跳过处理")
             return None, pyaudio.paContinue
 
+        # 应用音频增益控制防止饱和
+        try:
+            import numpy as np
+            audio_np = np.frombuffer(in_data, dtype=np.int16)
+            
+            # 检查原始振幅并预处理
+            max_amp = np.max(np.abs(audio_np)) if len(audio_np) > 0 else 0
+            
+            # 关键修复：如果原始信号已经饱和，先降低到合理范围
+            if max_amp >= 32760:  # 原始信号饱和
+                # 降低到70%避免饱和，然后再应用增益
+                audio_np = (audio_np * 0.7).astype(np.int16)
+                pre_max_amp = np.max(np.abs(audio_np)) if len(audio_np) > 0 else 0
+                self.logger.info(f"原始信号饱和，预降低: {max_amp} -> {pre_max_amp}")
+                max_amp = pre_max_amp
+            
+            # 应用增益以提升信号强度，根据FunASR音频预处理要求
+            audio_np = (audio_np * self.audio_gain).astype(np.int16)
+            processed_data = audio_np.tobytes()
+            
+            # 计算增益后的振幅
+            new_max_amp = np.max(np.abs(audio_np)) if len(audio_np) > 0 else 0
+            
+            # 记录音频处理信息
+            if self._frame_counter <= 5 or self._frame_counter % 50 == 0:  # 定期记录
+                self.logger.info(f"音频增益处理: {max_amp} -> {new_max_amp} (增益={self.audio_gain})")
+                
+            # 检查是否饱和
+            if new_max_amp >= 32760:
+                self.logger.warning(f"增益后音频接近饱和: {new_max_amp}")
+        except Exception as e:
+            self.logger.error(f"音频增益处理出错: {str(e)}")
+            processed_data = in_data
+
         # 如果设置了回调函数，调用回调处理
         try:
             if self._callback_fn:
-                self._callback_fn(in_data)
+                self._callback_fn(processed_data)
         except Exception as e:
             self.logger.error(f"音频回调处理时出错: {str(e)}")
 
-        return in_data, pyaudio.paContinue
+        return processed_data, pyaudio.paContinue
 
     def configure_funasr_params(self, chunk_size: List[int] = None, chunk_interval: int = None):
         """
@@ -187,6 +221,19 @@ class AudioCapturer:
         if chunk_interval:
             self.chunk_interval = chunk_interval
             self.logger.debug(f"已设置FunASR分块间隔: {chunk_interval}")
+
+    def set_audio_gain(self, gain: float):
+        """
+        设置音频增益，防止音频饱和
+
+        Args:
+            gain: 增益值，0.0-1.0之间，1.0为原始音量
+        """
+        if 0.0 <= gain <= 1.0:
+            self.audio_gain = gain
+            self.logger.debug(f"已设置音频增益为: {gain}")
+        else:
+            self.logger.warning(f"无效的增益值: {gain}，应在0.0-1.0之间")
 
     def start_stream(self, callback: Callable[[bytes], None]) -> bool:
         """

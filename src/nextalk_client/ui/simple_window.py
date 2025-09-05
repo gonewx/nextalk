@@ -8,7 +8,6 @@
 import logging
 import threading
 import time
-from typing import Optional
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)

@@ -8,18 +8,14 @@ NexTalk客户端主入口点。
 - 处理应用程序生命周期
 """
 
+import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
-import os
-import argparse
-import platform
-import shutil
-from pathlib import Path
-from typing import Dict, Any, Optional
+
 from .client_logic import NexTalkClient
-from nextalk_shared.constants import STATUS_IDLE, STATUS_CONNECTED
 
 
 # 解析命令行参数

@@ -5,10 +5,9 @@ This module provides functions to display system notifications
 using the notify-send command on Linux.
 """
 
-import subprocess
 import logging
 import shutil
-from typing import Optional
+import subprocess
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)

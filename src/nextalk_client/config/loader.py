@@ -4,13 +4,12 @@ NexTalk客户端配置加载器。
 该模块提供了加载客户端配置的功能，支持从用户配置文件或默认值中读取设置。
 """
 
-import os
-import logging
 import configparser
+import logging
+import os
 import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional, Union, List
-
+from typing import Any, Dict, List, Optional
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
@@ -232,7 +231,7 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     builtin_defaults = {
         "Client": {
             "hotkey": "ctrl+shift+space",
-            "server_url": "ws://127.0.0.1:8000/ws/stream",
+            "server_url": "ws://127.0.0.1:8010/ws",
             "locale": "en",
             "show_notifications": "true",
         },

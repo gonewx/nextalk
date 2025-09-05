@@ -28,13 +28,13 @@ DEFAULT_CONFIG = {
     "use_fp16": False,  # 是否使用FP16精度（仅GPU有效）
     # FunASR模型设置
     "asr_model": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-    "asr_model_revision": "v2.0.4",
+    "asr_model_revision": "v2.0.5",
     "asr_model_streaming": "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online",
-    "asr_model_streaming_revision": "v2.0.4",
+    "asr_model_streaming_revision": "v2.0.5",
     "vad_model": "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
-    "vad_model_revision": "v2.0.4",
+    "vad_model_revision": "v2.0.5",
     "punc_model": "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727",
-    "punc_model_revision": "v2.0.4",
+    "punc_model_revision": "v2.0.5",
     "model_cache_dir": "~/.nextalk/models",
     "device_id": 0,
     # VAD设置
@@ -48,10 +48,13 @@ DEFAULT_CONFIG = {
     "recognition_mode": "accuracy",  # 识别模式: accuracy/balanced/speed
     "enable_cache_warmup": True,  # 是否启用缓存预热
     "warmup_rounds": 3,  # 预热轮数
-    # VAD高级参数
-    "vad_max_start_silence_time": 200,
-    "vad_sil_to_speech_time": 100, 
-    "vad_speech_to_sil_time": 400,
+    # VAD高级参数 - 与官方FunASR文档保持一致
+    "vad_max_start_silence_time": 3000,  # 最大起始静音时间(ms)，官方默认3000
+    "vad_sil_to_speech_time": 150,       # 静音到语音阈值(ms)，官方默认150
+    "vad_speech_to_sil_time": 150,       # 语音到静音阈值(ms)，官方默认150
+    "vad_max_end_silence_time": 800,     # 最大结束静音时间(ms)，官方默认800
+    "vad_speech_noise_thres": 0.6,       # 语音噪声阈值，提高以减少误检测
+    "vad_lookback_time_start_point": 200, # 语音开始回看时间(ms)，官方默认200
 }
 
 # 新的统一配置路径
@@ -83,15 +86,15 @@ class Config(BaseModel):
 
     # FunASR模型设置
     asr_model: str = "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-pytorch"
-    asr_model_revision: str = "v2.0.4"
+    asr_model_revision: str = "v2.0.5"
     asr_model_streaming: str = (
         "iic/speech_paraformer-large_asr_nat-zh-cn-16k-common-vocab8404-online"
     )
-    asr_model_streaming_revision: str = "v2.0.4"
+    asr_model_streaming_revision: str = "v2.0.5"
     vad_model: str = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
-    vad_model_revision: str = "v2.0.4"
+    vad_model_revision: str = "v2.0.5"
     punc_model: str = "iic/punc_ct-transformer_zh-cn-common-vad_realtime-vocab272727"
-    punc_model_revision: str = "v2.0.4"
+    punc_model_revision: str = "v2.0.5"
     model_cache_dir: str = "~/.nextalk/models"
     device_id: int = 0
 
@@ -108,10 +111,13 @@ class Config(BaseModel):
     recognition_mode: str = "accuracy"  # 识别模式
     enable_cache_warmup: bool = True  # 缓存预热
     warmup_rounds: int = 3  # 预热轮数
-    # VAD高级参数
-    vad_max_start_silence_time: int = 200
-    vad_sil_to_speech_time: int = 100
-    vad_speech_to_sil_time: int = 400
+    # VAD高级参数 - 与官方FunASR文档保持一致
+    vad_max_start_silence_time: int = 3000  # 最大起始静音时间(ms)，官方默认3000
+    vad_sil_to_speech_time: int = 150       # 静音到语音阈值(ms)，官方默认150
+    vad_speech_to_sil_time: int = 150       # 语音到静音阈值(ms)，官方默认150
+    vad_max_end_silence_time: int = 800     # 最大结束静音时间(ms)，官方默认800
+    vad_speech_noise_thres: float = 0.6     # 语音噪声阈值，提高以减少误检测
+    vad_lookback_time_start_point: int = 200 # 语音开始回看时间(ms)，官方默认200
 
 
 # 全局配置实例
@@ -176,12 +182,21 @@ def parse_ini_config(ini_path: str) -> dict:
             "vad_max_start_silence_time", 
             "vad_sil_to_speech_time",
             "vad_speech_to_sil_time",
+            "vad_max_end_silence_time",
+            "vad_lookback_time_start_point",
         ]:
             try:
                 result[k] = int(v)
                 logger.debug(f"INI配置项转换为整数: {k}={v} → {result[k]}")
             except Exception as e:
                 logger.warning(f"INI配置项转换整数失败: {k}={v}, 错误: {e}")
+                continue
+        elif k in ["vad_speech_noise_thres"]:
+            try:
+                result[k] = float(v)
+                logger.debug(f"INI配置项转换为浮点数: {k}={v} → {result[k]}")
+            except Exception as e:
+                logger.warning(f"INI配置项转换浮点数失败: {k}={v}, 错误: {e}")
                 continue
         elif k in ["funasr_streaming", "funasr_disable_update", "use_fp16", "enable_cache_warmup"]:
             result[k] = v.lower() in ("1", "true", "yes")
