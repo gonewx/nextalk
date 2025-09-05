@@ -9,12 +9,13 @@ import atexit
 import asyncio
 import os
 import sys
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from logging.handlers import RotatingFileHandler
 
 from .websocket_routes import router as websocket_router
 from .config import get_config
-from .funasr_model import FunASRModel, get_preloaded_model
+from .funasr_model import GlobalFunASRModels
 
 
 def setup_logging():
@@ -67,6 +68,36 @@ def setup_logging():
 logger = setup_logging().getChild("nextalk_server.app")
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """FastAPI应用生命周期管理"""
+    # 启动时初始化模型
+    logger.info("正在初始化FunASR模型...")
+    try:
+        config = get_config()
+        models = GlobalFunASRModels()
+        models.initialize(config)
+        
+        # 将模型实例添加到应用状态
+        app.state.models = models
+        app.state.model_loaded = True
+        logger.info("FunASR模型初始化完成")
+    except Exception as e:
+        logger.error(f"模型初始化失败: {str(e)}")
+        app.state.model_loaded = False
+        raise
+    
+    yield
+    
+    # 关闭时清理资源
+    logger.info("清理模型资源...")
+    try:
+        # 这里可以添加模型清理逻辑，如果需要的话
+        logger.info("模型资源清理完成")
+    except Exception as e:
+        logger.error(f"清理模型资源时出错: {str(e)}")
+
+
 def create_app() -> FastAPI:
     """
     创建FastAPI应用实例
@@ -74,96 +105,15 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: 配置好的FastAPI应用实例
     """
-    # 获取配置
-    config = get_config()
-
     logger.info("正在初始化NexTalk服务器应用...")
 
-    # 创建FastAPI应用
+    # 创建FastAPI应用，使用生命周期管理
     app = FastAPI(
         title="NexTalk Server",
         description="NexTalk实时语音识别服务器 - FunASR模型",
         version="0.1.0",
+        lifespan=lifespan,
     )
-
-    # 检查是否有预加载的模型实例
-    preloaded_model = get_preloaded_model()
-
-    if preloaded_model is not None:
-        logger.info("使用预加载的模型实例")
-        model = preloaded_model
-    else:
-        logger.info("没有预加载的模型实例，创建新的模型实例")
-        model = FunASRModel(config)
-
-    # 将模型实例添加到应用状态
-    app.state.model = model
-
-    # 注册应用启动事件，加载模型
-    @app.on_event("startup")
-    async def setup_model():
-        """服务器启动时加载模型"""
-        logger.info("服务器启动，开始加载模型...")
-
-        # 检查是否使用的预加载模型
-        if get_preloaded_model() is app.state.model:
-            logger.info("使用的是预加载模型，已就绪")
-            app.state.model_loaded = True
-            return
-
-        # 检查环境变量，如果模型已预加载则跳过初始化
-        if os.environ.get("NEXTALK_MODEL_PRELOADED", "0") == "1":
-            logger.info("检测到环境变量NEXTALK_MODEL_PRELOADED=1，模型已预加载，跳过重复初始化")
-            app.state.model_loaded = True
-            return
-
-        try:
-            success = await app.state.model.initialize()
-            if success:
-                app.state.model_loaded = True
-                logger.info("模型加载成功，服务器已就绪")
-            else:
-                app.state.model_loaded = False
-                logger.error("模型加载失败，服务器可能无法正常工作")
-        except Exception as e:
-            app.state.model_loaded = False
-            logger.exception(f"模型加载时出错: {str(e)}")
-
-    # 注册应用关闭时的清理函数
-    @app.on_event("shutdown")
-    async def cleanup_resources():
-        """应用关闭时清理资源"""
-        logger.info("服务器关闭，清理模型资源...")
-        if hasattr(app.state, "model"):
-            try:
-                await app.state.model.release()
-                logger.info("模型资源已释放")
-            except Exception as e:
-                logger.error(f"释放模型资源时出错: {str(e)}")
-
-    # 同时使用atexit注册，确保在非正常关闭时也能清理资源
-    def cleanup_on_exit():
-        """程序退出时清理资源"""
-        try:
-            logger.info("程序退出，清理模型资源...")
-            if hasattr(app.state, "model"):
-                # 使用同步方式释放模型
-                try:
-                    loop = asyncio.get_event_loop()
-                except RuntimeError:
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-
-                try:
-                    loop.run_until_complete(app.state.model.release())
-                    logger.info("模型资源已释放")
-                except Exception as e:
-                    logger.error(f"释放模型资源时出错: {str(e)}")
-        except Exception as e:
-            # 异常时直接使用print，因为logger可能已经关闭
-            print(f"退出清理时发生错误: {str(e)}")
-
-    atexit.register(cleanup_on_exit)
 
     # 包含WebSocket路由
     app.include_router(websocket_router)

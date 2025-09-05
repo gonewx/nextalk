@@ -127,15 +127,14 @@ def parse_args():
     return parser.parse_args()
 
 
-async def preload_models():
-    """在服务器启动前预加载模型"""
-    from nextalk_server.funasr_model import FunASRModel, set_preloaded_model
+def preload_models():
+    """在服务器启动前预加载模型（新的全局模型管理）"""
+    from nextalk_server.funasr_model import GlobalFunASRModels
     from nextalk_server.config import get_config
     logger = logging.getLogger("nextalk.preload")
     
     logger.info("在服务器启动前预加载FunASR模型...")
     config = get_config()
-    model = FunASRModel(config)
     
     start_time = time.time()
     
@@ -150,24 +149,18 @@ async def preload_models():
     try:
         while retry_count < max_retries:
             try:
-                success = await model.initialize()
-                if success:
-                    elapsed_time = time.time() - start_time
-                    logger.info(f"FunASR模型预加载成功，耗时: {elapsed_time:.2f}秒")
-                    
-                    # 保存预加载的模型到全局变量，以便应用程序可以使用
-                    set_preloaded_model(model)
-                    
-                    return True
-                else:
-                    retry_count += 1
-                    logger.error(f"FunASR模型预加载失败 (尝试 {retry_count}/{max_retries})")
-                    if retry_count < max_retries:
-                        logger.info(f"将在 {retry_delay} 秒后重试...")
-                        print(f"将在 {retry_delay} 秒后重试...")
-                        await asyncio.sleep(retry_delay)
-                        # 增加重试延迟，避免频繁失败
-                        retry_delay *= 2
+                # 使用全局单例模型管理器
+                models = GlobalFunASRModels()
+                models.initialize(config)
+                
+                elapsed_time = time.time() - start_time
+                logger.info(f"FunASR模型预加载成功，耗时: {elapsed_time:.2f}秒")
+                
+                # 标记预加载成功
+                os.environ["NEXTALK_MODEL_PRELOADED"] = "1"
+                
+                return True
+                
             except Exception as e:
                 retry_count += 1
                 logger.exception(f"预加载FunASR模型时出错 (尝试 {retry_count}/{max_retries}): {str(e)}")
@@ -175,7 +168,7 @@ async def preload_models():
                 if retry_count < max_retries:
                     logger.info(f"将在 {retry_delay} 秒后重试...")
                     print(f"将在 {retry_delay} 秒后重试...")
-                    await asyncio.sleep(retry_delay)
+                    time.sleep(retry_delay)  # 使用同步sleep，因为这个函数现在是同步的
                     # 增加重试延迟，避免频繁失败
                     retry_delay *= 2
         
@@ -250,7 +243,7 @@ def main():
     else:
         logger.info("FunASR模型更新检查已禁用")
     
-    # 更新配置
+    # 更新配置（仅内存中，不保存到文件）
     logger.info(f"从命令行参数更新配置: host={args.host}, port={args.port}, device={args.device}, ...")
     update_config({
         "host": args.host,
@@ -259,7 +252,7 @@ def main():
         "device": args.device,
         "vad_sensitivity": args.vad_sensitivity,
         "funasr_disable_update": funasr_disable_update
-    })
+    }, save=False)  # 明确指定不保存
     
     # 更新后再次获取配置
     config = get_config()
@@ -274,15 +267,14 @@ def main():
     print("\033[1;36m开始预加载模型...\033[0m")
     
     # 预加载模型
-    success = asyncio.run(preload_models())
+    success = preload_models()  # 现在是同步函数
     
     if not success:
         logger.critical("模型预加载失败，服务器无法启动。")
         print("\n\033[1;31m错误: 模型预加载失败，服务器无法启动。请检查日志获取详细信息。\033[0m")
         return 1
         
-    # 将预加载的模型设置到环境变量中，让应用程序知道模型已预加载
-    os.environ["NEXTALK_MODEL_PRELOADED"] = "1"
+    # 模型已在preload_models()函数中设置了NEXTALK_MODEL_PRELOADED环境变量
     logger.info("模型预加载成功，已设置环境变量NEXTALK_MODEL_PRELOADED=1")
     print("\033[1;32m模型预加载成功，已设置环境变量NEXTALK_MODEL_PRELOADED=1\033[0m")
     

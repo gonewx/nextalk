@@ -48,13 +48,13 @@ DEFAULT_CONFIG = {
     "recognition_mode": "accuracy",  # 识别模式: accuracy/balanced/speed
     "enable_cache_warmup": True,  # 是否启用缓存预热
     "warmup_rounds": 3,  # 预热轮数
-    # VAD高级参数 - 与官方FunASR文档保持一致
-    "vad_max_start_silence_time": 3000,  # 最大起始静音时间(ms)，官方默认3000
-    "vad_sil_to_speech_time": 150,       # 静音到语音阈值(ms)，官方默认150
-    "vad_speech_to_sil_time": 150,       # 语音到静音阈值(ms)，官方默认150
-    "vad_max_end_silence_time": 800,     # 最大结束静音时间(ms)，官方默认800
-    "vad_speech_noise_thres": 0.6,       # 语音噪声阈值，提高以减少误检测
-    "vad_lookback_time_start_point": 200, # 语音开始回看时间(ms)，官方默认200
+    # VAD官方推荐参数 - 基于FunASR官方文档修正
+    "vad_max_start_silence_time": 3000,  # 最大起始静音时间(ms)，官方默认值，避免强制截断
+    "vad_sil_to_speech_time": 100,       # 静音到语音阈值(ms)，适度优化，平衡响应和准确性
+    "vad_speech_to_sil_time": 150,       # 语音到静音阈值(ms)，保持默认150ms
+    "vad_max_end_silence_time": 800,     # 最大结束静音时间(ms)，保持默认800ms
+    "vad_speech_noise_thres": 0.4,       # 语音噪声阈值，适度降低提高敏感度但避免误报
+    "vad_lookback_time_start_point": 800, # 语音开始回看时间(ms)，充分捕获前置音频
 }
 
 # 新的统一配置路径
@@ -111,13 +111,13 @@ class Config(BaseModel):
     recognition_mode: str = "accuracy"  # 识别模式
     enable_cache_warmup: bool = True  # 缓存预热
     warmup_rounds: int = 3  # 预热轮数
-    # VAD高级参数 - 与官方FunASR文档保持一致
-    vad_max_start_silence_time: int = 3000  # 最大起始静音时间(ms)，官方默认3000
-    vad_sil_to_speech_time: int = 150       # 静音到语音阈值(ms)，官方默认150
-    vad_speech_to_sil_time: int = 150       # 语音到静音阈值(ms)，官方默认150
-    vad_max_end_silence_time: int = 800     # 最大结束静音时间(ms)，官方默认800
-    vad_speech_noise_thres: float = 0.6     # 语音噪声阈值，提高以减少误检测
-    vad_lookback_time_start_point: int = 200 # 语音开始回看时间(ms)，官方默认200
+    # VAD官方推荐参数 - 基于FunASR官方文档修正
+    vad_max_start_silence_time: int = 3000  # 最大起始静音时间(ms)，官方默认值，避免强制截断
+    vad_sil_to_speech_time: int = 100       # 静音到语音阈值(ms)，适度优化，平衡响应和准确性
+    vad_speech_to_sil_time: int = 150       # 语音到静音阈值(ms)，保持默认150ms
+    vad_max_end_silence_time: int = 800     # 最大结束静音时间(ms)，保持默认800ms
+    vad_speech_noise_thres: float = 0.4     # 语音噪声阈值，适度降低提高敏感度但避免误报
+    vad_lookback_time_start_point: int = 800 # 语音开始回看时间(ms)，充分捕获前置音频
 
 
 # 全局配置实例
@@ -330,11 +330,10 @@ def load_config() -> Config:
         else:
             logger.debug("用户INI配置文件不存在或为空")
 
-        # 3. 创建配置对象并保存
+        # 3. 创建配置对象
         logger.debug(f"最终合并的配置: {merged_config}")
         config = Config(**merged_config)
         logger.debug(f"创建的Config对象: {config}")
-        save_config(config)
         return config
     except Exception as e:
         logger.exception(f"加载配置失败: {e}，使用默认配置")
@@ -380,12 +379,13 @@ def save_config(config: Config) -> bool:
         return False
 
 
-def update_config(config_updates: Dict[str, Any]) -> Config:
+def update_config(config_updates: Dict[str, Any], save: bool = False) -> Config:
     """
     更新配置
 
     Args:
         config_updates: 要更新的配置项
+        save: 是否保存到配置文件，默认为 False
 
     Returns:
         Config: 更新后的配置实例
@@ -398,8 +398,10 @@ def update_config(config_updates: Dict[str, Any]) -> Config:
             logger.debug(f"配置项更新: {key}={getattr(config, key)} → {value}")
             setattr(config, key, value)
 
-    # 保存更新后的配置
-    save_config(config)
+    # 只在明确要求时才保存配置
+    if save:
+        save_config(config)
+        logger.debug("配置已保存到文件")
 
     # 更新全局配置实例
     global _config

@@ -352,7 +352,7 @@ class NexTalkClient:
 
     async def _perform_recognition_handshake(self) -> bool:
         """
-        执行识别握手流程：发送开始命令，等待服务器就绪，然后启动音频捕获。
+        执行识别握手流程：在新协议下，连接后已发送配置，直接启动音频捕获。
 
         Returns:
             bool: 握手是否成功
@@ -361,33 +361,8 @@ class NexTalkClient:
         handshake_start_time = time.time()
 
         try:
-            # 1. 发送开始识别命令
-            logger.info("📤 步骤1: 发送开始识别命令给服务器...")
-            cmd_send_time = time.time()
-            start_result = await self.websocket_client.start_recognition()
-            cmd_send_duration = (time.time() - cmd_send_time) * 1000
-
-            if not start_result:
-                logger.error("❌ 发送开始识别命令失败")
-                return False
-
-            logger.info(f"✅ 开始命令发送成功，耗时: {cmd_send_duration:.1f}ms")
-
-            # 2. 等待服务器就绪确认，设置超时
-            logger.info("⏳ 步骤2: 等待服务器就绪确认...")
-            wait_start_time = time.time()
-
-            try:
-                await asyncio.wait_for(self._server_ready_event.wait(), timeout=10.0)
-                wait_duration = (time.time() - wait_start_time) * 1000
-                logger.info(f"✅ 收到服务器就绪确认，等待耗时: {wait_duration:.1f}ms")
-            except asyncio.TimeoutError:
-                wait_duration = (time.time() - wait_start_time) * 1000
-                logger.error(f"❌ 等待服务器就绪超时（10秒），等待时间: {wait_duration:.1f}ms")
-                return False
-
-            # 3. 服务器就绪后，启动音频捕获
-            logger.info("🎤 步骤3: 服务器已就绪，正在启动音频捕获...")
+            # 在新协议中，连接时已自动发送配置消息，直接启动音频捕获
+            logger.info("🎤 步骤1: 启动音频捕获...")
             capture_start_time = time.time()
 
             capture_started = self.audio_capturer.start_stream(self._handle_audio_chunk)
@@ -397,10 +372,17 @@ class NexTalkClient:
                 logger.error("❌ 无法启动音频捕获")
                 return False
 
-            # 音频捕获成功启动后才显示LISTENING状态
+            # 音频捕获成功启动后显示LISTENING状态
             self.is_listening = True
             self._update_state(STATUS_LISTENING)
             logger.info("🎤 音频捕获已启动，UI状态已更新为LISTENING")
+
+            # 发送is_speaking=true开始识别
+            logger.info("📤 步骤2: 发送开始识别信号...")
+            start_result = await self.websocket_client.start_recognition()
+            if not start_result:
+                logger.error("❌ 发送开始识别信号失败")
+                return False
 
             total_handshake_duration = (time.time() - handshake_start_time) * 1000
             logger.info(f"✅ 音频捕获已启动，耗时: {capture_duration:.1f}ms")
@@ -994,14 +976,10 @@ class NexTalkClient:
             # 断开连接时解除状态锁定
             self._listening_state_locked = False
         elif status == STATUS_READY:
-            # 服务器就绪状态 - 触发ready事件
+            # 服务器就绪状态 - 在新协议中可能不再需要
             ready_time = time.time()
             logger.info(f"🟢 收到服务器就绪状态，时间戳: {ready_time:.3f}")
-            if hasattr(self, "_server_ready_event") and self._server_ready_event:
-                logger.info("🚨 触发ready事件，唤醒等待的握手流程")
-                self._server_ready_event.set()
-            else:
-                logger.warning("⚠️ ready事件对象不存在，无法触发")
+            # 新协议下不再依赖ready事件，仅记录日志
         elif status == STATUS_LISTENING:
             self.is_listening = True
             # 设置为LISTENING状态时自动锁定状态
