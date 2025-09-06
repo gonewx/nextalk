@@ -68,10 +68,6 @@ class WebSocketClient:
 
             self.connected = True
             logger.debug("WebSocket连接已建立")
-            
-            # 连接成功后立即发送配置消息
-            await self._send_initial_config()
-            
             return True
         except Exception as e:
             logger.error(f"连接到服务器失败: {str(e)}")
@@ -139,57 +135,6 @@ class WebSocketClient:
 
             return False
 
-    async def _send_initial_config(self) -> bool:
-        """
-        发送初始配置消息，完全按照官方FunASR格式。
-        
-        Returns:
-            bool: 发送是否成功
-        """
-        if not self.connected or not self.connection:
-            logger.warning("尝试发送初始配置但未连接到服务器")
-            return False
-            
-        try:
-            # 从配置中读取服务器参数
-            from ..config.loader import get_config
-            config = get_config()
-            
-            # 获取chunk_size配置，支持逗号分隔的字符串格式
-            chunk_size_str = config.get("Server", "chunk_size", "0,10,8")
-            try:
-                if isinstance(chunk_size_str, str) and "," in chunk_size_str:
-                    chunk_size = [int(x.strip()) for x in chunk_size_str.split(",")]
-                elif isinstance(chunk_size_str, list):
-                    chunk_size = chunk_size_str
-                else:
-                    chunk_size = [0, 10, 8]  # 默认优化配置
-                logger.debug(f"使用chunk_size配置: {chunk_size}")
-            except Exception as e:
-                logger.warning(f"解析chunk_size失败: {e}, 使用默认值[0,10,8]")
-                chunk_size = [0, 10, 8]
-            
-            # 完全按照官方FunASR客户端格式发送配置
-            # 关键修复：初始配置设置is_speaking=False，避免时序错位
-            config_message = {
-                "mode": "2pass",           # 2pass模式
-                "chunk_size": chunk_size,  # 从配置读取，支持服务器优化
-                "chunk_interval": 10,      # 块间隔
-                "wav_name": "microphone",  # 音频源名称
-                "wav_format": "pcm",       # 音频格式
-                "audio_fs": 16000,         # 采样率
-                "is_speaking": False,      # 初始状态为非说话，避免时序错位
-                "itn": True               # 启用逆文本标准化
-            }
-            
-            logger.debug(f"发送官方格式配置消息: {config_message}")
-            await self.connection.send(json.dumps(config_message))
-            return True
-            
-        except Exception as e:
-            logger.error(f"发送初始配置消息失败: {str(e)}")
-            return False
-
     def register_callbacks(
         self,
         message_callback: Optional[Callable[[TranscriptionResponse], None]] = None,
@@ -244,11 +189,12 @@ class WebSocketClient:
                             data = json.loads(message)
                             logger.debug(f"收到JSON消息: {str(data)[:100]}...")
 
-                            # 按照新的服务器协议处理消息
-                            # 新协议直接返回转录结果，不包含type字段
-                            if "text" in data:
-                                # 这是转录结果消息
-                                if self.message_callback:
+                            # 判断消息类型并调用相应的回调函数
+                            if "type" in data:
+                                message_type = data["type"]
+
+                                if message_type == "transcription" and self.message_callback:
+                                    # 创建转录响应对象
                                     response = TranscriptionResponse(
                                         text=data.get("text", ""),
                                         is_final=data.get("is_final", True),
@@ -256,50 +202,31 @@ class WebSocketClient:
                                         type="transcription",
                                     )
                                     self.message_callback(response)
-                            elif "message" in data and "code" in data:
-                                # 这是错误消息
-                                if self.error_callback:
+
+                                elif message_type == "error" and self.error_callback:
+                                    # 创建错误消息对象
                                     error = ErrorMessage(
                                         message=data.get("message", "未知错误"),
                                         code=data.get("code", 0),
                                         type="error",
                                     )
                                     self.error_callback(error)
-                            elif "state" in data:
-                                # 这是状态更新消息
-                                if self.status_callback:
+
+                                elif message_type == "status" and self.status_callback:
+                                    # 检查状态是否为空
                                     state = data.get("state", "")
-                                    if state:
-                                        status = StatusUpdate(state=state, type="status")
-                                        self.status_callback(status)
-                                    else:
+                                    if not state:
                                         logger.warning("收到空状态消息，跳过回调")
-                            else:
-                                # 兼容旧协议格式
-                                if "type" in data:
-                                    message_type = data["type"]
-                                    if message_type == "transcription" and self.message_callback:
-                                        response = TranscriptionResponse(
-                                            text=data.get("text", ""),
-                                            is_final=data.get("is_final", True),
-                                            mode=data.get("mode", ""),
-                                            type="transcription",
-                                        )
-                                        self.message_callback(response)
-                                    elif message_type == "error" and self.error_callback:
-                                        error = ErrorMessage(
-                                            message=data.get("message", "未知错误"),
-                                            code=data.get("code", 0),
-                                            type="error",
-                                        )
-                                        self.error_callback(error)
-                                    elif message_type == "status" and self.status_callback:
-                                        state = data.get("state", "")
-                                        if state:
-                                            status = StatusUpdate(state=state, type="status")
-                                            self.status_callback(status)
+                                        continue
+
+                                    # 创建状态更新对象
+                                    status = StatusUpdate(state=state, type="status")
+                                    self.status_callback(status)
+
                                 else:
-                                    logger.warning(f"未知消息格式: {str(data)[:100]}...")
+                                    logger.warning(f"未知消息类型: {message_type}")
+                            else:
+                                logger.warning(f"消息缺少类型字段: {str(data)[:100]}...")
 
                         except json.JSONDecodeError:
                             logger.warning(f"收到无效的JSON消息: {message[:100]}...")
@@ -335,8 +262,6 @@ class WebSocketClient:
     async def start_recognition(self) -> bool:
         """
         开始进行语音识别。
-        
-        在新协议中，这个方法设置is_speaking=True状态。
 
         Returns:
             bool: 成功返回True，失败返回False
@@ -347,8 +272,8 @@ class WebSocketClient:
 
         try:
             logger.debug("开始进行语音识别")
-            # 发送is_speaking状态更新
-            await self.connection.send(json.dumps({"is_speaking": True}))
+            # 发送开始命令
+            await self.connection.send(json.dumps({"command": "start"}))
 
             return True
         except ConnectionClosed as cc:

@@ -134,7 +134,7 @@ def main() -> None:
     log_level = getattr(logging, args.log_level)
     logging.getLogger().setLevel(log_level)
 
-    # 更新配置（仅内存中，不保存到文件）
+    # 更新配置
     update_config(
         {
             "host": args.host,
@@ -144,8 +144,7 @@ def main() -> None:
             "ngpu": args.ngpu,
             "ncpu": args.ncpu,
             "vad_sensitivity": args.vad_sensitivity,
-        },
-        save=False
+        }
     )
 
     # 预加载标志检查，优先使用命令行参数
