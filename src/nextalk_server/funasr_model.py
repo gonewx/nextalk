@@ -103,6 +103,11 @@ class FunASRModel:
             device = getattr(self.config, "device", "cuda")
             use_fp16 = getattr(self.config, "use_fp16", False)
 
+            # 确保device=cpu时ngpu为0，避免GPU资源占用
+            if device == "cpu" and ngpu > 0:
+                logger.warning(f"device设为cpu但ngpu={ngpu}，自动修正为ngpu=0")
+                ngpu = 0
+
             # 通用参数，与官方示例保持一致
             common_params = {
                 "ngpu": ngpu,
@@ -129,7 +134,6 @@ class FunASRModel:
                     model=asr_model,
                     model_revision=asr_model_revision,
                     log_level="ERROR",
-                    disable_update=True,
                     **common_params,
                 )
 
@@ -163,7 +167,6 @@ class FunASRModel:
                     model=asr_model_streaming,
                     model_revision=asr_model_streaming_revision,
                     log_level="ERROR",
-                    disable_update=True,
                     **streaming_params,
                 )
 
@@ -240,8 +243,7 @@ class FunASRModel:
                 
                 self._model_vad = AutoModel(
                     model=vad_model, 
-                    model_revision=vad_model_revision,
-                    disable_update=True,
+                    model_revision=vad_model_revision, 
                     **vad_params
                 )
 
@@ -261,8 +263,7 @@ class FunASRModel:
             if punc_model:
                 logger.debug(f"加载标点模型: {punc_model}")
                 self._model_punc = AutoModel(
-                    model=punc_model, model_revision=punc_model_revision,
-                    disable_update=True, **common_params
+                    model=punc_model, model_revision=punc_model_revision, **common_params
                 )
 
                 # 预热标点模型，避免懒加载
