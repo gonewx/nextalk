@@ -129,6 +129,7 @@ class FunASRModel:
                     model=asr_model,
                     model_revision=asr_model_revision,
                     log_level="ERROR",
+                    disable_update=True,
                     **common_params,
                 )
 
@@ -162,6 +163,7 @@ class FunASRModel:
                     model=asr_model_streaming,
                     model_revision=asr_model_streaming_revision,
                     log_level="ERROR",
+                    disable_update=True,
                     **streaming_params,
                 )
 
@@ -238,7 +240,8 @@ class FunASRModel:
                 
                 self._model_vad = AutoModel(
                     model=vad_model, 
-                    model_revision=vad_model_revision, 
+                    model_revision=vad_model_revision,
+                    disable_update=True,
                     **vad_params
                 )
 
@@ -258,7 +261,8 @@ class FunASRModel:
             if punc_model:
                 logger.debug(f"加载标点模型: {punc_model}")
                 self._model_punc = AutoModel(
-                    model=punc_model, model_revision=punc_model_revision, **common_params
+                    model=punc_model, model_revision=punc_model_revision,
+                    disable_update=True, **common_params
                 )
 
                 # 预热标点模型，避免懒加载
