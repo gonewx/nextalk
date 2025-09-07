@@ -347,8 +347,13 @@ class MainController:
                 )
                 logger.info("Using toggle hotkey mode")
             
-            # Text injector
-            self.text_injector = TextInjector(self.config.text_injection)
+            # Text injector - 使用输入法框架注入系统
+            try:
+                self.text_injector = TextInjector()
+                logger.info("使用输入法框架注入系统")
+            except Exception as e:
+                logger.error(f"输入法框架注入系统初始化失败: {e}")
+                raise
             
             # System tray
             if self.config.ui.show_tray_icon:
@@ -491,6 +496,13 @@ class MainController:
                 self.tray_manager.stop()
             except Exception as e:
                 logger.error(f"Error stopping tray manager: {e}")
+        
+        # Clean up text injector
+        if self.text_injector and hasattr(self.text_injector, 'cleanup'):
+            try:
+                self.text_injector.cleanup()
+            except Exception as e:
+                logger.error(f"Error cleaning up text injector: {e}")
         
         # Wait for threads with timeout
         if self._main_thread and self._main_thread.is_alive():

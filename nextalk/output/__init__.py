@@ -1,14 +1,9 @@
 """
-Output handling module for NexTalk.
+NexTalk 输出模块
 
-Provides text injection and clipboard management functionality.
+提供基于输入法框架的文本注入功能
 """
 
-from .text_injector import TextInjector, InjectionMethod
-from .clipboard import ClipboardManager
+from .text_injector import TextInjector
 
-__all__ = [
-    'TextInjector',
-    'InjectionMethod',
-    'ClipboardManager',
-]
+__all__ = ['TextInjector']

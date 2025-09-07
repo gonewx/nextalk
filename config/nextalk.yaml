@@ -21,7 +21,7 @@ server:
   port: 10095
   
   # 是否使用 SSL 加密连接
-  use_ssl: true
+  use_ssl: false
   
   # 是否验证 SSL 证书 (本地服务器通常设为 false)
   ssl_verify: false
@@ -79,7 +79,7 @@ hotkey:
   # 触发语音识别的快捷键组合
   # 支持的修饰键: ctrl, alt, shift, cmd/meta
   # 示例: "ctrl+alt+space", "ctrl+shift+v", "alt+f1"
-  trigger_key: "ctrl+alt+space"
+  trigger_key: "ctrl+shift+space"
   
   # 停止语音识别的快捷键 (与触发键相同表示按键切换)
   stop_key: "ctrl+alt+space"
