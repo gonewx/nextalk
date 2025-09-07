@@ -808,27 +808,8 @@ class MainController:
         """
         logger.info(f"Text recognized: {text}")
         
-        # Inject text at cursor position
-        if self.text_injector:
-            try:
-                logger.info(f"Injecting text: '{text}'")
-                success = self.text_injector.inject_text(text)
-                if success:
-                    logger.info("Text injection successful")
-                    if self.current_session:
-                        self.current_session.complete_injection(True)
-                else:
-                    logger.warning("Text injection failed")
-                    if self.current_session:
-                        self.current_session.complete_injection(False)
-            except Exception as e:
-                logger.error(f"Error injecting text: {e}")
-                if self.current_session:
-                    self.current_session.complete_injection(False)
-        else:
-            logger.warning("Text injector not available")
-            if self.current_session:
-                self.current_session.complete_injection(False)
+        # NOTE: Text injection is now handled in _handle_session_state 
+        # to avoid duplicate injection. This method only shows notifications.
         
         if self.tray_manager:
             self.tray_manager.show_notification(

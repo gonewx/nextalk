@@ -195,6 +195,12 @@ class TextInjector:
         Returns:
             Recommended injection method
         """
+        # TEMP FIX: Force clipboard mode for Linux systems without accessibility permissions
+        # TODO: Remove this when accessibility permissions are properly configured
+        if self.is_linux:
+            logger.info("Linux system detected, using clipboard method for reliability")
+            return InjectionMethod.CLIPBOARD
+            
         # If auto_inject is disabled, use clipboard
         if not self.config.auto_inject:
             return InjectionMethod.CLIPBOARD
