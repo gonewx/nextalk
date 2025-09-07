@@ -1,0 +1,38 @@
+[flake8]
+# Flake8 配置文件
+max-line-length = 88
+max-complexity = 10
+exclude = 
+    .git,
+    __pycache__,
+    build,
+    dist,
+    .eggs,
+    *.egg,
+    .venv,
+    venv,
+    .tox,
+    .mypy_cache,
+    .pytest_cache,
+    .spec-workflow
+    
+ignore = 
+    # E203: whitespace before ':' (与 Black 冲突)
+    E203,
+    # W503: line break before binary operator (与 Black 冲突)
+    W503,
+    # E501: line too long (由 max-line-length 控制)
+    E501
+
+per-file-ignores =
+    # 测试文件可以有更长的行和更复杂的函数
+    tests/*:E501,C901
+    # __init__ 文件可以有 import 但不使用
+    __init__.py:F401
+    
+# 统计信息
+statistics = True
+count = True
+
+# 输出格式
+format = %(path)s:%(row)d:%(col)d: %(code)s %(text)s

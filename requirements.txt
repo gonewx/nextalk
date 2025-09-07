@@ -1,0 +1,31 @@
+# Core dependencies for NexTalk voice recognition system
+# Based on funasr_wss_client.py and funasr_wss_server.py analysis
+
+# WebSocket communication
+websockets>=12.0
+
+# Configuration management
+PyYAML>=6.0
+
+# Input handling and automation
+pynput>=1.7.6          # Global hotkey detection and keyboard/mouse control
+pyautogui>=0.9.54      # GUI automation for text injection
+pyperclip>=1.8.2       # Clipboard operations
+
+# Audio processing
+pyaudio>=0.2.11        # Audio I/O library
+sounddevice>=0.4.6     # Audio device management and recording
+numpy>=1.21.0          # Audio data processing
+scipy>=1.9.0           # High-quality audio resampling and signal processing
+
+# Optional GUI dependencies (uncomment if needed)
+# PyQt6>=6.4.0         # System tray and GUI components
+# pillow>=9.0.0        # Image processing for icons
+
+# Note: The following are Python built-in modules and don't need to be installed:
+# - ssl: SSL/TLS support
+# - json: JSON processing
+# - asyncio: Async programming
+# - logging: Logging functionality
+# - argparse: Command line arguments
+# - traceback: Error tracking

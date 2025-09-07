@@ -1,0 +1,23 @@
+# Build and packaging dependencies for NexTalk
+
+# Core build tools
+pyinstaller>=6.0.0     # Create standalone executables
+setuptools>=65.0.0     # Python packaging
+wheel>=0.38.0          # Wheel package format
+
+# Platform-specific packaging tools
+py2exe>=0.13.0.0 ; sys_platform == 'win32'      # Windows executable
+py2app>=0.28.0 ; sys_platform == 'darwin'        # macOS app bundle
+
+# Installer creation tools (optional)
+# Windows: Inno Setup or NSIS (external tools)
+# macOS: create-dmg (external tool via homebrew)
+# Linux: fpm or native package managers (external tools)
+
+# Code signing and notarization (optional)
+# macoscodesign>=0.27.0 ; sys_platform == 'darwin'  # macOS code signing
+
+# Additional build utilities
+toml>=0.10.2           # Read pyproject.toml
+twine>=4.0.0           # Upload to PyPI
+build>=0.10.0          # PEP 517 build frontend

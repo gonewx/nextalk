@@ -1,0 +1,203 @@
+# NexTalk 配置文件示例
+# 复制此文件为 nextalk.yaml 并根据需要修改
+
+# 配置文件版本 (请勿修改)
+config_version: "1.0"
+
+# 应用程序信息
+version: "0.1.0"
+
+# 用户数据目录 (自动设置，通常不需要修改)
+# user_data_dir: null
+
+# ====================================
+# FunASR WebSocket 服务器配置
+# ====================================
+server:
+  # 服务器地址 (通常是本地服务器)
+  host: "localhost"
+  
+  # 服务器端口 (需与 funasr_wss_server.py 启动端口一致)
+  port: 10095
+  
+  # 是否使用 SSL 加密连接
+  use_ssl: true
+  
+  # 是否验证 SSL 证书 (本地服务器通常设为 false)
+  ssl_verify: false
+  
+  # 连接超时时间 (秒)
+  timeout: 30.0
+  
+  # 连接失败重试次数
+  reconnect_attempts: 3
+  
+  # 重连间隔时间 (秒)
+  reconnect_interval: 2.0
+
+# ====================================
+# 音频采集和处理配置
+# ====================================
+audio:
+  # 音频采样率 (Hz) - 推荐 16000 以获得最佳识别效果
+  sample_rate: 16000
+  
+  # 音频声道数 (1=单声道, 2=立体声) - 推荐单声道
+  channels: 1
+  
+  # 音频分块大小 [前瞻, 处理, 后瞻] - 来自 funasr 默认参数
+  chunk_size: [5, 10, 5]
+  
+  # 编码器块回看大小
+  encoder_chunk_look_back: 4
+  
+  # 解码器块回看大小  
+  decoder_chunk_look_back: 0
+  
+  # 分块处理间隔 (毫秒)
+  chunk_interval: 10
+  
+  # 指定音频输入设备 ID (null 为系统默认)
+  device_id: null
+  
+  # 指定音频输入设备名称 (null 为系统默认)
+  device_name: null
+  
+  # 音频输入缓冲区大小
+  input_buffer_size: 4096
+  
+  # 启用噪声抑制
+  noise_suppression: true
+  
+  # 启用自动增益控制
+  auto_gain_control: true
+
+# ====================================
+# 全局快捷键配置
+# ====================================
+hotkey:
+  # 触发语音识别的快捷键组合
+  # 支持的修饰键: ctrl, alt, shift, cmd/meta
+  # 示例: "ctrl+alt+space", "ctrl+shift+v", "alt+f1"
+  trigger_key: "ctrl+alt+space"
+  
+  # 停止语音识别的快捷键 (与触发键相同表示按键切换)
+  stop_key: "ctrl+alt+space"
+  
+  # 修饰键列表 (用于快捷键冲突检测)
+  modifier_keys: ["ctrl", "alt"]
+  
+  # 启用快捷键冲突检测
+  conflict_detection: true
+  
+  # 启用声音反馈 (按键音效)
+  enable_sound_feedback: true
+
+# ====================================
+# 用户界面配置
+# ====================================
+ui:
+  # 显示系统托盘图标
+  show_tray_icon: true
+  
+  # 开机自动启动
+  auto_start: false
+  
+  # 最小化到系统托盘
+  minimize_to_tray: true
+  
+  # 显示通知消息
+  show_notifications: true
+  
+  # 通知显示持续时间 (秒)
+  notification_duration: 3.0
+  
+  # 托盘图标主题 (auto=自动, light=浅色, dark=深色)
+  tray_icon_theme: "auto"
+  
+  # 界面语言
+  language: "zh_CN"
+
+# ====================================
+# 文本注入配置
+# ====================================
+text_injection:
+  # 自动将识别结果注入到当前光标位置
+  auto_inject: true
+  
+  # 注入失败时回退到剪贴板
+  fallback_to_clipboard: true
+  
+  # 文本注入延迟 (秒) - 给目标应用准备时间
+  inject_delay: 0.1
+  
+  # 光标定位方式 (end=文本末尾, start=文本开头, select=选中文本)
+  cursor_positioning: "end"
+  
+  # 格式化文本 (自动处理标点符号和空格)
+  format_text: true
+  
+  # 去除首尾空白字符
+  strip_whitespace: true
+  
+  # 兼容的应用程序列表 (空列表表示尝试所有应用)
+  compatible_apps: []
+  
+  # 不兼容的应用程序列表 (这些应用将强制使用剪贴板)
+  incompatible_apps: []
+
+# ====================================
+# 语音识别配置
+# ====================================
+recognition:
+  # 识别模式 (offline=离线, online=在线, 2pass=两遍识别)
+  mode: "2pass"
+  
+  # 音频采集模式 (hotkey=热键触发, auto_start=启动时自动开始, continuous=持续采集)
+  # - hotkey: 默认模式，按热键开始/停止录音 (原有模式)
+  # - auto_start: 启动时自动开始一次录音，完成后需要手动触发
+  # - continuous: 持续采集模式，自动循环录音和识别，热键用于暂停/恢复
+  capture_mode: "hotkey"
+  
+  # 启用逆文本标准化 (数字转换、单位处理等)
+  use_itn: true
+  
+  # 启用标点符号识别
+  use_punctuation: true
+  
+  # 热词列表 (提高特定词汇的识别准确率)
+  hotwords: []
+  
+  # 热词文件路径 (每行一个热词，格式: "词汇 权重")
+  hotword_file: null
+  
+  # 最大输出字数限制
+  words_max_print: 10000
+  
+  # 识别结果输出目录 (null 表示不保存)
+  output_dir: null
+  
+  # 语言模型
+  language_model: "zh-cn"
+
+# ====================================
+# 日志配置
+# ====================================
+logging:
+  # 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+  level: "INFO"
+  
+  # 日志文件路径 (null 表示不保存到文件)
+  file_path: null
+  
+  # 单个日志文件最大大小 (字节)
+  max_file_size: 10485760  # 10MB
+  
+  # 保留的日志文件备份数量
+  backup_count: 5
+  
+  # 是否在控制台输出日志
+  console_output: true
+  
+  # 日志格式
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

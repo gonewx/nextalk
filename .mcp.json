@@ -1,0 +1,16 @@
+{
+    "mcpServers": {
+        "deepwiki": {
+            "command": "npx",
+            "args": [
+                "-y",
+                "mcp-remote",
+                "https://mcp.deepwiki.com/sse"
+            ]
+        },
+        "spec-workflow": {
+            "command": "npx",
+            "args": ["-y", "@pimzino/spec-workflow-mcp@latest"]
+        }
+    }
+}

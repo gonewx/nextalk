@@ -1,0 +1,18 @@
+# Dependencies for FunASR WebSocket Server
+
+# FunASR and model management
+funasr>=1.0.0          # FunASR speech recognition framework
+modelscope>=1.9.0      # Model downloading from ModelScope
+
+# WebSocket server
+websockets>=12.0       # WebSocket communication
+
+# Audio processing
+numpy>=1.21.0          # Numerical computing
+torch>=2.0.0           # PyTorch for model inference (CPU version)
+torchaudio>=2.0.0      # Audio processing for PyTorch
+# For GPU support, install: torch==2.0.0+cu118 (adjust CUDA version as needed)
+
+# Optional optimizations
+onnxruntime>=1.15.0  # ONNX runtime for faster inference
+# onnxruntime-gpu>=1.15.0  # GPU acceleration for ONNX
