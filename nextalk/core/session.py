@@ -42,6 +42,10 @@ class SessionMetrics:
     recognized_text: str = ""
     injected_successfully: bool = False
     error_message: Optional[str] = None
+    # IME-specific metrics
+    ime_used: Optional[str] = None
+    ime_ready: bool = False
+    injection_method: str = "ime"
     
     def calculate_totals(self) -> None:
         """Calculate total durations."""
@@ -164,24 +168,31 @@ class RecognitionSession:
         # Move to injection phase
         self._change_state(SessionState.INJECTING)
     
-    def complete_injection(self, success: bool) -> None:
+    def complete_injection(self, success: bool, ime_used: Optional[str] = None, 
+                          injection_time: Optional[float] = None) -> None:
         """
         Complete the text injection phase.
         
         Args:
             success: Whether injection was successful
+            ime_used: Name of IME used for injection
+            injection_time: Time taken for injection in seconds
         """
         if self.state != SessionState.INJECTING:
             logger.warning(f"Cannot complete injection in state: {self.state}")
             return
         
         self.metrics.injected_successfully = success
+        if ime_used:
+            self.metrics.ime_used = ime_used
+        if injection_time:
+            self.metrics.injection_time = injection_time
         self.metrics.end_time = time.time()
         self.metrics.calculate_totals()
         
         self._change_state(SessionState.COMPLETED)
         
-        logger.info(f"Session {self.session_id} completed (injection: {success})")
+        logger.info(f"Session {self.session_id} completed (injection: {success}, IME: {ime_used})")
         
         if self._on_complete:
             self._on_complete(self.metrics)
@@ -237,6 +248,20 @@ class RecognitionSession:
     def set_on_complete(self, callback: Callable[[SessionMetrics], None]) -> None:
         """Set completion callback."""
         self._on_complete = callback
+    
+    def update_ime_status(self, ime_ready: bool, ime_used: Optional[str] = None) -> None:
+        """
+        Update IME status information for this session.
+        
+        Args:
+            ime_ready: Whether IME is ready for injection
+            ime_used: Name of the IME being used
+        """
+        self.metrics.ime_ready = ime_ready
+        if ime_used:
+            self.metrics.ime_used = ime_used
+        
+        logger.debug(f"Session {self.session_id} IME status updated: ready={ime_ready}, ime={ime_used}")
     
     def get_audio_buffer(self) -> bytes:
         """

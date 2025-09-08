@@ -349,10 +349,11 @@ class MainController:
             
             # Text injector - 使用输入法框架注入系统
             try:
-                self.text_injector = TextInjector()
-                logger.info("使用输入法框架注入系统")
+                self.text_injector = TextInjector(self.config.text_injection)
+                # IME TextInjector需要异步初始化，在_run_async中完成
+                logger.info("TextInjector创建成功，将在异步环境中初始化IME")
             except Exception as e:
-                logger.error(f"输入法框架注入系统初始化失败: {e}")
+                logger.error(f"TextInjector创建失败: {e}")
                 raise
             
             # System tray
@@ -407,6 +408,9 @@ class MainController:
             self._event_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._event_loop)
             
+            # Initialize IME text injector asynchronously
+            self._event_loop.run_until_complete(self._initialize_ime())
+            
             # Connect to WebSocket
             self._event_loop.run_until_complete(self._connect_websocket())
             
@@ -417,7 +421,70 @@ class MainController:
         except Exception as e:
             logger.error(f"Async loop error: {e}")
         finally:
+            # Cleanup IME
+            if self.text_injector:
+                self._event_loop.run_until_complete(self.text_injector.cleanup())
             self._event_loop.close()
+    
+    async def _initialize_ime(self) -> None:
+        """Initialize IME text injector asynchronously."""
+        try:
+            if self.text_injector:
+                ime_initialized = await self.text_injector.initialize()
+                if ime_initialized:
+                    logger.info("IME text injector initialized successfully")
+                else:
+                    logger.warning("IME text injector initialization failed")
+                    if self.tray_manager:
+                        self.tray_manager.show_notification(
+                            "IME警告",
+                            "输入法框架初始化失败，文本注入可能不可用"
+                        )
+        except Exception as e:
+            logger.error(f"IME initialization error: {e}")
+            if self.tray_manager:
+                self.tray_manager.show_notification(
+                    "IME错误",
+                    f"输入法框架初始化异常: {str(e)[:50]}"
+                )
+    
+    async def _inject_text_async(self, text: str) -> None:
+        """
+        Inject text asynchronously using IME framework.
+        
+        Args:
+            text: Text to inject
+        """
+        try:
+            if self.text_injector and self.current_session:
+                injection_start = time.time()
+                
+                # Get IME status before injection
+                ime_status = await self.text_injector.get_ime_status()
+                ime_used = ime_status.get('current_ime', 'unknown')
+                ime_ready = ime_status.get('ime_ready', False)
+                
+                # Update session with IME status
+                self.current_session.update_ime_status(ime_ready, ime_used)
+                
+                # Perform injection
+                success = await self.text_injector.inject_text(text)
+                injection_time = time.time() - injection_start
+                
+                # Complete injection with IME details
+                self.current_session.complete_injection(success, ime_used, injection_time)
+                
+                if success:
+                    logger.info(f"Successfully injected text via {ime_used}: {text[:50]}...")
+                    # Update statistics
+                    self.stats["total_text_length"] += len(text)
+                else:
+                    logger.error(f"Failed to inject text via {ime_used}: {text[:50]}...")
+                    
+        except Exception as e:
+            logger.error(f"Text injection error: {e}")
+            if self.current_session:
+                self.current_session.complete_injection(False, "error", 0.0)
     
     async def _connect_websocket(self) -> None:
         """Connect to WebSocket server."""
@@ -805,11 +872,11 @@ class MainController:
         logger.debug(f"Session state changed to: {state.value}")
         
         if state == SessionState.INJECTING and self.current_session:
-            # Inject recognized text
+            # Inject recognized text asynchronously
             text = self.current_session.recognized_text
-            if text:
-                success = self.text_injector.inject_text(text)
-                self.current_session.complete_injection(success)
+            if text and self.text_injector:
+                # Schedule async text injection
+                asyncio.create_task(self._inject_text_async(text))
     
     def _handle_text_recognized(self, text: str) -> None:
         """

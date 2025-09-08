@@ -119,17 +119,23 @@ ui:
   language: "zh_CN"
 
 # ====================================
-# 文本注入配置
+# 文本注入配置 - 纯输入法体验
 # ====================================
 text_injection:
   # 自动将识别结果注入到当前光标位置
   auto_inject: true
   
-  # 注入失败时回退到剪贴板
-  fallback_to_clipboard: true
+  # 注入失败时回退到剪贴板 (已禁用，使用纯输入法体验)
+  fallback_to_clipboard: false
   
-  # 文本注入延迟 (秒) - 给目标应用准备时间
+  # 文本注入延迟 (秒) - 给目标应用准备时间  
   inject_delay: 0.1
+  
+  # 输入法框架优先级 (智能检测运行中的框架)
+  ime_frameworks: ["fcitx5", "ibus", "fcitx"]
+  
+  # 启用输入法框架调试信息
+  ime_debug: false
   
   # 光标定位方式 (end=文本末尾, start=文本开头, select=选中文本)
   cursor_positioning: "end"

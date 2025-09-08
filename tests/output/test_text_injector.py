@@ -6,10 +6,7 @@ import unittest
 from unittest.mock import Mock, patch, MagicMock, call
 import platform
 
-from nextalk.output.text_injector import (
-    TextInjector,
-    InjectionMethod
-)
+from nextalk.output.text_injector import TextInjector
 from nextalk.config.models import TextInjectionConfig
 
 

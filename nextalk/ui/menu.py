@@ -22,6 +22,11 @@ class MenuAction(Enum):
     QUIT = "quit"
     SEPARATOR = "separator"
     CUSTOM = "custom"
+    # IME related actions
+    VIEW_IME_STATUS = "view_ime_status"
+    TOGGLE_IME = "toggle_ime"
+    IME_SETTINGS = "ime_settings"
+    TEST_IME_INJECTION = "test_ime_injection"
 
 
 @dataclass
@@ -59,6 +64,33 @@ class TrayMenu:
                 action=MenuAction.TOGGLE_RECOGNITION,
                 shortcut="Ctrl+Alt+Space",
                 icon="toggle"
+            ),
+            MenuItem(
+                label="",
+                action=MenuAction.SEPARATOR
+            ),
+            # IME状态和控制菜单
+            MenuItem(
+                label="IME状态: 检测中...",
+                action=MenuAction.VIEW_IME_STATUS,
+                enabled=False,
+                icon="ime_status"
+            ),
+            MenuItem(
+                label="启用/禁用IME注入",
+                action=MenuAction.TOGGLE_IME,
+                checked=True,
+                icon="ime_toggle"
+            ),
+            MenuItem(
+                label="测试IME注入",
+                action=MenuAction.TEST_IME_INJECTION,
+                icon="ime_test"
+            ),
+            MenuItem(
+                label="IME设置",
+                action=MenuAction.IME_SETTINGS,
+                icon="ime_settings"
             ),
             MenuItem(
                 label="",

@@ -62,14 +62,41 @@ class UIConfig:
 
 
 @dataclass
+class IMEConfig:
+    """Input Method Editor (IME) configuration."""
+    enabled: bool = True
+    preferred_framework: Optional[str] = None  # ibus, fcitx5, fcitx, auto
+    fallback_timeout: float = 5.0
+    composition_timeout: float = 1.0
+    state_monitor_interval: float = 0.1
+    auto_detect_ime: bool = True
+    linux_ime_frameworks: List[str] = field(default_factory=lambda: ["fcitx5", "ibus", "fcitx"])
+    dbus_timeout: float = 2.0
+    debug_mode: bool = False
+
+
+@dataclass
 class TextInjectionConfig:
-    """Text injection and output configuration."""
+    """Text injection configuration - Pure IME experience."""
+    # IME-based injection (primary method)
+    use_ime: bool = True
+    ime_config: IMEConfig = field(default_factory=IMEConfig)
+    
+    # Core injection settings
     auto_inject: bool = True
-    fallback_to_clipboard: bool = True
+    fallback_to_clipboard: bool = False  # Disabled for pure IME experience
     inject_delay: float = 0.1
+    
+    # IME framework configuration
+    ime_frameworks: List[str] = field(default_factory=lambda: ["fcitx5", "ibus", "fcitx"])
+    ime_debug: bool = False
+    
+    # Text formatting options
     cursor_positioning: str = "end"  # end, start, select
     format_text: bool = True
     strip_whitespace: bool = True
+    
+    # App compatibility (legacy - less relevant with IME approach)
     compatible_apps: List[str] = field(default_factory=list)
     incompatible_apps: List[str] = field(default_factory=list)
 
@@ -138,11 +165,19 @@ class NexTalkConfig:
         for field_name, field_def in self.__dataclass_fields__.items():
             value = getattr(self, field_name)
             if hasattr(value, '__dataclass_fields__'):
-                # Nested dataclass
-                result[field_name] = {
-                    sub_field: getattr(value, sub_field)
-                    for sub_field in value.__dataclass_fields__.keys()
-                }
+                # Nested dataclass - handle recursively
+                nested_dict = {}
+                for sub_field in value.__dataclass_fields__.keys():
+                    sub_value = getattr(value, sub_field)
+                    if hasattr(sub_value, '__dataclass_fields__'):
+                        # Double nested (like ime_config in text_injection)
+                        nested_dict[sub_field] = {
+                            sub_sub_field: getattr(sub_value, sub_sub_field)
+                            for sub_sub_field in sub_value.__dataclass_fields__.keys()
+                        }
+                    else:
+                        nested_dict[sub_field] = sub_value
+                result[field_name] = nested_dict
             else:
                 result[field_name] = value
         return result
@@ -159,12 +194,16 @@ class NexTalkConfig:
         recognition_data = data.pop('recognition', {})
         logging_data = data.pop('logging', {})
         
+        # Handle IME config nested in text_injection
+        ime_data = text_injection_data.pop('ime_config', {})
+        ime_config = IMEConfig(**ime_data)
+        
         return cls(
             server=ServerConfig(**server_data),
             audio=AudioConfig(**audio_data),
             hotkey=HotkeyConfig(**hotkey_data),
             ui=UIConfig(**ui_data),
-            text_injection=TextInjectionConfig(**text_injection_data),
+            text_injection=TextInjectionConfig(ime_config=ime_config, **text_injection_data),
             recognition=RecognitionConfig(**recognition_data),
             logging=LoggingConfig(**logging_data),
             **data

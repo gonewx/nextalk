@@ -204,3 +204,5 @@ tmp/
 temp/
 *.tmp
 *.temp
+
+ime_diagnostic_report_*.json
