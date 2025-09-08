@@ -7,7 +7,7 @@ Provides system tray integration using pystray library.
 import logging
 import threading
 from enum import Enum
-from typing import Optional, Callable, Any, Dict
+from typing import Optional, Callable, Any
 import io
 
 # Try to import GUI dependencies
@@ -107,16 +107,6 @@ class SystemTrayManager:
         self._on_settings: Optional[Callable] = None
         self._on_about: Optional[Callable] = None
         
-        # IME related callbacks
-        self._on_ime_toggle: Optional[Callable] = None
-        self._on_ime_settings: Optional[Callable] = None
-        self._on_ime_test: Optional[Callable] = None
-        self._on_ime_status: Optional[Callable] = None
-        
-        # IME状态缓存
-        self._ime_enabled = True
-        self._ime_status_info = None
-        
         # Setup menu handlers
         self._setup_menu_handlers()
     
@@ -136,12 +126,6 @@ class SystemTrayManager:
         self._menu.register_handler(MenuAction.OPEN_SETTINGS, self._handle_settings)
         self._menu.register_handler(MenuAction.ABOUT, self._handle_about)
         self._menu.register_handler(MenuAction.VIEW_STATISTICS, self._handle_statistics)
-        
-        # IME related handlers
-        self._menu.register_handler(MenuAction.VIEW_IME_STATUS, self._handle_ime_status)
-        self._menu.register_handler(MenuAction.TOGGLE_IME, self._handle_ime_toggle)
-        self._menu.register_handler(MenuAction.IME_SETTINGS, self._handle_ime_settings)
-        self._menu.register_handler(MenuAction.TEST_IME_INJECTION, self._handle_ime_test)
     
     def start(self) -> None:
         """Start the system tray icon."""
@@ -348,22 +332,6 @@ class SystemTrayManager:
         """Set about callback."""
         self._on_about = callback
     
-    def set_on_ime_toggle(self, callback: Callable) -> None:
-        """Set IME toggle callback."""
-        self._on_ime_toggle = callback
-    
-    def set_on_ime_settings(self, callback: Callable) -> None:
-        """Set IME settings callback."""
-        self._on_ime_settings = callback
-    
-    def set_on_ime_test(self, callback: Callable) -> None:
-        """Set IME test callback."""
-        self._on_ime_test = callback
-    
-    def set_on_ime_status(self, callback: Callable) -> None:
-        """Set IME status callback."""
-        self._on_ime_status = callback
-    
     def _handle_quit(self, item: MenuItem) -> None:
         """Handle quit action."""
         logger.info("Quit requested from tray")
@@ -400,96 +368,6 @@ class SystemTrayManager:
         """Handle view statistics action."""
         logger.info("View statistics requested from tray")
         self.show_notification("统计信息", "统计功能尚未实现")
-    
-    def _handle_ime_status(self, item: MenuItem) -> None:
-        """Handle IME status view action."""
-        logger.info("IME status requested from tray")
-        if self._on_ime_status:
-            self._on_ime_status()
-        else:
-            status_text = "IME功能已启用" if self._ime_enabled else "IME功能已禁用"
-            if self._ime_status_info:
-                status_text += f"\n当前IME: {self._ime_status_info.get('current_ime', '未知')}"
-                status_text += f"\n语言: {self._ime_status_info.get('language', '未知')}"
-                status_text += f"\n目标应用: {self._ime_status_info.get('focus_app', '未知')}"
-            self.show_notification("IME状态", status_text)
-    
-    def _handle_ime_toggle(self, item: MenuItem) -> None:
-        """Handle IME toggle action."""
-        logger.info("IME toggle requested from tray")
-        if self._on_ime_toggle:
-            result = self._on_ime_toggle()
-            if result is not None:
-                self._ime_enabled = result
-                self._update_ime_menu_items()
-                status = "启用" if self._ime_enabled else "禁用"
-                self.show_notification("IME状态", f"IME注入已{status}")
-        else:
-            self._ime_enabled = not self._ime_enabled
-            self._update_ime_menu_items()
-            status = "启用" if self._ime_enabled else "禁用"
-            self.show_notification("IME状态", f"IME注入已{status}")
-    
-    def _handle_ime_settings(self, item: MenuItem) -> None:
-        """Handle IME settings action."""
-        logger.info("IME settings requested from tray")
-        if self._on_ime_settings:
-            self._on_ime_settings()
-        else:
-            self.show_notification("IME设置", "IME设置界面尚未实现")
-    
-    def _handle_ime_test(self, item: MenuItem) -> None:
-        """Handle IME test injection action."""
-        logger.info("IME test injection requested from tray")
-        if self._on_ime_test:
-            self._on_ime_test()
-        else:
-            self.show_notification("IME测试", "正在测试IME文本注入功能...")
-    
-    def update_ime_status(self, ime_enabled: bool, status_info: Optional[Dict[str, Any]] = None) -> None:
-        """
-        Update IME status in tray menu.
-        
-        Args:
-            ime_enabled: Whether IME is enabled
-            status_info: Detailed status information
-        """
-        self._ime_enabled = ime_enabled
-        self._ime_status_info = status_info
-        self._update_ime_menu_items()
-    
-    def _update_ime_menu_items(self) -> None:
-        """Update IME-related menu items."""
-        # 更新IME状态显示
-        if self._ime_status_info:
-            current_ime = self._ime_status_info.get('current_ime', '未知')
-            is_active = self._ime_status_info.get('is_active', False)
-            status_text = f"IME状态: {current_ime}" + ("(活跃)" if is_active else "(非活跃)")
-        else:
-            status_text = f"IME状态: {'已启用' if self._ime_enabled else '已禁用'}"
-        
-        self._menu.update_item(
-            MenuAction.VIEW_IME_STATUS,
-            label=status_text
-        )
-        
-        # 更新切换按钮
-        toggle_text = "禁用IME注入" if self._ime_enabled else "启用IME注入"
-        self._menu.update_item(
-            MenuAction.TOGGLE_IME,
-            label=toggle_text,
-            checked=self._ime_enabled
-        )
-        
-        # 更新测试按钮可用性
-        self._menu.update_item(
-            MenuAction.TEST_IME_INJECTION,
-            enabled=self._ime_enabled
-        )
-        
-        # 刷新托盘菜单
-        if self._running:
-            self.update_menu()
     
     def is_running(self) -> bool:
         """Check if tray is running."""

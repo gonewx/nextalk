@@ -78,7 +78,7 @@ FunASR 服务器提供语音识别功能，必须先启动：
 ```bash
 # 首次运行会自动下载模型（约 2-3GB）
 python funasr_wss_server.py
-#python funasr_wss_server.py --certfile "" --keyfile "" --ngpu 0 --device cpu
+# python funasr_wss_server.py --certfile "" --keyfile "" --ngpu 0 --device cpu
 
 # 等待看到以下输出表示服务器就绪：
 # model loaded! only support one client at the same time now!!!!
