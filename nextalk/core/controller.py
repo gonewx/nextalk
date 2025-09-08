@@ -679,17 +679,18 @@ class MainController:
         # Start session
         self.current_session.start()
         
-        # Initialize WebSocket streaming session first (like original client)
+        # Initialize WebSocket streaming session asynchronously (non-blocking)
         try:
             asyncio.run_coroutine_threadsafe(
                 self.ws_client.initialize_streaming_session(),
                 self._event_loop
-            ).result(timeout=5.0)  # Wait for initialization
+            )
+            logger.info("WebSocket streaming session initialization started")
         except Exception as e:
-            logger.error(f"Failed to initialize streaming session: {e}")
-            return
+            logger.warning(f"Failed to start streaming session initialization: {e}")
+            logger.info("Will retry initialization when first audio data arrives")
         
-        # Start PyAudio recording with real-time streaming
+        # Start PyAudio recording with real-time streaming immediately
         self.audio_manager.set_data_callback(self._stream_audio_chunk)
         self.audio_manager.start_recording()
         
@@ -721,17 +722,18 @@ class MainController:
         # Start session
         self.current_session.start()
         
-        # Initialize WebSocket streaming session first (like original client)
+        # Initialize WebSocket streaming session asynchronously (non-blocking)
         try:
             asyncio.run_coroutine_threadsafe(
                 self.ws_client.initialize_streaming_session(),
                 self._event_loop
-            ).result(timeout=5.0)  # Wait for initialization
+            )
+            logger.info("WebSocket streaming session initialization started")
         except Exception as e:
-            logger.error(f"Failed to initialize streaming session: {e}")
-            return
+            logger.warning(f"Failed to start streaming session initialization: {e}")
+            logger.info("Will retry initialization when first audio data arrives")
         
-        # Start PyAudio recording with real-time streaming
+        # Start PyAudio recording with real-time streaming immediately
         self.audio_manager.set_data_callback(self._stream_audio_chunk)
         self.audio_manager.start_recording()
         
