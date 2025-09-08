@@ -39,14 +39,13 @@ class AudioConfig:
 
 
 @dataclass
-class HotkeyConfig:
-    """Global hotkey configuration."""
-    trigger_key: str = "ctrl+alt+space"
-    stop_key: str = "ctrl+alt+space"  # Same key toggles
-    modifier_keys: List[str] = field(default_factory=lambda: ["ctrl", "alt"])
+class RecordingConfig:
+    """Recording control configuration."""
+    mode: str = "toggle"  # "toggle", "hold", "continuous", "once"
+    hotkey: str = "ctrl+shift+space"
+    stop_key: str = ""  # Empty means use same hotkey
     conflict_detection: bool = True
     enable_sound_feedback: bool = True
-    mode: str = "press_and_hold"  # "toggle" or "press_and_hold"
 
 
 @dataclass
@@ -105,7 +104,6 @@ class TextInjectionConfig:
 class RecognitionConfig:
     """Speech recognition configuration."""
     mode: str = "2pass"  # offline, online, 2pass
-    capture_mode: str = "hotkey"  # hotkey, auto_start, continuous
     use_itn: bool = True
     use_punctuation: bool = True
     hotwords: List[str] = field(default_factory=list)
@@ -131,7 +129,7 @@ class NexTalkConfig:
     """Main configuration class for NexTalk application."""
     server: ServerConfig = field(default_factory=ServerConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
-    hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
+    recording: RecordingConfig = field(default_factory=RecordingConfig)
     ui: UIConfig = field(default_factory=UIConfig)
     text_injection: TextInjectionConfig = field(default_factory=TextInjectionConfig)
     recognition: RecognitionConfig = field(default_factory=RecognitionConfig)
@@ -188,7 +186,7 @@ class NexTalkConfig:
         # Extract nested configs
         server_data = data.pop('server', {})
         audio_data = data.pop('audio', {})
-        hotkey_data = data.pop('hotkey', {})
+        recording_data = data.pop('recording', {})
         ui_data = data.pop('ui', {})
         text_injection_data = data.pop('text_injection', {})
         recognition_data = data.pop('recognition', {})
@@ -201,7 +199,7 @@ class NexTalkConfig:
         return cls(
             server=ServerConfig(**server_data),
             audio=AudioConfig(**audio_data),
-            hotkey=HotkeyConfig(**hotkey_data),
+            recording=RecordingConfig(**recording_data),
             ui=UIConfig(**ui_data),
             text_injection=TextInjectionConfig(ime_config=ime_config, **text_injection_data),
             recognition=RecognitionConfig(**recognition_data),
@@ -227,18 +225,19 @@ class NexTalkConfig:
         if self.audio.channels not in [1, 2]:
             errors.append(f"Invalid audio channels: {self.audio.channels}")
         
-        # Validate hotkey config
-        valid_modifiers = ["ctrl", "alt", "shift", "cmd", "meta"]
-        for modifier in self.hotkey.modifier_keys:
-            if modifier.lower() not in valid_modifiers:
-                errors.append(f"Invalid modifier key: {modifier}")
+        # Basic hotkey format validation
+        if self.recording.hotkey and not self.recording.hotkey.strip():
+            errors.append("Recording hotkey cannot be empty")
+        if self.recording.hotkey and "+" not in self.recording.hotkey:
+            errors.append("Recording hotkey should contain modifier keys (e.g., 'ctrl+shift+space')")
         
         # Validate recognition config
         if self.recognition.mode not in ["offline", "online", "2pass"]:
             errors.append(f"Invalid recognition mode: {self.recognition.mode}")
             
-        if self.recognition.capture_mode not in ["hotkey", "auto_start", "continuous"]:
-            errors.append(f"Invalid capture mode: {self.recognition.capture_mode}")
+        # Validate recording config
+        if self.recording.mode not in ["toggle", "hold", "continuous", "once"]:
+            errors.append(f"Invalid recording mode: {self.recording.mode}")
             
         # Validate logging config
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]

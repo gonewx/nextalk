@@ -327,25 +327,25 @@ class MainController:
             self.ws_client.set_result_callback(self._handle_recognition_result)
             
             # Hotkey manager  
-            self.hotkey_manager = HotkeyManager(self.config.hotkey)
+            self.hotkey_manager = HotkeyManager(self.config.recording)
             
-            # Choose hotkey mode based on configuration
-            if self.config.hotkey.mode == "press_and_hold":
+            # Choose recording mode based on configuration
+            if self.config.recording.mode == "hold":
                 self.hotkey_manager.register_press_release(
-                    self.config.hotkey.trigger_key,
+                    self.config.recording.hotkey,
                     on_press=self._handle_hotkey_press,
                     on_release=self._handle_hotkey_release,
                     description="Press to Start / Release to Stop Recording"
                 )
-                logger.info("Using press-and-hold hotkey mode")
+                logger.info("Using hold recording mode")
             else:
-                # Default to toggle mode
+                # Default to toggle mode  
                 self.hotkey_manager.register(
-                    self.config.hotkey.trigger_key,
+                    self.config.recording.hotkey,
                     self._handle_hotkey_trigger,
                     "Start/Stop Recognition"
                 )
-                logger.info("Using toggle hotkey mode")
+                logger.info(f"Using {self.config.recording.mode} recording mode")
             
             # Text injector - 使用输入法框架注入系统
             try:
@@ -396,8 +396,8 @@ class MainController:
         self._main_thread = threading.Thread(target=self._run_async, daemon=True)
         self._main_thread.start()
         
-        # Auto start recognition based on capture mode
-        if self.config.recognition.capture_mode in ["auto_start", "continuous"]:
+        # Auto start recognition based on recording mode
+        if self.config.recording.mode in ["once", "continuous"]:
             # Wait a moment for WebSocket connection
             threading.Timer(2.0, self._auto_start_recognition).start()
         
@@ -508,13 +508,13 @@ class MainController:
             threading.Timer(2.0, self._auto_start_recognition).start()
             return
         
-        capture_mode = self.config.recognition.capture_mode
-        if capture_mode in ["auto_start", "continuous"]:
-            logger.info(f"Auto starting recognition in {capture_mode} mode")
+        recording_mode = self.config.recording.mode
+        if recording_mode in ["once", "continuous"]:
+            logger.info(f"Auto starting recognition in {recording_mode} mode")
             self._start_recognition()
             
             if self.tray_manager:
-                mode_text = "启动时自动开始" if capture_mode == "auto_start" else "持续采集模式"
+                mode_text = "启动时录音一次" if recording_mode == "once" else "持续采集模式"
                 self.tray_manager.show_notification(
                     "自动音频采集",
                     f"{mode_text} - 音频采集已开始"
@@ -583,24 +583,22 @@ class MainController:
         logger.info("MainController shutdown complete")
     
     def _handle_hotkey_press(self) -> None:
-        """Handle hotkey press event - start recording."""
-        logger.info("Hotkey pressed - starting recording")
-        
+        """Handle hotkey press event - start recording."""        
         # Only start if not already active
         if not (self.current_session and self.current_session.is_active()):
+            logger.info("Hotkey pressed - starting recording")
             self._start_recognition_direct()
         else:
-            logger.debug("Recording already active, ignoring press")
+            logger.debug("Hotkey pressed but recording already active, ignoring")
     
     def _handle_hotkey_release(self) -> None:
-        """Handle hotkey release event - stop recording."""
-        logger.info("Hotkey released - stopping recording")
-        
+        """Handle hotkey release event - stop recording."""        
         # Only stop if currently active
         if self.current_session and self.current_session.is_active():
+            logger.info("Hotkey released - stopping recording")
             self._stop_recognition()
         else:
-            logger.debug("Recording not active, ignoring release")
+            logger.debug("Hotkey released but recording not active, ignoring")
     
     def _handle_hotkey_trigger(self) -> None:
         """Handle hotkey trigger event with debouncing (legacy toggle mode)."""
@@ -619,12 +617,24 @@ class MainController:
     
     def _toggle_recognition(self) -> None:
         """Toggle voice recognition on/off."""
-        capture_mode = self.config.recognition.capture_mode
+        recording_mode = self.config.recording.mode
         
-        if self.current_session and self.current_session.is_active():
-            logger.info(f"Stopping recognition (mode: {capture_mode})")
+        # Check if we're actually recording (not just session active)
+        is_recording = self.audio_manager and self.audio_manager.is_recording()
+        controller_active = self.state_manager.get_state() == ControllerState.ACTIVE
+        
+        # For toggle mode, use both recording state and controller state
+        should_stop = False
+        if recording_mode == "toggle":
+            should_stop = is_recording or controller_active
+        else:
+            # For other modes, use session state
+            should_stop = self.current_session and self.current_session.is_active()
+        
+        if should_stop:
+            logger.info(f"Stopping recognition (mode: {recording_mode}, recording: {is_recording}, controller: {controller_active})")
             # In continuous mode, mark as paused by user
-            if capture_mode == "continuous":
+            if recording_mode == "continuous":
                 self._continuous_mode_paused = True
                 if self.tray_manager:
                     self.tray_manager.show_notification(
@@ -636,9 +646,9 @@ class MainController:
             # Clear any old session data before starting new one
             if self.current_session:
                 self.current_session.clear_audio_buffer()
-            logger.info(f"Starting recognition (mode: {capture_mode})")
+            logger.info(f"Starting recognition (mode: {recording_mode}, recording: {is_recording}, controller: {controller_active})")
             # In continuous mode, resume from pause
-            if capture_mode == "continuous" and self._continuous_mode_paused:
+            if recording_mode == "continuous" and self._continuous_mode_paused:
                 self._continuous_mode_paused = False
                 if self.tray_manager:
                     self.tray_manager.show_notification(
@@ -733,17 +743,32 @@ class MainController:
     
     def _stop_recognition(self) -> None:
         """Stop the current recognition session."""
-        if not self.current_session or not self.current_session.is_active():
-            logger.warning("No active recognition session")
+        # Check if we have recording or active session to stop
+        has_recording = self.audio_manager and self.audio_manager.is_recording()
+        has_active_session = self.current_session and self.current_session.is_active()
+        
+        if not has_recording and not has_active_session:
+            logger.warning("No active recording or session to stop")
             return
         
         logger.info("Stopping recognition session")
         
         # Stop PyAudio recording and get accumulated data
-        audio_data = self.audio_manager.stop_recording()
+        if has_recording:
+            audio_data = self.audio_manager.stop_recording()
         
-        # Stop session
-        self.current_session.stop()
+        # Stop session if it exists and is active
+        if has_active_session:
+            self.current_session.stop()
+        
+        # In toggle mode, clear the session completely after stopping
+        if self.config.recording.mode == "toggle":
+            logger.info("Toggle mode: Clearing session after stop")
+            if self.current_session:
+                self.session_history.append(self.current_session)
+                if len(self.session_history) > 100:
+                    self.session_history.pop(0)
+            self.current_session = None
         
         # Send end signal to WebSocket (for streaming mode)
         if self.ws_client and self.ws_client.is_connected():
@@ -786,6 +811,18 @@ class MainController:
         Args:
             audio_data: AudioChunk object containing raw PCM data
         """
+        # In hold mode, if no current session, create a new one automatically
+        if (not self.current_session or not self.current_session.is_active()) and \
+           self.config.recording.mode == "hold" and \
+           self.state_manager.get_state() == ControllerState.ACTIVE:
+            logger.info("Hold mode: Auto-creating new session for continued recording")
+            self.current_session = RecognitionSession()
+            self.current_session.set_on_state_change(self._handle_session_state)
+            self.current_session.set_on_text_recognized(self._handle_text_recognized)
+            self.current_session.set_on_error(self._handle_session_error)
+            self.current_session.set_on_complete(self._handle_session_complete)
+            self.current_session.start()
+        
         if self.current_session and self.current_session.is_active():
             # Add to session for record keeping
             self.current_session.add_audio_data(audio_data.data)
@@ -819,8 +856,14 @@ class MainController:
             
             if result.mode == "2pass-offline":
                 # 2pass-offline contains the complete, best result
-                should_process = True
-                logger.info(f"Processing 2pass-offline result: '{result.text}'")
+                # But in toggle mode, don't auto-complete - wait for user's second keypress
+                if self.config.recording.mode == "toggle":
+                    # In toggle mode, store the result but don't end the session
+                    logger.info(f"Received 2pass-offline result in toggle mode: '{result.text}'")
+                    should_process = True  # Still process for text injection, but don't auto-end
+                else:
+                    should_process = True
+                    logger.info(f"Processing 2pass-offline result: '{result.text}'")
             elif result.mode in ["offline", "online"] and result.is_final:
                 # Standard offline/online modes use is_final flag
                 should_process = True
@@ -945,6 +988,47 @@ class MainController:
         
         logger.info(f"Session complete: {metrics.session_id}")
         
+        # In toggle mode, don't auto-end the session after text injection
+        # Wait for user's second keypress to end the session
+        if self.config.recording.mode == "toggle":
+            logger.info("Toggle mode: Text injected, creating new session and continuing recording")
+            # Create a new session for continued recording in toggle mode
+            if self.current_session:
+                # Store the completed session in history
+                self.session_history.append(self.current_session)
+                if len(self.session_history) > 100:
+                    self.session_history.pop(0)
+            
+            # Create new session for continued recording
+            self.current_session = RecognitionSession()
+            self.current_session.set_on_state_change(self._handle_session_state)
+            self.current_session.set_on_text_recognized(self._handle_text_recognized)
+            self.current_session.set_on_error(self._handle_session_error)
+            self.current_session.set_on_complete(self._handle_session_complete)
+            self.current_session.start()
+            
+            # Keep controller state as ACTIVE in toggle mode to maintain recording
+            logger.info("Toggle mode: New session created, maintaining ACTIVE state for continued recording")
+            return
+        
+        # In hold mode, text is injected and we create a fresh session for next recognition
+        # but keep recording active until user releases the key
+        if self.config.recording.mode == "hold":
+            logger.info("Hold mode: Text injected, creating fresh session but keeping recording active until key release")
+            # Store completed session in history
+            if self.current_session:
+                self.session_history.append(self.current_session)
+                if len(self.session_history) > 100:
+                    self.session_history.pop(0)
+            
+            # Create fresh session for next recognition, but don't auto-start it yet
+            # It will be started when audio comes in (if recording is still active)
+            self.current_session = None
+            
+            # Keep controller state as ACTIVE to maintain recording
+            logger.info("Hold mode: Session cleared, recording continues until key release")
+            return
+        
         # Transition state back to READY after natural session completion
         current_state = self.state_manager.get_state()
         if current_state == ControllerState.ACTIVE:
@@ -952,19 +1036,19 @@ class MainController:
             logger.debug("State transitioned from ACTIVE to READY after session completion")
         
         # Auto restart for continuous mode
-        capture_mode = self.config.recognition.capture_mode
+        recording_mode = self.config.recording.mode
         current_state = self.state_manager.get_state()
         
-        logger.debug(f"Auto-restart check: mode={capture_mode}, running={self._running}, state={current_state.value}, paused={self._continuous_mode_paused}")
+        logger.debug(f"Auto-restart check: mode={recording_mode}, running={self._running}, state={current_state.value}, paused={self._continuous_mode_paused}")
         
-        if (capture_mode == "continuous" and 
+        if (recording_mode == "continuous" and 
             self._running and 
             current_state == ControllerState.READY and
             not self._continuous_mode_paused):
             logger.info("Continuous mode: auto restarting recognition")
             # Small delay before restarting to avoid rapid cycling
             threading.Timer(1.0, self._start_recognition).start()
-        elif capture_mode == "continuous":
+        elif recording_mode == "continuous":
             # Log why auto-restart didn't happen
             reasons = []
             if not self._running:
@@ -1088,6 +1172,23 @@ class MainController:
         except Exception as e:
             logger.error(f"Recovery failed: {e}")
             self.state_manager.transition(ControllerEvent.ERROR_OCCURRED, {"error": str(e)})
+    
+    async def toggle_recording(self) -> None:
+        """
+        Toggle recording state (async version for signal handling).
+        
+        This method provides an async interface to the toggle functionality
+        for use with signal handlers and external control.
+        """
+        try:
+            current_state = self.state_manager.get_state()
+            if current_state in [ControllerState.READY, ControllerState.ACTIVE]:
+                logger.info("External toggle request received")
+                self._toggle_recognition()
+            else:
+                logger.warning(f"Cannot toggle recording in current state: {current_state}")
+        except Exception as e:
+            logger.error(f"Error in toggle_recording: {e}")
     
     def get_statistics(self) -> Dict[str, Any]:
         """

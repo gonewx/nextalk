@@ -95,7 +95,7 @@ python funasr_wss_server.py
 nextalk
 
 # 方式 2：Python 模块方式
-python -m nextalk -c configs/nextalk.yaml
+python -m nextalk -c config/nextalk.yaml
 
 # 方式 3：使用启动脚本
 python scripts/start.py

@@ -10,7 +10,7 @@ from typing import Callable, Optional, Dict, List, Set
 from dataclasses import dataclass
 import time
 
-from ..config.models import HotkeyConfig
+from ..config.models import RecordingConfig
 from .listener import KeyListener, HotkeyEvent, KeyEventType
 
 
@@ -40,14 +40,14 @@ class HotkeyManager:
     Provides hotkey registration, conflict detection, and configuration management.
     """
     
-    def __init__(self, config: Optional[HotkeyConfig] = None):
+    def __init__(self, config: Optional[RecordingConfig] = None):
         """
         Initialize the hotkey manager.
         
         Args:
-            config: Hotkey configuration
+            config: Recording configuration
         """
-        self.config = config or HotkeyConfig()
+        self.config = config or RecordingConfig()
         self._listener = KeyListener()
         self._registrations: Dict[str, HotkeyRegistration] = {}
         self._lock = threading.Lock()
@@ -430,7 +430,7 @@ class HotkeyManager:
         """Register default hotkeys from configuration."""
         # These will be registered by the main controller
         # Just log what's configured
-        logger.info(f"Configured trigger key: {self.config.trigger_key}")
+        logger.info(f"Configured trigger key: {self.config.hotkey}")
         logger.info(f"Configured stop key: {self.config.stop_key}")
     
     def _play_feedback_sound(self) -> None:

@@ -73,19 +73,21 @@ audio:
   auto_gain_control: true
 
 # ====================================
-# 全局快捷键配置
+# 录音控制配置
 # ====================================
-hotkey:
-  # 触发语音识别的快捷键组合
-  # 支持的修饰键: ctrl, alt, shift, cmd/meta
-  # 示例: "ctrl+alt+space", "ctrl+shift+v", "alt+f1"
-  trigger_key: "ctrl+alt+space"
+recording:
+  # 录音模式: 
+  # - "toggle": 按键开始，再次按键停止
+  # - "hold": 按住录音，松开停止  
+  # - "continuous": 持续录音，按键暂停/恢复
+  # - "once": 启动时录音一次
+  mode: "toggle"
   
-  # 停止语音识别的快捷键 (与触发键相同表示按键切换)
-  stop_key: "ctrl+alt+space"
+  # 触发快捷键
+  hotkey: "ctrl+shift+space"
   
-  # 修饰键列表 (用于快捷键冲突检测)
-  modifier_keys: ["ctrl", "alt"]
+  # 停止快捷键 (为空则使用相同快捷键)
+  stop_key: ""
   
   # 启用快捷键冲突检测
   conflict_detection: true
@@ -119,17 +121,23 @@ ui:
   language: "zh_CN"
 
 # ====================================
-# 文本注入配置
+# 文本注入配置 - 纯输入法体验
 # ====================================
 text_injection:
   # 自动将识别结果注入到当前光标位置
   auto_inject: true
   
-  # 注入失败时回退到剪贴板
-  fallback_to_clipboard: true
+  # 注入失败时回退到剪贴板 (已禁用，使用纯输入法体验)
+  fallback_to_clipboard: false
   
-  # 文本注入延迟 (秒) - 给目标应用准备时间
+  # 文本注入延迟 (秒) - 给目标应用准备时间  
   inject_delay: 0.1
+  
+  # 输入法框架优先级 (智能检测运行中的框架)
+  ime_frameworks: ["fcitx5", "ibus", "fcitx"]
+  
+  # 启用输入法框架调试信息
+  ime_debug: false
   
   # 光标定位方式 (end=文本末尾, start=文本开头, select=选中文本)
   cursor_positioning: "end"
@@ -152,12 +160,6 @@ text_injection:
 recognition:
   # 识别模式 (offline=离线, online=在线, 2pass=两遍识别)
   mode: "2pass"
-  
-  # 音频采集模式 (hotkey=热键触发, auto_start=启动时自动开始, continuous=持续采集)
-  # - hotkey: 默认模式，按热键开始/停止录音 (原有模式)
-  # - auto_start: 启动时自动开始一次录音，完成后需要手动触发
-  # - continuous: 持续采集模式，自动循环录音和识别，热键用于暂停/恢复
-  capture_mode: "hotkey"
   
   # 启用逆文本标准化 (数字转换、单位处理等)
   use_itn: true

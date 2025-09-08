@@ -14,7 +14,7 @@ from unittest.mock import Mock
 from nextalk.config.models import (
     AudioConfig, 
     ServerConfig, 
-    HotkeyConfig,
+    RecordingConfig,
     UIConfig,
     TextInjectionConfig,
     RecognitionConfig,
@@ -80,7 +80,7 @@ def default_server_config():
 @pytest.fixture
 def default_hotkey_config():
     """Create default hotkey configuration for testing."""
-    return HotkeyConfig(
+    return RecordingConfig(
         trigger_key="ctrl+alt+space",
         stop_key="ctrl+alt+space",
         modifier_keys=["ctrl", "alt"],

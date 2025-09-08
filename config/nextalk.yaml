@@ -73,19 +73,21 @@ audio:
   auto_gain_control: true
 
 # ====================================
-# 全局快捷键配置
+# 录音控制配置
 # ====================================
-hotkey:
-  # 触发语音识别的快捷键组合
-  # 支持的修饰键: ctrl, alt, shift, cmd/meta
-  # 示例: "ctrl+alt+space", "ctrl+shift+v", "alt+f1"
-  trigger_key: "ctrl+shift+space"
+recording:
+  # 录音模式: 
+  # - "toggle": 按键开始，再次按键停止
+  # - "hold": 按住录音，松开停止  
+  # - "continuous": 持续录音，按键暂停/恢复
+  # - "once": 启动时录音一次
+  mode: "toggle"
   
-  # 停止语音识别的快捷键 (与触发键相同表示按键切换)
-  stop_key: "ctrl+alt+space"
+  # 触发快捷键
+  hotkey: "ctrl+shift+space"
   
-  # 修饰键列表 (用于快捷键冲突检测)
-  modifier_keys: ["ctrl", "alt"]
+  # 停止快捷键 (为空则使用相同快捷键)
+  stop_key: ""
   
   # 启用快捷键冲突检测
   conflict_detection: true
@@ -185,7 +187,7 @@ recognition:
 # ====================================
 logging:
   # 日志级别 (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-  level: "INFO"
+  level: "DEBUG"
   
   # 日志文件路径 (null 表示不保存到文件)
   file_path: null

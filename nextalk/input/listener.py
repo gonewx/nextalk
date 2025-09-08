@@ -281,14 +281,16 @@ class KeyListener:
         if not key_name:
             return
         
-        # Update modifier state
+        logger.info(f"Key released: {key_name}, modifiers: {self._pressed_modifiers}, keys: {self._pressed_keys}")
+        
+        # Check for hotkey match BEFORE updating state (important for release events)
+        self._check_hotkey_triggered(key_name, KeyEventType.RELEASE)
+        
+        # Update modifier state AFTER checking hotkey
         if key_name in {"ctrl", "alt", "shift", "cmd"}:
             self._pressed_modifiers.discard(key_name)
         else:
             self._pressed_keys.discard(key_name)
-        
-        # Check for hotkey match (for release events)
-        self._check_hotkey_triggered(key_name, KeyEventType.RELEASE)
     
     def _check_hotkey_triggered(self, key_name: str, event_type: KeyEventType) -> None:
         """
@@ -298,8 +300,19 @@ class KeyListener:
             key_name: Name of the key that triggered the event
             event_type: Type of key event (press or release)
         """
-        # Build current hotkey combination
-        current_combo = self._build_current_combo(key_name)
+        # For release events, we need to build the combo before the key state is updated
+        # So we need to capture the state before _on_release updates it
+        if event_type == KeyEventType.RELEASE:
+            # Build combo using current state (before removal)
+            current_combo = self._build_release_combo(key_name)
+        else:
+            # For press events, use normal combo building
+            current_combo = self._build_current_combo(key_name)
+        
+        # Debug logging
+        logger.info(f"Key event: {key_name} ({event_type.value}), combo: {current_combo}, modifiers: {self._pressed_modifiers}, keys: {self._pressed_keys}")
+        if event_type == KeyEventType.RELEASE:
+            logger.info(f"Registered release callbacks: {list(self._release_callbacks.keys())}")
         
         if not current_combo:
             return
@@ -331,6 +344,7 @@ class KeyListener:
                 logger.error(f"Error in press callback: {e}")
         
         if event_type == KeyEventType.RELEASE and current_combo in self._release_callbacks:
+            logger.info(f"Found release callback for: {current_combo}")
             callback = self._release_callbacks[current_combo]
             try:
                 callback()
@@ -361,15 +375,55 @@ class KeyListener:
         
         if not self._pressed_modifiers:
             # No modifiers, just the key itself
-            if current_key in self._pressed_keys:
-                return current_key
-            return None
+            return current_key
         
         # Build combination with modifiers
         modifiers = sorted(list(self._pressed_modifiers))
+        return "+".join(modifiers + [current_key])
+    
+    def _build_release_combo(self, current_key: str) -> Optional[str]:
+        """
+        Build the key combination string for release events.
         
-        if current_key in self._pressed_keys:
-            return "+".join(modifiers + [current_key])
+        For release events, we need to construct the combo based on what WAS pressed
+        before this key was released, since we want to match the full combination.
+        
+        Args:
+            current_key: The key that was just released
+            
+        Returns:
+            Normalized hotkey combination string that represents the full combo being released
+        """
+        # For release events, we check against all registered release callbacks
+        # to see if the current pressed state (including the key being released) 
+        # matches any registered combinations
+        
+        # Build the complete combination including the key being released
+        if current_key in {"ctrl", "alt", "shift", "cmd"}:
+            # Releasing a modifier - include it in the modifiers list
+            all_modifiers = self._pressed_modifiers.copy()  # This still includes the current key
+            if self._pressed_keys:
+                # There are non-modifier keys pressed
+                modifiers = sorted(list(all_modifiers))
+                non_modifier_keys = sorted(list(self._pressed_keys))
+                if non_modifier_keys:
+                    combo = "+".join(modifiers + non_modifier_keys)
+                    # Check if this matches any registered release callback
+                    if combo in self._release_callbacks:
+                        return combo
+            return None
+        else:
+            # Releasing a non-modifier key - include all current modifiers
+            if self._pressed_modifiers:
+                modifiers = sorted(list(self._pressed_modifiers))
+                combo = "+".join(modifiers + [current_key])
+                # Check if this matches any registered release callback
+                if combo in self._release_callbacks:
+                    return combo
+            else:
+                # No modifiers, just the key
+                if current_key in self._release_callbacks:
+                    return current_key
         
         return None
     

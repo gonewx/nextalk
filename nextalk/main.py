@@ -99,7 +99,7 @@ class NexTalkApp:
         self._setup_signal_handlers()
     
     def _setup_signal_handlers(self) -> None:
-        """Setup signal handlers for graceful shutdown."""
+        """Setup signal handlers for graceful shutdown and toggle recording."""
         def signal_handler(signum, frame):
             if self._shutdown_in_progress:
                 # Second signal = force exit
@@ -118,9 +118,40 @@ class NexTalkApp:
             
             threading.Thread(target=force_exit, daemon=True).start()
         
+        def toggle_recording_handler(signum, frame):
+            """Handle SIGUSR1 signal to toggle recording state."""
+            logging.info("Received SIGUSR1 signal, toggling recording...")
+            if self.controller and hasattr(self.controller, 'toggle_recording'):
+                try:
+                    # 使用线程安全的方式调度到事件循环
+                    if hasattr(self.controller, '_event_loop') and self.controller._event_loop:
+                        # 使用controller的事件循环
+                        future = asyncio.run_coroutine_threadsafe(
+                            self.controller.toggle_recording(),
+                            self.controller._event_loop
+                        )
+                        logging.info("Toggle recording task scheduled")
+                    else:
+                        # 回退到同步方式直接调用_toggle_recognition
+                        logging.info("Using synchronous toggle method")
+                        if hasattr(self.controller, '_toggle_recognition'):
+                            self.controller._toggle_recognition()
+                        else:
+                            logging.error("No toggle method available")
+                except Exception as e:
+                    logging.error(f"Error toggling recording: {e}")
+                    import traceback
+                    logging.error(traceback.format_exc())
+            else:
+                logging.warning("Controller not available or toggle_recording method not found")
+        
         # Register handlers
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
+        
+        # Unix/Linux specific - SIGUSR1 for toggle recording
+        if sys.platform != "win32":
+            signal.signal(signal.SIGUSR1, toggle_recording_handler)
         
         # Windows specific
         if sys.platform == "win32":
