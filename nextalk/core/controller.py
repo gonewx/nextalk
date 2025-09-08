@@ -457,6 +457,7 @@ class MainController:
             text: Text to inject
         """
         try:
+            logger.info(f"DEBUG: _inject_text_async被调用, 文本: '{text}'")
             if self.text_injector and self.current_session:
                 injection_start = time.time()
                 
@@ -464,13 +465,16 @@ class MainController:
                 ime_status = await self.text_injector.get_ime_status()
                 ime_used = ime_status.get('current_ime', 'unknown')
                 ime_ready = ime_status.get('ime_ready', False)
+                logger.info(f"DEBUG: IME状态 - ime_used: {ime_used}, ime_ready: {ime_ready}")
                 
                 # Update session with IME status
                 self.current_session.update_ime_status(ime_ready, ime_used)
                 
                 # Perform injection
+                logger.info(f"DEBUG: 开始执行文本注入...")
                 success = await self.text_injector.inject_text(text)
                 injection_time = time.time() - injection_start
+                logger.info(f"DEBUG: 文本注入完成, 成功: {success}, 耗时: {injection_time:.3f}s")
                 
                 # Complete injection with IME details
                 self.current_session.complete_injection(success, ime_used, injection_time)
@@ -595,7 +599,7 @@ class MainController:
         """Handle hotkey release event - stop recording."""        
         # Only stop if currently active
         if self.current_session and self.current_session.is_active():
-            logger.info("Hotkey released - stopping recording")
+            logger.debug("Hotkey released - stopping recording")
             self._stop_recognition()
         else:
             logger.debug("Hotkey released but recording not active, ignoring")
@@ -918,11 +922,16 @@ class MainController:
         logger.debug(f"Session state changed to: {state.value}")
         
         if state == SessionState.INJECTING and self.current_session:
+            logger.info(f"DEBUG: 准备注入文本，状态检查通过")
             # Inject recognized text asynchronously
             text = self.current_session.recognized_text
+            logger.info(f"DEBUG: 获取到文本: '{text}', text_injector存在: {self.text_injector is not None}")
             if text and self.text_injector:
+                logger.info(f"DEBUG: 开始创建异步注入任务")
                 # Schedule async text injection
                 asyncio.create_task(self._inject_text_async(text))
+            else:
+                logger.warning(f"DEBUG: 注入条件不满足 - text: '{text}', text_injector: {self.text_injector is not None}")
     
     def _handle_text_recognized(self, text: str) -> None:
         """

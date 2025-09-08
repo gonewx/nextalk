@@ -142,7 +142,7 @@ class RecognitionSession:
         self.audio_buffer.append(data)
         self.metrics.audio_bytes += len(data)
         
-        logger.info(f"Session {self.session_id}: Added {len(data)} bytes, total: {len(self.audio_buffer)} chunks, {self.metrics.audio_bytes} bytes")
+        # logger.info(f"Session {self.session_id}: Added {len(data)} bytes, total: {len(self.audio_buffer)} chunks, {self.metrics.audio_bytes} bytes")
     
     def process_recognition(self, text: str) -> None:
         """

@@ -281,7 +281,7 @@ class KeyListener:
         if not key_name:
             return
         
-        logger.info(f"Key released: {key_name}, modifiers: {self._pressed_modifiers}, keys: {self._pressed_keys}")
+        logger.debug(f"Key released: {key_name}, modifiers: {self._pressed_modifiers}, keys: {self._pressed_keys}")
         
         # Check for hotkey match BEFORE updating state (important for release events)
         self._check_hotkey_triggered(key_name, KeyEventType.RELEASE)
@@ -310,9 +310,9 @@ class KeyListener:
             current_combo = self._build_current_combo(key_name)
         
         # Debug logging
-        logger.info(f"Key event: {key_name} ({event_type.value}), combo: {current_combo}, modifiers: {self._pressed_modifiers}, keys: {self._pressed_keys}")
+        logger.debug(f"Key event: {key_name} ({event_type.value}), combo: {current_combo}, modifiers: {self._pressed_modifiers}, keys: {self._pressed_keys}")
         if event_type == KeyEventType.RELEASE:
-            logger.info(f"Registered release callbacks: {list(self._release_callbacks.keys())}")
+            logger.debug(f"Registered release callbacks: {list(self._release_callbacks.keys())}")
         
         if not current_combo:
             return

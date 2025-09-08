@@ -130,6 +130,7 @@ class LinuxIMEAdapter(IMEAdapter):
         try:
             # Get current focus information
             focus_info = await self._get_focus_info()
+            self.logger.info(f"DEBUG: 焦点窗口信息 - app_name: {focus_info.get('app_name', 'unknown')}, window_title: {focus_info.get('window_title', 'unknown')}")
             
             if self.debug_mode:
                 self.logger.debug(f"Injecting text to {focus_info.get('app_name', 'unknown')}: {text}")
@@ -570,21 +571,26 @@ class LinuxIMEAdapter(IMEAdapter):
             import subprocess
             
             # Use xdotool to simulate typing - this goes through the IME
-            for char in text:
+            self.logger.info(f"DEBUG: 开始通过X11模拟输入，文本长度: {len(text)}")
+            for i, char in enumerate(text):
                 if ord(char) > 127:  # Non-ASCII character
                     # For Unicode characters, use key simulation
+                    unicode_code = f'U{ord(char):04X}'
+                    self.logger.debug(f"DEBUG: 字符[{i}] '{char}' -> Unicode: {unicode_code}")
                     result = subprocess.run([
                         'xdotool', 'key', '--clearmodifiers', 
-                        f'U{ord(char):04X}'
+                        unicode_code
                     ], capture_output=True, timeout=1)
                 else:
                     # For ASCII characters, direct type
+                    self.logger.debug(f"DEBUG: 字符[{i}] '{char}' -> ASCII直接输入")
                     result = subprocess.run([
                         'xdotool', 'type', '--clearmodifiers', char
                     ], capture_output=True, timeout=1)
                 
                 if result.returncode != 0:
                     self.logger.error(f"xdotool failed for character '{char}': {result.stderr}")
+                    self.logger.error(f"DEBUG: xdotool输出: stdout={result.stdout}, stderr={result.stderr}")
                     return False
                 
                 # Small delay between characters to ensure proper processing
