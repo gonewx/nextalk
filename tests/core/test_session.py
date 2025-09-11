@@ -22,7 +22,8 @@ class TestSessionState(unittest.TestCase):
     def test_session_states(self):
         """Test session state values."""
         self.assertEqual(SessionState.IDLE.value, "idle")
-        self.assertEqual(SessionState.RECORDING.value, "recording")
+        self.assertEqual(SessionState.STARTING.value, "starting")
+        self.assertEqual(SessionState.LISTENING.value, "listening")
         self.assertEqual(SessionState.PROCESSING.value, "processing")
         self.assertEqual(SessionState.INJECTING.value, "injecting")
         self.assertEqual(SessionState.COMPLETED.value, "completed")
@@ -80,14 +81,12 @@ class TestRecognitionSession(unittest.TestCase):
         """Test session initialization."""
         self.assertIsNotNone(self.session.session_id)
         self.assertEqual(self.session.state, SessionState.IDLE)
-        self.assertIsNotNone(self.session.created_at)
-        self.assertIsNone(self.session.started_at)
-        self.assertIsNone(self.session.ended_at)
+        self.assertEqual(self.session.metrics.start_time, 0.0)
+        self.assertEqual(self.session.metrics.end_time, 0.0)
         self.assertEqual(len(self.session.audio_buffer), 0)
         self.assertEqual(self.session.recognized_text, "")
-        self.assertIsNone(self.session.error_message)
-        self.assertFalse(self.session.injection_completed)
-        self.assertFalse(self.session.injection_successful)
+        self.assertIsNone(self.session.metrics.error_message)
+        self.assertFalse(self.session.metrics.injected_successfully)
     
     def test_session_id_unique(self):
         """Test session IDs are unique."""
@@ -101,20 +100,20 @@ class TestRecognitionSession(unittest.TestCase):
         with patch('time.time', return_value=100.0):
             self.session.start()
         
-        self.assertEqual(self.session.state, SessionState.RECORDING)
-        self.assertEqual(self.session.started_at, 100.0)
+        self.assertEqual(self.session.state, SessionState.LISTENING)
+        self.assertEqual(self.session.metrics.start_time, 100.0)
         self.assertEqual(len(self.session.audio_buffer), 0)
     
     def test_start_already_started(self):
         """Test starting already started session."""
         self.session.start()
-        original_time = self.session.started_at
+        original_time = self.session.metrics.start_time
         
         # Try to start again
         self.session.start()
         
         # Should not change
-        self.assertEqual(self.session.started_at, original_time)
+        self.assertEqual(self.session.metrics.start_time, original_time)
     
     def test_stop(self):
         """Test stopping session."""
@@ -124,14 +123,14 @@ class TestRecognitionSession(unittest.TestCase):
             self.session.stop()
         
         self.assertEqual(self.session.state, SessionState.PROCESSING)
-        self.assertEqual(self.session.ended_at, 105.0)
+        self.assertEqual(self.session.metrics.end_time, 105.0)
     
     def test_stop_not_started(self):
         """Test stopping session that wasn't started."""
         self.session.stop()
         
         self.assertEqual(self.session.state, SessionState.IDLE)
-        self.assertIsNone(self.session.ended_at)
+        self.assertEqual(self.session.metrics.end_time, 0.0)
     
     def test_cancel(self):
         """Test canceling session."""
@@ -142,7 +141,7 @@ class TestRecognitionSession(unittest.TestCase):
             self.session.cancel()
         
         self.assertEqual(self.session.state, SessionState.CANCELLED)
-        self.assertEqual(self.session.ended_at, 102.0)
+        self.assertEqual(self.session.metrics.end_time, 102.0)
         self.assertEqual(len(self.session.audio_buffer), 0)  # Buffer cleared
     
     def test_add_audio_data(self):
@@ -210,16 +209,19 @@ class TestRecognitionSession(unittest.TestCase):
     def test_complete_injection_success(self):
         """Test completing successful injection."""
         self.session.start()
-        self.session.stop()
+        
+        with patch('time.time', return_value=105.0):
+            self.session.stop()
+        
         self.session.process_recognition("Test")
         
         with patch('time.time', return_value=110.0):
             self.session.complete_injection(success=True)
         
         self.assertEqual(self.session.state, SessionState.COMPLETED)
-        self.assertTrue(self.session.injection_completed)
-        self.assertTrue(self.session.injection_successful)
-        self.assertEqual(self.session.ended_at, 110.0)
+        self.assertTrue(self.session.metrics.injected_successfully)
+        # end_time should be from stop(), not complete_injection()
+        self.assertEqual(self.session.metrics.end_time, 105.0)
     
     def test_complete_injection_failure(self):
         """Test completing failed injection."""
@@ -230,8 +232,7 @@ class TestRecognitionSession(unittest.TestCase):
         self.session.complete_injection(success=False)
         
         self.assertEqual(self.session.state, SessionState.ERROR)
-        self.assertTrue(self.session.injection_completed)
-        self.assertFalse(self.session.injection_successful)
+        self.assertFalse(self.session.metrics.injected_successfully)
     
     def test_report_error(self):
         """Test reporting error."""
@@ -241,8 +242,8 @@ class TestRecognitionSession(unittest.TestCase):
             self.session.report_error(error_msg)
         
         self.assertEqual(self.session.state, SessionState.ERROR)
-        self.assertEqual(self.session.error_message, error_msg)
-        self.assertEqual(self.session.ended_at, 103.0)
+        self.assertEqual(self.session.metrics.error_message, error_msg)
+        self.assertEqual(self.session.metrics.end_time, 103.0)
     
     def test_is_active(self):
         """Test checking if session is active."""
@@ -345,7 +346,8 @@ class TestRecognitionSession(unittest.TestCase):
         
         self.session.start()
         
-        callback.assert_called_once_with(SessionState.RECORDING)
+        # Should be called with the final state
+        callback.assert_called_with(SessionState.LISTENING)
     
     def test_text_recognized_callback(self):
         """Test text recognized callback."""
@@ -390,8 +392,9 @@ class TestRecognitionSession(unittest.TestCase):
         # Should not raise exception
         self.session.start()
         
-        self.assertEqual(self.session.state, SessionState.RECORDING)
-        bad_callback.assert_called_once()
+        self.assertEqual(self.session.state, SessionState.LISTENING)
+        # Should be called twice: STARTING and LISTENING
+        self.assertEqual(bad_callback.call_count, 2)
 
 
 class TestSessionIntegration(unittest.TestCase):
@@ -414,7 +417,7 @@ class TestSessionIntegration(unittest.TestCase):
         
         # Run session
         session.start()
-        self.assertIn(SessionState.RECORDING, state_changes)
+        self.assertIn(SessionState.LISTENING, state_changes)
         
         # Add audio
         for i in range(5):
@@ -494,8 +497,8 @@ class TestSessionIntegration(unittest.TestCase):
             sessions.append(session)
         
         # Check results
-        successful = [s for s in sessions if s.injection_successful]
-        failed = [s for s in sessions if not s.injection_successful and s.injection_completed]
+        successful = [s for s in sessions if s.metrics.injected_successfully]
+        failed = [s for s in sessions if not s.metrics.injected_successfully and s.state in [SessionState.COMPLETED, SessionState.ERROR]]
         
         self.assertEqual(len(successful), 3)  # 0, 2, 4
         self.assertEqual(len(failed), 2)  # 1, 3

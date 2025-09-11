@@ -162,7 +162,11 @@ class StateManager:
             self._notify_state_listeners(from_state, to_state, event, data)
             self._notify_event_listeners(event, from_state, to_state, data)
             
-            logger.info(f"State transition: {from_state.value} -> {to_state.value} (event: {event.value})")
+            try:
+                logger.info(f"State transition: {from_state.value} -> {to_state.value} (event: {event.value})")
+            except ValueError:
+                # Logger may be closed during shutdown
+                pass
             return to_state
     
     def register_state_listener(self, state: ControllerState, callback: Callable) -> None:
@@ -184,7 +188,11 @@ class StateManager:
             try:
                 callback(from_state, to_state, event, data)
             except Exception as e:
-                logger.error(f"Error in state listener: {e}")
+                try:
+                    logger.error(f"Error in state listener: {e}")
+                except ValueError:
+                    # Logger may be closed during shutdown
+                    pass
     
     def _notify_event_listeners(self, event: ControllerEvent, from_state: ControllerState,
                                to_state: ControllerState, data: Optional[Dict[str, Any]]) -> None:
@@ -265,6 +273,9 @@ class MainController:
         
         # Continuous mode state
         self._continuous_mode_paused = False
+        
+        # Toggle mode state: track if user manually stopped recording
+        self._user_stopped_recording = False
         
         logger.info("MainController initialized")
     
@@ -347,11 +358,11 @@ class MainController:
                 )
                 logger.info(f"Using {self.config.recording.mode} recording mode")
             
-            # Text injector - 使用输入法框架注入系统
+            # Text injector - 使用Portal/xdotool现代注入系统
             try:
                 self.text_injector = TextInjector(self.config.text_injection)
-                # IME TextInjector需要异步初始化，在_run_async中完成
-                logger.info("TextInjector创建成功，将在异步环境中初始化IME")
+                # Modern TextInjector需要异步初始化，在_run_async中完成
+                logger.info("TextInjector创建成功，将在异步环境中初始化现代文本注入器")
             except Exception as e:
                 logger.error(f"TextInjector创建失败: {e}")
                 raise
@@ -409,8 +420,8 @@ class MainController:
             self._event_loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._event_loop)
             
-            # Initialize IME text injector asynchronously
-            self._event_loop.run_until_complete(self._initialize_ime())
+            # Initialize modern text injector asynchronously
+            self._event_loop.run_until_complete(self._initialize_text_injector())
             
             # Connect to WebSocket
             self._event_loop.run_until_complete(self._connect_websocket())
@@ -422,36 +433,36 @@ class MainController:
         except Exception as e:
             logger.error(f"Async loop error: {e}")
         finally:
-            # Cleanup IME
+            # Cleanup text injector
             if self.text_injector:
                 self._event_loop.run_until_complete(self.text_injector.cleanup())
             self._event_loop.close()
     
-    async def _initialize_ime(self) -> None:
-        """Initialize IME text injector asynchronously."""
+    async def _initialize_text_injector(self) -> None:
+        """Initialize modern text injector asynchronously."""
         try:
             if self.text_injector:
-                ime_initialized = await self.text_injector.initialize()
-                if ime_initialized:
-                    logger.info("IME text injector initialized successfully")
+                injector_initialized = await self.text_injector.initialize()
+                if injector_initialized:
+                    logger.info("Modern text injector initialized successfully")
                 else:
-                    logger.warning("IME text injector initialization failed")
+                    logger.warning("Modern text injector initialization failed")
                     if self.tray_manager:
                         self.tray_manager.show_notification(
-                            "IME警告",
-                            "输入法框架初始化失败，文本注入可能不可用"
+                            "文本注入警告",
+                            "Portal/xdotool文本注入初始化失败，语音输入可能不可用"
                         )
         except Exception as e:
-            logger.error(f"IME initialization error: {e}")
+            logger.error(f"Text injector initialization error: {e}")
             if self.tray_manager:
                 self.tray_manager.show_notification(
-                    "IME错误",
-                    f"输入法框架初始化异常: {str(e)[:50]}"
+                    "文本注入错误",
+                    f"现代文本注入器初始化异常: {str(e)[:50]}"
                 )
     
     async def _inject_text_async(self, text: str) -> None:
         """
-        Inject text asynchronously using IME framework.
+        Inject text asynchronously using modern injection methods.
         
         Args:
             text: Text to inject
@@ -461,14 +472,14 @@ class MainController:
             if self.text_injector and self.current_session:
                 injection_start = time.time()
                 
-                # Get IME status before injection
-                ime_status = await self.text_injector.get_ime_status()
-                ime_used = ime_status.get('current_ime', 'unknown')
-                ime_ready = ime_status.get('ime_ready', False)
-                logger.info(f"DEBUG: IME状态 - ime_used: {ime_used}, ime_ready: {ime_ready}")
+                # Get injection status before injection
+                health_status = await self.text_injector.get_health_status()
+                method_used = health_status.get('active_method', 'unknown')
+                injector_ready = health_status.get('ready', False)
+                logger.info(f"DEBUG: 注入器状态 - method_used: {method_used}, injector_ready: {injector_ready}")
                 
-                # Update session with IME status
-                self.current_session.update_ime_status(ime_ready, ime_used)
+                # Update session with injector status  
+                self.current_session.update_injection_status(injector_ready, method_used)
                 
                 # Perform injection
                 logger.info(f"DEBUG: 开始执行文本注入...")
@@ -476,15 +487,15 @@ class MainController:
                 injection_time = time.time() - injection_start
                 logger.info(f"DEBUG: 文本注入完成, 成功: {success}, 耗时: {injection_time:.3f}s")
                 
-                # Complete injection with IME details
-                self.current_session.complete_injection(success, ime_used, injection_time)
+                # Complete injection with method details
+                self.current_session.complete_injection(success, method_used, injection_time)
                 
                 if success:
-                    logger.info(f"Successfully injected text via {ime_used}: {text[:50]}...")
+                    logger.info(f"Successfully injected text via {method_used}: {text[:50]}...")
                     # Update statistics
                     self.stats["total_text_length"] += len(text)
                 else:
-                    logger.error(f"Failed to inject text via {ime_used}: {text[:50]}...")
+                    logger.error(f"Failed to inject text via {method_used}: {text[:50]}...")
                     
         except Exception as e:
             logger.error(f"Text injection error: {e}")
@@ -673,6 +684,9 @@ class MainController:
         
         logger.info("Starting recognition session (direct)")
         
+        # Clear user stop flag when starting new recording
+        self._user_stopped_recording = False
+        
         # Create new session
         self.current_session = RecognitionSession()
         self.current_session.set_on_state_change(self._handle_session_state)
@@ -715,6 +729,9 @@ class MainController:
             return
         
         logger.info("Starting recognition session")
+        
+        # Clear user stop flag when starting new recording
+        self._user_stopped_recording = False
         
         # Create new session
         self.current_session = RecognitionSession()
@@ -767,14 +784,19 @@ class MainController:
         if has_active_session:
             self.current_session.stop()
         
-        # In toggle mode, clear the session completely after stopping
+        # In toggle mode, immediately clear session when user stops recording
         if self.config.recording.mode == "toggle":
-            logger.info("Toggle mode: Clearing session after stop")
+            logger.info("Toggle mode: User stopped recording, clearing session immediately")
+            # Mark that user manually stopped recording
+            self._user_stopped_recording = True
+            
+            # Store the current session in history and clear it
             if self.current_session:
                 self.session_history.append(self.current_session)
                 if len(self.session_history) > 100:
                     self.session_history.pop(0)
-            self.current_session = None
+                self.current_session = None
+                logger.info("Toggle mode: Session cleared, ready for next recording")
         
         # Send end signal to WebSocket (for streaming mode)
         if self.ws_client and self.ws_client.is_connected():
@@ -855,21 +877,25 @@ class MainController:
         """
         logger.info(f"Recognition result received: '{result.text}' (confidence: {result.confidence}, final: {result.is_final}, mode: {result.mode})")
         
-        if self.current_session and result.text.strip():
+        # If no current session, ignore the result (user may have stopped recording)
+        if not self.current_session:
+            logger.info("No current session, ignoring recognition result")
+            return
+        
+        if result.text.strip():
             # For 2pass mode, prioritize 2pass-offline results (complete results)
             # For other modes, use is_final flag
             should_process = False
             
             if result.mode == "2pass-offline":
                 # 2pass-offline contains the complete, best result
-                # But in toggle mode, don't auto-complete - wait for user's second keypress
+                # Process it even if is_final is False (which can happen after stop)
+                logger.info(f"Processing 2pass-offline result: '{result.text}'")
+                should_process = True
+                
+                # In toggle mode, log the result processing
                 if self.config.recording.mode == "toggle":
-                    # In toggle mode, store the result but don't end the session
                     logger.info(f"Received 2pass-offline result in toggle mode: '{result.text}'")
-                    should_process = True  # Still process for text injection, but don't auto-end
-                else:
-                    should_process = True
-                    logger.info(f"Processing 2pass-offline result: '{result.text}'")
             elif result.mode in ["offline", "online"] and result.is_final:
                 # Standard offline/online modes use is_final flag
                 should_process = True
@@ -999,28 +1025,31 @@ class MainController:
         
         logger.info(f"Session complete: {metrics.session_id}")
         
-        # In toggle mode, don't auto-end the session after text injection
-        # Wait for user's second keypress to end the session
+        # In toggle mode, if recording is still active, create new session for continued recording
         if self.config.recording.mode == "toggle":
-            logger.info("Toggle mode: Text injected, creating new session and continuing recording")
-            # Create a new session for continued recording in toggle mode
-            if self.current_session:
-                # Store the completed session in history
-                self.session_history.append(self.current_session)
-                if len(self.session_history) > 100:
-                    self.session_history.pop(0)
-            
-            # Create new session for continued recording
-            self.current_session = RecognitionSession()
-            self.current_session.set_on_state_change(self._handle_session_state)
-            self.current_session.set_on_text_recognized(self._handle_text_recognized)
-            self.current_session.set_on_error(self._handle_session_error)
-            self.current_session.set_on_complete(self._handle_session_complete)
-            self.current_session.start()
-            
-            # Keep controller state as ACTIVE in toggle mode to maintain recording
-            logger.info("Toggle mode: New session created, maintaining ACTIVE state for continued recording")
-            return
+            # Only continue recording if user hasn't stopped recording and controller is still active
+            if not self._user_stopped_recording and self.state_manager.get_state() == ControllerState.ACTIVE:
+                logger.info("Toggle mode: Text injected, creating new session and continuing recording")
+                # Create a new session for continued recording in toggle mode
+                if self.current_session:
+                    # Store the completed session in history
+                    self.session_history.append(self.current_session)
+                    if len(self.session_history) > 100:
+                        self.session_history.pop(0)
+                
+                # Create new session for continued recording
+                self.current_session = RecognitionSession()
+                self.current_session.set_on_state_change(self._handle_session_state)
+                self.current_session.set_on_text_recognized(self._handle_text_recognized)
+                self.current_session.set_on_error(self._handle_session_error)
+                self.current_session.set_on_complete(self._handle_session_complete)
+                self.current_session.start()
+                
+                # Keep controller state as ACTIVE in toggle mode to maintain recording
+                logger.info("Toggle mode: New session created, maintaining ACTIVE state for continued recording")
+                return
+            else:
+                logger.info("Toggle mode: User stopped recording or controller not active, not creating new session")
         
         # In hold mode, text is injected and we create a fresh session for next recognition
         # but keep recording active until user releases the key
@@ -1096,7 +1125,11 @@ class MainController:
     def _on_recovering_state(self, from_state: ControllerState, to_state: ControllerState,
                             event: ControllerEvent, data: Optional[Dict[str, Any]]) -> None:
         """Handle entry to recovering state."""
-        logger.info(f"Attempting recovery (attempt {self._recovery_attempts + 1}/{self._max_recovery_attempts})")
+        try:
+            logger.info(f"Attempting recovery (attempt {self._recovery_attempts + 1}/{self._max_recovery_attempts})")
+        except ValueError:
+            # Logger may be closed during shutdown, skip logging
+            pass
         
         if self.tray_manager:
             self.tray_manager.show_notification("系统恢复", "正在尝试恢复连接...")

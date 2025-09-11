@@ -157,7 +157,7 @@ class TestSystemTrayManager(unittest.TestCase):
             self.assertEqual(manager._status, TrayStatus.ACTIVE)
             mock_get_image.assert_called_once_with(TrayStatus.ACTIVE)
             self.assertEqual(mock_icon.icon, mock_image)
-            self.assertEqual(mock_icon.title, "NexTalk - 识别中")
+            self.assertEqual(mock_icon.title, "NexTalk - Recording")
     
     @patch('nextalk.ui.tray.pystray')
     @patch('nextalk.ui.tray.IconManager')
@@ -477,7 +477,7 @@ class TestSystemTrayManager(unittest.TestCase):
                 mock_pystray.Icon.assert_called_once_with(
                     "NexTalk",
                     mock_image,
-                    "NexTalk - 语音识别输入",
+                    "NexTalk - Voice Recognition",
                     mock_menu
                 )
                 self.assertEqual(manager._icon, mock_icon)

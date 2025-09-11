@@ -1,7 +1,7 @@
 """
-IME集成测试 - 测试IME功能与现有系统的兼容性。
+文本注入集成测试 - 测试Portal+XDoTool注入系统与现有系统的兼容性。
 
-验证完整的语音识别到文本注入流程，确保IME与控制器和会话管理器的正确集成。
+验证完整的语音识别到文本注入流程，确保文本注入与控制器和会话管理器的正确集成。
 """
 
 import pytest
@@ -15,13 +15,16 @@ from typing import Dict, Any, Optional
 from nextalk.core.controller import MainController, ControllerState, ControllerEvent
 from nextalk.core.session import RecognitionSession, SessionState
 from nextalk.config.models import NexTalkConfig, TextInjectionConfig
-from nextalk.output.ime_manager import IMEManager
-from nextalk.output.ime_base import IMEResult, IMEStatus, IMEInfo, CompositionState
-from nextalk.output.ime_exceptions import (
-    IMEException, IMEInitializationError, IMEPermissionError,
-    IMETimeoutError, IMEInjectionError, IMEErrorCode
-)
 from nextalk.output.text_injector import TextInjector
+from nextalk.output.injection_factory import InjectionStrategyFactory
+from nextalk.output.injection_models import (
+    InjectorConfiguration, EnvironmentInfo, DesktopEnvironment,
+    DisplayServerType, InjectionMethod, InjectionResult
+)
+from nextalk.output.injection_exceptions import (
+    InjectionError, InitializationError, PortalPermissionError,
+    PortalTimeoutError, InjectionFailedError
+)
 from nextalk.network.protocol import RecognitionResult
 
 

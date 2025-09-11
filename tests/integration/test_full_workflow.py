@@ -13,6 +13,7 @@ import yaml
 from nextalk.main import NexTalkApp
 from nextalk.core.controller import ControllerState, ControllerEvent
 from nextalk.config.models import NexTalkConfig
+from nextalk.output.injection_models import InjectionMethod
 from nextalk.utils.logger import setup_logging
 from nextalk.utils.monitor import performance_monitor, metrics_collector
 
@@ -370,8 +371,7 @@ class TestLoggingIntegration(unittest.TestCase):
         
         self.assertIn("Performance: recognition", content)
         self.assertIn("Performance: injection", content)
-        self.assertIn("125", content)  # duration in ms
-        self.assertIn("50", content)   # duration in ms
+        # Note: duration values are in extra fields, not in the message text
 
 
 class TestConfigurationIntegration(unittest.TestCase):
@@ -391,8 +391,8 @@ class TestConfigurationIntegration(unittest.TestCase):
                 "sample_rate": 48000,  # Non-default value
                 "channels": 2
             },
-            "hotkey": {
-                "trigger_key": "ctrl+shift+r"  # Custom hotkey
+            "recording": {
+                "hotkey": "ctrl+shift+r"  # Custom hotkey
             }
         }
         
@@ -407,11 +407,11 @@ class TestConfigurationIntegration(unittest.TestCase):
             # Verify values loaded
             self.assertEqual(config.audio.sample_rate, 48000)
             self.assertEqual(config.audio.channels, 2)
-            self.assertEqual(config.hotkey.trigger_key, "ctrl+shift+r")
+            self.assertEqual(config.recording.hotkey, "ctrl+shift+r")
             
             # Verify defaults applied for missing values
-            self.assertEqual(config.audio.chunk_size, 1024)  # Default
-            self.assertEqual(config.text_injection.method, "typing")  # Default
+            self.assertEqual(config.audio.chunk_size, [5, 10, 5])  # Default
+            self.assertEqual(config.text_injection.preferred_method, InjectionMethod.AUTO)  # Default
             
             # Validate config
             errors = config.validate()

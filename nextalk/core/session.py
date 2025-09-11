@@ -42,15 +42,17 @@ class SessionMetrics:
     recognized_text: str = ""
     injected_successfully: bool = False
     error_message: Optional[str] = None
-    # IME-specific metrics
-    ime_used: Optional[str] = None
-    ime_ready: bool = False
-    injection_method: str = "ime"
+    # Modern injection metrics
+    injection_method_used: Optional[str] = None
+    injector_ready: bool = False
+    injection_method: str = "modern"
     
     def calculate_totals(self) -> None:
         """Calculate total durations."""
         if self.end_time > 0 and self.start_time > 0:
             self.total_duration = self.end_time - self.start_time
+            # audio_duration represents the time when audio was being recorded/processed
+            self.audio_duration = self.total_duration
 
 
 class RecognitionSession:
@@ -123,6 +125,9 @@ class RecognitionSession:
         previous_state = self.state
         self._change_state(SessionState.CANCELLED)
         
+        # Clear audio buffer on cancellation
+        self.audio_buffer.clear()
+        
         self.metrics.end_time = time.time()
         self.metrics.calculate_totals()
         
@@ -168,14 +173,14 @@ class RecognitionSession:
         # Move to injection phase
         self._change_state(SessionState.INJECTING)
     
-    def complete_injection(self, success: bool, ime_used: Optional[str] = None, 
+    def complete_injection(self, success: bool, method_used: Optional[str] = None, 
                           injection_time: Optional[float] = None) -> None:
         """
         Complete the text injection phase.
         
         Args:
             success: Whether injection was successful
-            ime_used: Name of IME used for injection
+            method_used: Name of injection method used (portal/xdotool)
             injection_time: Time taken for injection in seconds
         """
         if self.state != SessionState.INJECTING:
@@ -183,16 +188,21 @@ class RecognitionSession:
             return
         
         self.metrics.injected_successfully = success
-        if ime_used:
-            self.metrics.ime_used = ime_used
+        if method_used:
+            self.metrics.injection_method_used = method_used
         if injection_time:
             self.metrics.injection_time = injection_time
-        self.metrics.end_time = time.time()
+        # Only set end_time if not already set
+        if self.metrics.end_time == 0.0:
+            self.metrics.end_time = time.time()
         self.metrics.calculate_totals()
         
-        self._change_state(SessionState.COMPLETED)
+        if success:
+            self._change_state(SessionState.COMPLETED)
+        else:
+            self._change_state(SessionState.ERROR)
         
-        logger.info(f"Session {self.session_id} completed (injection: {success}, IME: {ime_used})")
+        logger.info(f"Session {self.session_id} completed (injection: {success}, method: {method_used})")
         
         if self._on_complete:
             self._on_complete(self.metrics)
@@ -231,7 +241,10 @@ class RecognitionSession:
         logger.debug(f"Session {self.session_id}: {old_state.value} -> {new_state.value}")
         
         if self._on_state_change:
-            self._on_state_change(new_state)
+            try:
+                self._on_state_change(new_state)
+            except Exception as e:
+                logger.error(f"Error in state change callback: {e}")
     
     def set_on_state_change(self, callback: Callable[[SessionState], None]) -> None:
         """Set state change callback."""
@@ -249,19 +262,19 @@ class RecognitionSession:
         """Set completion callback."""
         self._on_complete = callback
     
-    def update_ime_status(self, ime_ready: bool, ime_used: Optional[str] = None) -> None:
+    def update_injection_status(self, injector_ready: bool, method_used: Optional[str] = None) -> None:
         """
-        Update IME status information for this session.
+        Update text injection status information for this session.
         
         Args:
-            ime_ready: Whether IME is ready for injection
-            ime_used: Name of the IME being used
+            injector_ready: Whether text injector is ready for injection
+            method_used: Name of the injection method being used (portal/xdotool)
         """
-        self.metrics.ime_ready = ime_ready
-        if ime_used:
-            self.metrics.ime_used = ime_used
+        self.metrics.injector_ready = injector_ready
+        if method_used:
+            self.metrics.injection_method_used = method_used
         
-        logger.debug(f"Session {self.session_id} IME status updated: ready={ime_ready}, ime={ime_used}")
+        logger.debug(f"Session {self.session_id} injection status updated: ready={injector_ready}, method={method_used}")
     
     def get_audio_buffer(self) -> bytes:
         """
@@ -306,6 +319,35 @@ class RecognitionSession:
             SessionState.ERROR,
             SessionState.CANCELLED
         ]
+    
+    def get_metrics(self) -> SessionMetrics:
+        """
+        Get session metrics.
+        
+        Returns:
+            SessionMetrics object with current metrics
+        """
+        # Ensure metrics are up to date
+        self.metrics.calculate_totals()
+        return self.metrics
+    
+    def get_duration(self) -> float:
+        """
+        Get session duration in seconds.
+        
+        Returns:
+            Duration in seconds
+        """
+        if self.metrics.end_time > 0:
+            # Session has ended, use recorded end time
+            self.metrics.calculate_totals()
+            return self.metrics.total_duration
+        elif self.metrics.start_time > 0:
+            # Session is active, calculate current duration
+            return time.time() - self.metrics.start_time
+        else:
+            # Session hasn't started
+            return 0.0
     
     def get_summary(self) -> dict:
         """

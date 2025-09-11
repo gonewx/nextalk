@@ -6,4 +6,4 @@ NexTalk 输出模块
 
 from .text_injector import TextInjector
 
-__all__ = ['TextInjector']
+__all__ = ["TextInjector"]

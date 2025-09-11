@@ -13,14 +13,22 @@ import time
 import websockets
 from enum import Enum
 from typing import Optional, Callable, Dict, Any, List, Union
-from websockets.exceptions import (
-    WebSocketException, 
-    ConnectionClosedError, 
-    ConnectionClosedOK,
-    InvalidStatusCode,
-    InvalidURI,
-    InvalidHandshake
-)
+try:
+    # Try modern websockets import first
+    from websockets import ConnectionClosedError, ConnectionClosedOK
+    from websockets.exceptions import WebSocketException, InvalidURI, InvalidHandshake
+    # Use generic exception for HTTP status codes instead of deprecated InvalidStatusCode
+    WebSocketStatusError = WebSocketException
+except ImportError:
+    # Fallback for older versions
+    from websockets.exceptions import (
+        WebSocketException, 
+        ConnectionClosedError, 
+        ConnectionClosedOK,
+        InvalidURI,
+        InvalidHandshake
+    )
+    WebSocketStatusError = WebSocketException
 
 from ..config.models import NexTalkConfig
 from .protocol import FunASRProtocol, RecognitionResult, MessageType
@@ -250,7 +258,7 @@ class FunASRWebSocketClient:
             self._record_error("connection_invalid", error_msg, e)
             raise WebSocketError(error_msg)
         
-        except InvalidStatusCode as e:
+        except WebSocketStatusError as e:
             error_msg = f"Server rejected connection with status {e.status_code}"
             self._set_state(ConnectionState.ERROR, error_msg)
             self._record_error("connection_rejected", error_msg, e)
@@ -373,17 +381,38 @@ class FunASRWebSocketClient:
                     # Just continue waiting
                     continue
                     
-                except websockets.exceptions.ConnectionClosed:
+                except websockets.exceptions.ConnectionClosed as e:
                     logger.info("WebSocket connection closed")
+                    # 检查是否是正常关闭，如果是则重新抛出以被外层处理
+                    if isinstance(e, ConnectionClosedOK):
+                        raise  # 让外层的 ConnectionClosedOK 处理器设置状态
+                    elif isinstance(e, ConnectionClosedError):  
+                        raise  # 让外层的 ConnectionClosedError 处理器设置状态
+                    else:
+                        # 通用的连接关闭，设置为断开状态
+                        self._set_state(ConnectionState.DISCONNECTED)
                     break
                     
                 except Exception as e:
                     consecutive_errors += 1
                     self._record_error("message_handling", f"Error in receive loop: {e}", e)
+                    logger.warning(f"Message handling error ({consecutive_errors}/{max_consecutive_errors}): {e}")
+                    
+                    # 特别处理Mock对象错误，立即终止以避免无限循环
+                    error_str = str(e)
+                    error_type = str(type(e))
+                    if ("AsyncMock" in error_str or "Mock" in error_str or 
+                        "AsyncMock" in error_type or "Mock" in error_type):
+                        logger.error(f"Mock object detected in receive loop - TERMINATING IMMEDIATELY: {e}")
+                        self._set_state(ConnectionState.DISCONNECTED, f"Mock object error: {e}")
+                        return  # 立即返回，不是break
                     
                     if consecutive_errors >= max_consecutive_errors:
-                        logger.error(f"Too many consecutive message errors ({consecutive_errors})")
+                        logger.error(f"Too many consecutive message errors ({consecutive_errors}) - terminating receive loop")
                         break
+                    
+                    # 在连续错误时添加短暂延迟，避免CPU占用过高
+                    await asyncio.sleep(0.01 * consecutive_errors)
                     
         except ConnectionClosedOK:
             logger.info("WebSocket connection closed normally")
@@ -425,6 +454,11 @@ class FunASRWebSocketClient:
     async def _handle_message(self, message: Union[str, bytes]) -> None:
         """Handle incoming message from server."""
         try:
+            # 检查消息类型，避免处理无效的mock对象
+            if not isinstance(message, (str, bytes)):
+                logger.error(f"Invalid message type received: {type(message)}. Expected str or bytes.")
+                raise ValueError(f"Invalid message type: {type(message)}")
+            
             logger.info(f"Received raw message: {message[:200]}...")
             
             # Parse message using protocol

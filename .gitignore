@@ -29,7 +29,7 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
-specs/
+./specs/
 
 # Installer logs
 pip-log.txt
@@ -206,3 +206,5 @@ temp/
 *.temp
 
 ime_diagnostic_report_*.json
+
+.spec-workflow/

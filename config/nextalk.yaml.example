@@ -121,23 +121,30 @@ ui:
   language: "zh_CN"
 
 # ====================================
-# 文本注入配置 - 纯输入法体验
+# 现代化文本注入配置 - Portal + xdotool
 # ====================================
 text_injection:
   # 自动将识别结果注入到当前光标位置
   auto_inject: true
   
-  # 注入失败时回退到剪贴板 (已禁用，使用纯输入法体验)
-  fallback_to_clipboard: false
-  
   # 文本注入延迟 (秒) - 给目标应用准备时间  
   inject_delay: 0.1
   
-  # 输入法框架优先级 (智能检测运行中的框架)
-  ime_frameworks: ["fcitx5", "ibus", "fcitx"]
+  # 注入方法选择 (auto=自动选择, portal=Portal方式, xdotool=传统方式)
+  preferred_method: "auto"
   
-  # 启用输入法框架调试信息
-  ime_debug: false
+  # 启用回退机制 (Portal失败时自动切换到xdotool)
+  fallback_enabled: true
+  
+  # Portal会话超时时间 (秒)
+  portal_timeout: 30.0
+  
+  # xdotool按键间隔 (秒)
+  xdotool_delay: 0.02
+  
+  # 重试次数和延迟
+  retry_attempts: 3
+  retry_delay: 0.5
   
   # 光标定位方式 (end=文本末尾, start=文本开头, select=选中文本)
   cursor_positioning: "end"
@@ -148,11 +155,9 @@ text_injection:
   # 去除首尾空白字符
   strip_whitespace: true
   
-  # 兼容的应用程序列表 (空列表表示尝试所有应用)
-  compatible_apps: []
-  
-  # 不兼容的应用程序列表 (这些应用将强制使用剪贴板)
-  incompatible_apps: []
+  # 性能监控和调试
+  performance_monitoring: true
+  debug_logging: false
 
 # ====================================
 # 语音识别配置

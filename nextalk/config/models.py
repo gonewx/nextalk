@@ -9,6 +9,17 @@ from typing import List, Optional, Dict, Any
 import os
 from pathlib import Path
 
+# Import injection method enum for new text injection system
+try:
+    from ..output.injection_models import InjectionMethod
+except ImportError:
+    # Fallback for backward compatibility during transition
+    from enum import Enum
+    class InjectionMethod(Enum):
+        AUTO = "auto"
+        PORTAL = "portal"
+        XDOTOOL = "xdotool"
+
 
 @dataclass
 class ServerConfig:
@@ -49,6 +60,25 @@ class RecordingConfig:
 
 
 @dataclass
+class HotkeyConfig:
+    """Hotkey-specific configuration for backward compatibility with tests."""
+    trigger_key: str = "ctrl+alt+space"
+    stop_key: str = "ctrl+alt+space"
+    conflict_detection: bool = True
+    enable_sound_feedback: bool = False
+    
+    def to_recording_config(self) -> RecordingConfig:
+        """Convert to RecordingConfig for actual usage."""
+        return RecordingConfig(
+            mode="toggle",
+            hotkey=self.trigger_key,
+            stop_key=self.stop_key,
+            conflict_detection=self.conflict_detection,
+            enable_sound_feedback=self.enable_sound_feedback
+        )
+
+
+@dataclass
 class UIConfig:
     """User interface configuration."""
     show_tray_icon: bool = True
@@ -61,43 +91,61 @@ class UIConfig:
 
 
 @dataclass
-class IMEConfig:
-    """Input Method Editor (IME) configuration."""
-    enabled: bool = True
-    preferred_framework: Optional[str] = None  # ibus, fcitx5, fcitx, auto
-    fallback_timeout: float = 5.0
-    composition_timeout: float = 1.0
-    state_monitor_interval: float = 0.1
-    auto_detect_ime: bool = True
-    linux_ime_frameworks: List[str] = field(default_factory=lambda: ["fcitx5", "ibus", "fcitx"])
-    dbus_timeout: float = 2.0
-    debug_mode: bool = False
-
-
-@dataclass
 class TextInjectionConfig:
-    """Text injection configuration - Pure IME experience."""
-    # IME-based injection (primary method)
-    use_ime: bool = True
-    ime_config: IMEConfig = field(default_factory=IMEConfig)
+    """Modern text injection configuration - Portal and xdotool only."""
     
-    # Core injection settings
+    # === PRIMARY INJECTION METHOD SELECTION ===
+    preferred_method: InjectionMethod = InjectionMethod.AUTO  # "auto", "portal", "xdotool"
+    fallback_enabled: bool = True
+    
+    # === PORTAL-SPECIFIC SETTINGS ===
+    portal_timeout: float = 30.0
+    
+    # === XDOTOOL-SPECIFIC SETTINGS ===
+    xdotool_delay: float = 0.02
+    
+    # === RETRY AND ERROR HANDLING ===
+    retry_attempts: int = 3
+    retry_delay: float = 0.5
+    
+    # === PERFORMANCE AND DEBUGGING ===
+    performance_monitoring: bool = True
+    debug_logging: bool = False
+    
+    # === CORE INJECTION SETTINGS ===
     auto_inject: bool = True
-    fallback_to_clipboard: bool = False  # Disabled for pure IME experience
-    inject_delay: float = 0.1
+    inject_delay: float = 0.1  # General injection delay
     
-    # IME framework configuration
-    ime_frameworks: List[str] = field(default_factory=lambda: ["fcitx5", "ibus", "fcitx"])
-    ime_debug: bool = False
-    
-    # Text formatting options
+    # === TEXT FORMATTING OPTIONS ===
     cursor_positioning: str = "end"  # end, start, select
     format_text: bool = True
     strip_whitespace: bool = True
     
-    # App compatibility (legacy - less relevant with IME approach)
-    compatible_apps: List[str] = field(default_factory=list)
-    incompatible_apps: List[str] = field(default_factory=list)
+    def __post_init__(self):
+        """Validate configuration after initialization."""
+        # Validate preferred method
+        if not isinstance(self.preferred_method, InjectionMethod):
+            if isinstance(self.preferred_method, str):
+                # Convert string to enum for backward compatibility
+                method_map = {
+                    "auto": InjectionMethod.AUTO,
+                    "portal": InjectionMethod.PORTAL,
+                    "xdotool": InjectionMethod.XDOTOOL
+                }
+                self.preferred_method = method_map.get(self.preferred_method.lower(), InjectionMethod.AUTO)
+        
+        # Validate timeouts
+        if self.portal_timeout <= 0:
+            self.portal_timeout = 30.0
+        
+        if self.xdotool_delay < 0:
+            self.xdotool_delay = 0.02
+        
+        if self.retry_attempts < 0:
+            self.retry_attempts = 3
+            
+        if self.retry_delay < 0:
+            self.retry_delay = 0.5
 
 
 @dataclass
@@ -192,16 +240,20 @@ class NexTalkConfig:
         recognition_data = data.pop('recognition', {})
         logging_data = data.pop('logging', {})
         
-        # Handle IME config nested in text_injection
-        ime_data = text_injection_data.pop('ime_config', {})
-        ime_config = IMEConfig(**ime_data)
+        # Remove all deprecated IME and legacy fields from modern injection system
+        deprecated_fields = [
+            'ime_config', 'clipboard_config', 'use_ime', 'fallback_to_clipboard',
+            'ime_frameworks', 'ime_debug', 'compatible_apps', 'incompatible_apps'
+        ]
+        for field in deprecated_fields:
+            text_injection_data.pop(field, None)
         
         return cls(
             server=ServerConfig(**server_data),
             audio=AudioConfig(**audio_data),
             recording=RecordingConfig(**recording_data),
             ui=UIConfig(**ui_data),
-            text_injection=TextInjectionConfig(ime_config=ime_config, **text_injection_data),
+            text_injection=TextInjectionConfig(**text_injection_data),
             recognition=RecognitionConfig(**recognition_data),
             logging=LoggingConfig(**logging_data),
             **data

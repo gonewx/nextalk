@@ -11,14 +11,14 @@
 
 - 🎙️ **实时语音识别** - 基于 FunASR 的高精度语音识别
 - ⌨️ **全局快捷键** - 自定义快捷键随时启动语音输入
-- 🖱️ **智能文本注入** - 支持IME框架的原生文本注入，兼容性更好
-- 🌏 **多语言IME** - 完美支持中文、日文、韩文等输入法
+- 🖱️ **智能文本注入** - 基于Portal+XDoTool的现代化文本注入系统，兼容性更好
+- 🌏 **跨平台支持** - 支持Linux Wayland/X11环境的自动适配
 - 🔄 **稳定连接** - WebSocket 自动重连，确保服务稳定
-- 🖥️ **系统托盘** - 最小化到系统托盘，实时显示IME状态
+- 🖥️ **系统托盘** - 最小化到系统托盘，实时显示识别状态
 - 🎯 **跨应用兼容** - 支持各种文本输入场景，包括浏览器、编辑器等
 - 📊 **性能优化** - 低延迟、低资源占用
 - 🔧 **灵活配置** - YAML 配置文件，轻松自定义
-- 🛠️ **诊断工具** - 内置IME诊断工具，快速排查问题
+- 🛠️ **诊断工具** - 内置文本注入诊断工具，快速排查问题
 
 ## 🚀 快速开始
 
@@ -29,19 +29,12 @@
 - 麦克风设备
 - FunASR 语音识别服务（必需，见下方说明）
 
-#### IME 相关要求
+#### 文本注入系统要求
 
-**Windows:**
-- 建议使用管理员权限运行以获得最佳兼容性
-- 支持所有 Windows 内置输入法
-
-**macOS:**
-- 需要授予辅助功能权限（系统偏好设置 → 安全性与隐私 → 隐私 → 辅助功能）
-- 支持所有 macOS 输入法
-
-**Linux:**
-- 支持 IBus 和 Fcitx 输入法框架
-- 需要安装 `xdotool` 和相关 DBus 库：
+**Linux 主要支持:**
+- 支持 Wayland 和 X11 显示服务器
+- 自动Portal或XDoTool注入方式
+- 需要安装基本依赖：
   ```bash
   # Ubuntu/Debian
   sudo apt install xdotool python3-dbus python3-gi
@@ -49,6 +42,10 @@
   # Fedora/RHEL
   sudo dnf install xdotool python3-dbus python3-gobject
   ```
+
+**Windows 和 macOS:**
+- 基础文本注入支持（通过pyautogui）
+- 建议使用管理员权限获得最佳兼容性
 
 ### 安装方式
 
@@ -161,30 +158,16 @@ ui:
   start_minimized: false
   theme: "auto"  # auto, light, dark
 
-# IME 文本注入配置
+# 现代化文本注入配置
 text_injection:
-  method: "ime"  # ime, keyboard, clipboard
   auto_inject: true
-  inject_delay: 0.05
-  format_text: true
-  strip_whitespace: true
-
-# IME 特定配置
-ime:
-  enabled: true
-  debug_mode: false
+  inject_delay: 0.1
+  preferred_method: "auto"  # auto, portal, xdotool
   fallback_enabled: true
-  fallback_methods: ["clipboard", "keyboard"]
-  platform_specific:
-    windows:
-      use_unicode: true
-      composition_timeout: 1.0
-    macos:
-      use_accessibility_api: true
-      fallback_to_applescript: true
-    linux:
-      ime_frameworks: ["ibus", "fcitx"]
-      dbus_timeout: 2.0
+  portal_timeout: 30.0
+  xdotool_delay: 0.02
+  retry_attempts: 3
+  retry_delay: 0.5
 
 # 高级配置
 advanced:
@@ -205,26 +188,23 @@ nextalk/
 ├── core/           # 核心控制逻辑
 ├── input/          # 快捷键和输入处理
 ├── network/        # WebSocket 通信
-├── output/         # 文本输出和注入（包含IME支持）
+├── output/         # 文本输出和注入（Portal+XDoTool系统）
 ├── ui/             # 用户界面
 └── utils/          # 工具函数
 ```
 
-## 🔧 IME 故障排除
+## 🔧 文本注入故障排除
 
 ### 使用诊断工具
 
-NexTalk 提供了内置的 IME 诊断工具来帮助排查问题：
+NexTalk 提供了内置的文本注入诊断工具来帮助排查问题：
 
 ```bash
 # 运行完整诊断
-python scripts/test_ime_injection.py --mode full
+python debug_inject.py
 
-# 快速测试
-python scripts/test_ime_injection.py --mode quick --text "测试文本"
-
-# 详细模式
-python scripts/test_ime_injection.py --mode full --verbose
+# 测试特定文本
+echo "测试文本" | python debug_inject.py
 ```
 
 ### 常见问题
@@ -234,72 +214,57 @@ python scripts/test_ime_injection.py --mode full --verbose
 **症状**: 语音识别成功，但文本没有出现在目标应用中
 
 **解决方案**:
-- 检查 IME 是否正确启用：在系统托盘菜单中查看 "IME状态"
-- 尝试切换到其他输入法
+- 检查当前注入方法：查看日志中的注入策略选择
+- 尝试手动切换注入方法：配置中设置 `preferred_method: "xdotool"` 或 `"portal"`
 - 运行诊断工具检查兼容性
 - 确认目标应用支持文本输入
 
-#### 2. 权限问题
+#### 2. Linux环境问题
 
-**Windows**:
-- 以管理员身份运行 NexTalk
-- 检查 Windows 安全中心的应用权限设置
+**Wayland环境**:
+- 确保Portal服务正常运行：`systemctl --user status xdg-desktop-portal`
+- 检查权限：某些应用可能需要特殊权限
 
-**macOS**:
-- 系统偏好设置 → 安全性与隐私 → 隐私 → 辅助功能
-- 添加 NexTalk 或终端应用到允许列表
-
-**Linux**:
-- 确保 DBus 服务正常运行
-- 检查 IBus/Fcitx 是否正确配置
-- 验证 xdotool 权限
+**X11环境**:
+- 确认xdotool已安装：`which xdotool`
+- 检查X11权限：`xhost +local:`
 
 #### 3. 特定应用不兼容
 
 **症状**: 在某些应用中无法注入文本
 
 **解决方案**:
-- 启用回退模式：在配置中设置 `ime.fallback_enabled: true`
-- 尝试不同的注入方法：`text_injection.method` 设置为 `keyboard` 或 `clipboard`
-- 查看应用兼容性列表
+- 启用回退机制：确保配置中 `fallback_enabled: true`
+- 增加注入延迟：调整 `inject_delay` 参数
+- 查看应用兼容性和日志输出
 
-#### 4. 中文输入问题
+#### 4. 性能问题
 
-**症状**: 中文字符显示异常或无法输入
-
-**解决方案**:
-- 确保系统中文输入法已正确安装和配置
-- 检查应用程序的字符编码设置
-- 在配置中启用 Unicode 支持
-
-#### 5. 系统托盘 IME 状态显示异常
-
-**症状**: 托盘菜单中 IME 状态显示不正确
+**症状**: 文本注入速度慢或延迟高
 
 **解决方案**:
-- 重启 NexTalk 应用
-- 检查输入法是否正常切换
-- 查看日志文件获取详细错误信息
+- 减少重试延迟：调整 `retry_delay` 和 `xdotool_delay`
+- 检查系统负载和资源占用
+- 考虑切换到更快的注入方法
 
 ### 获取帮助
 
 如果问题仍然存在：
 
-1. 运行完整诊断并保存报告：
+1. 运行诊断并保存日志：
    ```bash
-   python scripts/test_ime_injection.py --mode full --verbose > ime_diagnosis.log
+   python debug_inject.py > injection_diagnosis.log 2>&1
    ```
 
-2. 查看日志文件：
-   - Windows: `%APPDATA%\nextalk\logs\`
-   - macOS: `~/Library/Logs/nextalk/`
-   - Linux: `~/.local/share/nextalk/logs/`
+2. 查看详细日志：
+   - 配置中设置 `log_level: "DEBUG"`
+   - 检查日志文件中的注入相关错误
 
 3. 提交 Issue 时请包含：
-   - 操作系统版本
+   - 操作系统版本和桌面环境
    - NexTalk 版本
-   - 诊断报告
-   - 详细的错误描述
+   - 诊断报告和日志
+   - 目标应用信息
 
 ### 构建项目
 
@@ -335,9 +300,9 @@ make release
 - [x] 核心语音识别功能
 - [x] 系统托盘集成
 - [x] 跨平台支持
-- [x] **IME 框架集成** - 原生输入法支持，更好的兼容性
-- [x] **多语言 IME 支持** - 完美支持中文、日文、韩文输入
-- [x] **诊断工具** - IME 功能诊断和故障排除工具
+- [x] **Portal+XDoTool 注入系统** - 现代化文本注入架构，更好的兼容性
+- [x] **环境自动检测** - 智能检测Wayland/X11环境并选择最佳注入方式
+- [x] **诊断工具** - 文本注入功能诊断和故障排除工具
 - [ ] 自定义语音模型
 - [ ] 云端同步配置
 - [ ] 插件系统

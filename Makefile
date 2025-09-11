@@ -12,21 +12,32 @@ VERSION := 0.1.0
 help:
 	@echo "NexTalk 构建系统"
 	@echo ""
-	@echo "可用命令:"
-	@echo "  make install       - 安装运行时依赖"
-	@echo "  make dev          - 安装开发依赖"
-	@echo "  make test         - 运行测试套件"
-	@echo "  make build        - 构建可执行文件"
-	@echo "  make package      - 创建分发包"
-	@echo "  make clean        - 清理构建文件"
-	@echo "  make release      - 完整发布流程"
-	@echo "  make all          - 执行所有步骤"
+	@echo "🔧 基本命令:"
+	@echo "  make install           - 安装运行时依赖"
+	@echo "  make dev              - 安装开发依赖"
+	@echo "  make build            - 构建可执行文件"
+	@echo "  make package          - 创建分发包"
+	@echo "  make clean            - 清理构建文件"
+	@echo "  make release          - 完整发布流程"
 	@echo ""
-	@echo "高级选项:"
-	@echo "  make build-gui    - 构建带 GUI 的版本"
-	@echo "  make build-onedir - 构建目录版本"
-	@echo "  make portable     - 创建便携版"
-	@echo "  make installer    - 创建安装器"
+	@echo "🧪 测试命令 (安全模式，防僵死):"
+	@echo "  make test             - 运行完整测试套件"
+	@echo "  make test-quick       - 运行快速测试"
+	@echo "  make test-integration - 运行集成测试"
+	@echo "  make test-serial      - 串行运行测试（最安全）"
+	@echo "  make test-unsafe      - 直接运行测试（有僵死风险）"
+	@echo ""
+	@echo "🛠️ 测试清理命令:"
+	@echo "  make test-cleanup      - 清理僵死的测试进程"
+	@echo "  make test-cleanup-force- 强制清理所有测试进程"
+	@echo "  make test-check        - 检查测试进程状态"
+	@echo "  make test-emergency-fix- 🚨 紧急清理（当测试完全僵死时）"
+	@echo ""
+	@echo "📦 构建选项:"
+	@echo "  make build-gui        - 构建带 GUI 的版本"
+	@echo "  make build-onedir     - 构建目录版本"
+	@echo "  make portable         - 创建便携版"
+	@echo "  make installer        - 创建安装器"
 
 install:
 	@echo "安装运行时依赖..."
@@ -38,16 +49,46 @@ dev: install
 	$(PIP) install -e .[dev]
 
 test:
-	@echo "运行测试套件..."
-	$(PYTHON) -m pytest tests/ -v --cov=nextalk --cov-report=html
+	@echo "运行测试套件（安全模式）..."
+	$(PYTHON) scripts/safe_test_runner.py --coverage --global-timeout 900
 
 test-quick:
-	@echo "运行快速测试..."
-	$(PYTHON) -m pytest tests/unit/ -v
+	@echo "运行快速测试（安全模式）..."
+	$(PYTHON) scripts/safe_test_runner.py --quick --global-timeout 300
 
 test-integration:
-	@echo "运行集成测试..."
-	$(PYTHON) -m pytest tests/integration/ -v
+	@echo "运行集成测试（安全模式）..."
+	$(PYTHON) scripts/safe_test_runner.py --integration --global-timeout 600
+
+test-unsafe:
+	@echo "运行测试套件（直接模式，有僵死风险）..."
+	$(PYTHON) -m pytest tests/ -v --cov=nextalk --cov-report=html --timeout=30
+
+test-serial:
+	@echo "运行串行测试（最安全）..."
+	$(PYTHON) scripts/safe_test_runner.py --serial --global-timeout 1200
+
+# 测试清理和修复命令
+test-cleanup:
+	@echo "清理僵死的测试进程..."
+	$(PYTHON) scripts/cleanup_test_processes.py
+
+test-cleanup-force:
+	@echo "强制清理所有测试进程..."
+	$(PYTHON) scripts/cleanup_test_processes.py --force
+
+test-check:
+	@echo "检查测试进程状态..."
+	$(PYTHON) scripts/cleanup_test_processes.py --check
+
+# 紧急修复：当测试完全僵死时使用
+test-emergency-fix:
+	@echo "🚨 紧急修复：清理所有可能的僵死进程..."
+	@pkill -f "pytest" || true
+	@pkill -f "test_guardian" || true
+	@pkill -f "safe_test_runner" || true
+	@pkill -f "nextalk" || true
+	@echo "✅ 紧急清理完成，请重启终端会话"
 
 lint:
 	@echo "运行代码检查..."
@@ -144,7 +185,7 @@ check-deps:
 	@echo "检查依赖..."
 	@$(PYTHON) -c "import websockets; print(f'✓ websockets {websockets.__version__}')" || echo "✗ websockets"
 	@$(PYTHON) -c "import yaml; print('✓ PyYAML')" || echo "✗ PyYAML"
-	@$(PYTHON) -c "import pynput; print(f'✓ pynput {pynput.__version__}')" || echo "✗ pynput"
+	@$(PYTHON) -c "import pynput; from importlib.metadata import version; print(f'✓ pynput {version(\"pynput\")}')" 2>/dev/null || $(PYTHON) -c "import pynput; print('✓ pynput (version unknown)')" || echo "✗ pynput"
 	@$(PYTHON) -c "import pyautogui; print(f'✓ pyautogui {pyautogui.__version__}')" || echo "✗ pyautogui"
 	@$(PYTHON) -c "import sounddevice; print(f'✓ sounddevice {sounddevice.__version__}')" || echo "✗ sounddevice"
 

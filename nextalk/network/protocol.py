@@ -158,7 +158,8 @@ class FunASRProtocol:
             JSON-encoded end message
         """
         end_msg = json.dumps({
-            "is_speaking": False
+            "is_speaking": False,
+            "wav_name": "end"
         }, ensure_ascii=False)
         
         logger.debug("Created end message")

@@ -385,7 +385,7 @@ class HotkeyManager:
         """
         # Check cooldown
         current_time = time.time() * 1000  # Convert to milliseconds
-        last_trigger = self._last_trigger_times.get(hotkey, 0)
+        last_trigger = self._last_trigger_times.get(hotkey, -self._cooldown_ms)  # Allow first trigger
         
         if current_time - last_trigger < self._cooldown_ms:
             logger.debug(f"Hotkey {hotkey} triggered too quickly, ignoring")

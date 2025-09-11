@@ -201,7 +201,7 @@ class SystemTrayManager:
             logger.error(f"Error running tray icon: {e}")
             self._running = False
     
-    def _get_icon_image(self, status: TrayStatus) -> Image.Image:
+    def _get_icon_image(self, status: TrayStatus) -> Image:
         """
         Get icon image for the given status.
         
@@ -234,7 +234,7 @@ class SystemTrayManager:
             # Return a simple colored square as fallback
             return self._create_fallback_icon(status)
     
-    def _create_fallback_icon(self, status: TrayStatus) -> Image.Image:
+    def _create_fallback_icon(self, status: TrayStatus) -> Image:
         """Create a fallback icon."""
         # Create a simple colored square
         color_map = {
@@ -292,13 +292,14 @@ class SystemTrayManager:
         
         logger.debug(f"Tray status updated to: {status.value}")
     
-    def show_notification(self, title: str, message: str) -> None:
+    def show_notification(self, title: str, message: str, timeout: float = 3.0) -> None:
         """
         Show a system notification.
         
         Args:
             title: Notification title
             message: Notification message
+            timeout: Notification timeout in seconds (ignored in this implementation)
         """
         if not self.config.show_notifications:
             return

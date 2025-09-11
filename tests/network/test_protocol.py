@@ -397,9 +397,9 @@ class TestFunASRProtocolIntegration:
     def full_config(self, default_nextalk_config):
         """Create comprehensive configuration for integration testing."""
         config = default_nextalk_config
-        config.recognition_config.hotwords = ["测试", "语音识别"]
-        config.recognition_config.mode = "online"
-        config.recognition_config.use_itn = False
+        config.recognition.hotwords = ["测试", "语音识别"]
+        config.recognition.mode = "online"
+        config.recognition.use_itn = False
         return config
     
     def test_full_message_workflow(self, full_config):
@@ -457,9 +457,9 @@ class TestFunASRProtocolIntegration:
         """Test protocol with various configuration edge cases."""
         # Test with minimal config
         config = NexTalkConfig()
-        config.audio_config.chunk_size = [1, 2, 3]
-        config.audio_config.chunk_interval = 5
-        config.recognition_config.mode = "offline"
+        config.audio.chunk_size = [1, 2, 3]
+        config.audio.chunk_interval = 5
+        config.recognition.mode = "offline"
         
         protocol = FunASRProtocol(config)
         

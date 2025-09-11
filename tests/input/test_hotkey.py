@@ -21,12 +21,13 @@ class TestHotkeyManager(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.config = HotkeyConfig(
+        hotkey_config = HotkeyConfig(
             trigger_key="ctrl+alt+space",
             stop_key="ctrl+alt+space",
             conflict_detection=True,
             enable_sound_feedback=False
         )
+        self.config = hotkey_config.to_recording_config()
         self.manager = HotkeyManager(self.config)
     
     def tearDown(self):
