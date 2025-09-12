@@ -1,14 +1,13 @@
 """
 System tray manager for NexTalk.
 
-Provides system tray integration using pystray library.
+Simple and lightweight tray implementation using pystray.
 """
 
 import logging
 import threading
 from enum import Enum
-from typing import Optional, Callable, Any
-import io
+from typing import Optional, Callable
 from pathlib import Path
 
 # Try to import GUI dependencies
@@ -19,55 +18,9 @@ try:
 except ImportError:
     TRAY_AVAILABLE = False
     logging.warning("System tray support not available. Install pystray and Pillow for GUI support.")
-    
-    # Create dummy classes for when pystray is not available
-    class DummyIcon:
-        def __init__(self, *args, **kwargs):
-            self.visible = False
-        def run(self, *args, **kwargs):
-            pass
-        def stop(self):
-            pass
-        def update_menu(self):
-            pass
-        @property
-        def icon(self):
-            return None
-        @icon.setter 
-        def icon(self, value):
-            pass
-        @property
-        def menu(self):
-            return None
-        @menu.setter
-        def menu(self, value):
-            pass
-    
-    class DummyMenu:
-        def __init__(self, *args, **kwargs):
-            pass
-    
-    class DummyMenuItem:
-        def __init__(self, *args, **kwargs):
-            pass
-    
-    # Create dummy pystray module
-    class DummyPystray:
-        Icon = DummyIcon
-        Menu = DummyMenu
-        MenuItem = DummyMenuItem
-    
-    pystray = DummyPystray()
-    
-    # Dummy Image class
-    class Image:
-        @staticmethod
-        def new(*args, **kwargs):
-            return None
 
 from ..config.models import UIConfig
 from .menu import TrayMenu, MenuItem, MenuAction
-from .icon_manager import get_icon_manager
 
 
 logger = logging.getLogger(__name__)
@@ -82,9 +35,9 @@ class TrayStatus(Enum):
 
 class SystemTrayManager:
     """
-    Manages the system tray icon and interactions.
+    Simple system tray manager using pystray.
     
-    Provides status indication and menu management.
+    Provides basic tray functionality with status indication and context menu.
     """
     
     def __init__(self, config: Optional[UIConfig] = None):
@@ -97,10 +50,13 @@ class SystemTrayManager:
         self.config = config or UIConfig()
         self._icon: Optional[pystray.Icon] = None
         self._menu = TrayMenu()
-        self._icon_manager = get_icon_manager()
         self._status = TrayStatus.IDLE
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        
+        # Icon paths
+        self.icons_dir = Path(__file__).parent / "icons"
+        self._icon_cache = {}
         
         # Callbacks
         self._on_quit: Optional[Callable] = None
@@ -110,6 +66,9 @@ class SystemTrayManager:
         
         # Setup menu handlers
         self._setup_menu_handlers()
+        
+        # Load icons
+        self._load_icons()
     
     def _setup_menu_handlers(self) -> None:
         """Setup default menu action handlers."""
@@ -119,8 +78,81 @@ class SystemTrayManager:
         self._menu.register_handler(MenuAction.ABOUT, self._handle_about)
         self._menu.register_handler(MenuAction.VIEW_STATISTICS, self._handle_statistics)
     
+    def _load_icons(self) -> None:
+        """Load icon images into cache."""
+        if not TRAY_AVAILABLE:
+            return
+            
+        icon_files = {
+            TrayStatus.IDLE: "microphone-idle.png",
+            TrayStatus.ACTIVE: "microphone-active.png", 
+            TrayStatus.ERROR: "microphone-error.png"
+        }
+        
+        for status, filename in icon_files.items():
+            icon_path = self.icons_dir / filename
+            try:
+                if icon_path.exists():
+                    self._icon_cache[status] = Image.open(icon_path)
+                    logger.debug(f"Loaded icon: {filename}")
+                else:
+                    # Create fallback icon if file doesn't exist
+                    self._icon_cache[status] = self._create_fallback_icon(status)
+                    logger.debug(f"Created fallback icon for {status.value}")
+            except Exception as e:
+                logger.warning(f"Failed to load icon {filename}: {e}")
+                self._icon_cache[status] = self._create_fallback_icon(status)
+    
+    def _create_fallback_icon(self, status: TrayStatus) -> Optional[Image.Image]:
+        """Create a simple fallback icon."""
+        if not TRAY_AVAILABLE:
+            return None
+            
+        try:
+            # Create a simple colored square
+            size = 22
+            color_map = {
+                TrayStatus.IDLE: (74, 144, 226, 255),    # Blue
+                TrayStatus.ACTIVE: (76, 175, 80, 255),   # Green
+                TrayStatus.ERROR: (244, 67, 54, 255)     # Red
+            }
+            
+            color = color_map.get(status, (128, 128, 128, 255))
+            
+            # Create transparent background image
+            image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+            
+            # Draw a simple circle
+            from PIL import ImageDraw
+            draw = ImageDraw.Draw(image)
+            margin = 3
+            draw.ellipse([margin, margin, size - margin, size - margin], fill=color)
+            
+            # Add status-specific indicators
+            if status == TrayStatus.ACTIVE:
+                # Add small dots for active state
+                dot_size = 2
+                for i in range(3):
+                    x = size // 2 - 2 + i * 2
+                    y = size // 2
+                    draw.ellipse([x-dot_size, y-dot_size, x+dot_size, y+dot_size], 
+                               fill=(255, 255, 255, 255))
+            elif status == TrayStatus.ERROR:
+                # Add X mark for error state
+                draw.line([(6, 6), (16, 16)], fill=(255, 255, 255, 255), width=2)
+                draw.line([(16, 6), (6, 16)], fill=(255, 255, 255, 255), width=2)
+            
+            return image
+        except Exception as e:
+            logger.error(f"Failed to create fallback icon: {e}")
+            return None
+    
     def start(self) -> None:
         """Start the system tray icon."""
+        if not TRAY_AVAILABLE:
+            logger.warning("Tray not available - pystray/Pillow not installed")
+            return
+            
         if self._running:
             logger.warning("System tray already running")
             return
@@ -131,14 +163,18 @@ class SystemTrayManager:
         
         self._running = True
         
-        # Create tray icon
-        self._create_icon()
-        
-        # Run in separate thread
-        self._thread = threading.Thread(target=self._run, daemon=True)
-        self._thread.start()
-        
-        logger.info("System tray started")
+        try:
+            # Create tray icon
+            self._create_icon()
+            
+            # Run in separate thread
+            self._thread = threading.Thread(target=self._run, daemon=True)
+            self._thread.start()
+            
+            logger.info("System tray started")
+        except Exception as e:
+            logger.error(f"Failed to start system tray: {e}")
+            self._running = False
     
     def stop(self) -> None:
         """Stop the system tray icon."""
@@ -154,12 +190,9 @@ class SystemTrayManager:
                 logger.error(f"Error stopping tray icon: {e}")
         
         if self._thread and self._thread.is_alive():
-            # 先尝试正常等待
             self._thread.join(timeout=2.0)
-            
-            # 如果线程还在运行，记录警告
             if self._thread.is_alive():
-                logger.warning("Tray thread did not stop cleanly, forcing shutdown")
+                logger.warning("Tray thread did not stop cleanly")
         
         self._icon = None
         self._thread = None
@@ -168,19 +201,23 @@ class SystemTrayManager:
     
     def _create_icon(self) -> None:
         """Create the system tray icon."""
+        if not TRAY_AVAILABLE:
+            return
+            
         # Get initial icon image
-        image = self._get_icon_image(self._status)
+        image = self._icon_cache.get(self._status)
+        if image is None:
+            logger.error("No icon available for initial state")
+            return
         
         # Create pystray menu
         menu = self._create_pystray_menu()
         
         # Create icon
-        # 在 X11 系统下使用英文标题避免编码问题
-        title = "NexTalk - Voice Recognition"
         self._icon = pystray.Icon(
             "NexTalk",
             image,
-            title,
+            "NexTalk - Voice Recognition",
             menu
         )
     
@@ -193,61 +230,11 @@ class SystemTrayManager:
             logger.error(f"Error running tray icon: {e}")
             self._running = False
     
-    def _get_icon_image(self, status: TrayStatus) -> Image:
-        """
-        Get icon image for the given status.
-        
-        Args:
-            status: Current status
-            
-        Returns:
-            PIL Image object
-        """
-        try:
-            status_map = {
-                TrayStatus.IDLE: "idle",
-                TrayStatus.ACTIVE: "active", 
-                TrayStatus.ERROR: "error"
-            }
-            
-            status_str = status_map.get(status, "idle")
-            
-            # 使用优化的SVG到PIL转换
-            image = self._icon_manager.get_optimized_icon_image(status_str)
-            if image is not None:
-                logger.debug(f"Got optimized PIL Image for {status_str}: {image.mode} {image.size}")
-                return image
-            else:
-                # 使用内嵌的备用图标
-                logger.debug(f"No optimized image available, using fallback for {status_str}")
-                return self._create_fallback_icon(status)
-            
-        except Exception as e:
-            logger.debug(f"Could not get icon image: {e}")
-            return self._create_fallback_icon(status)
-    
-    def _create_fallback_icon(self, status: TrayStatus) -> Image:
-        """Create a fallback icon."""
-        # Create a simple colored square with transparent background
-        color_map = {
-            TrayStatus.IDLE: (128, 128, 128, 255),    # Gray with alpha
-            TrayStatus.ACTIVE: (0, 255, 0, 255),      # Green with alpha
-            TrayStatus.ERROR: (255, 0, 0, 255)        # Red with alpha
-        }
-        
-        color = color_map.get(status, (128, 128, 128, 255))
-        # 使用RGBA模式支持透明背景
-        image = Image.new('RGBA', (22, 22), (0, 0, 0, 0))  # 透明背景
-        
-        # 在透明背景上绘制彩色圆形
-        from PIL import ImageDraw
-        draw = ImageDraw.Draw(image)
-        draw.ellipse([2, 2, 20, 20], fill=color)
-        
-        return image
-    
-    def _create_pystray_menu(self) -> pystray.Menu:
+    def _create_pystray_menu(self) -> Optional[pystray.Menu]:
         """Create pystray menu from TrayMenu."""
+        if not TRAY_AVAILABLE:
+            return None
+            
         menu_items = []
         
         for item in self._menu.get_items():
@@ -277,17 +264,19 @@ class SystemTrayManager:
         
         self._status = status
         
-        if self._icon:
+        if self._icon and self._running:
             # Update icon image
-            self._icon.icon = self._get_icon_image(status)
-            
-            # Update tooltip based on status - 使用英文避免编码问题
-            tooltips = {
-                TrayStatus.IDLE: "NexTalk - Idle",
-                TrayStatus.ACTIVE: "NexTalk - Recording",
-                TrayStatus.ERROR: "NexTalk - Error"
-            }
-            self._icon.title = tooltips.get(status, "NexTalk")
+            new_image = self._icon_cache.get(status)
+            if new_image:
+                self._icon.icon = new_image
+                
+                # Update tooltip
+                tooltips = {
+                    TrayStatus.IDLE: "NexTalk - Idle",
+                    TrayStatus.ACTIVE: "NexTalk - Recording",
+                    TrayStatus.ERROR: "NexTalk - Error"
+                }
+                self._icon.title = tooltips.get(status, "NexTalk")
         
         logger.debug(f"Tray status updated to: {status.value}")
     
@@ -298,24 +287,27 @@ class SystemTrayManager:
         Args:
             title: Notification title
             message: Notification message
-            timeout: Notification timeout in seconds (ignored in this implementation)
+            timeout: Notification timeout in seconds (ignored)
         """
         if not self.config.show_notifications:
             return
         
-        if self._icon:
+        if self._icon and TRAY_AVAILABLE:
             try:
                 self._icon.notify(title, message)
             except Exception as e:
-                # Log as debug since notifications are non-critical
                 logger.debug(f"Could not show notification: {e}")
-                logger.info(f"Notification: {title} - {message}")  # Show content in log instead
+                # Fallback to logging
+                logger.info(f"Notification: {title} - {message}")
+        else:
+            logger.info(f"Notification: {title} - {message}")
     
     def update_menu(self) -> None:
         """Update the tray menu."""
-        if self._icon:
+        if self._icon and TRAY_AVAILABLE:
             self._icon.menu = self._create_pystray_menu()
     
+    # Callback setters
     def set_on_quit(self, callback: Callable) -> None:
         """Set quit callback."""
         self._on_quit = callback
@@ -332,6 +324,7 @@ class SystemTrayManager:
         """Set about callback."""
         self._on_about = callback
     
+    # Menu handlers
     def _handle_quit(self, item: MenuItem) -> None:
         """Handle quit action."""
         logger.info("Quit requested from tray")
@@ -371,4 +364,8 @@ class SystemTrayManager:
     
     def is_running(self) -> bool:
         """Check if tray is running."""
-        return self._running
+        return self._running and self._icon is not None
+
+
+# Provide backwards compatibility
+TrayManager = SystemTrayManager

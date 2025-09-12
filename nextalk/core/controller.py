@@ -1170,28 +1170,13 @@ class MainController:
         logger.error(f"Error occurred: {error_msg}")
     
     def _initialize_tray_manager(self) -> None:
-        """Initialize the appropriate tray manager using smart selection."""
+        """Initialize the system tray manager."""
         try:
-            # Use smart tray manager for automatic backend selection
-            from ..ui.tray_smart import SmartTrayManager
-            self.tray_manager = SmartTrayManager(self.config.ui)
-            
-            if self.tray_manager._impl:
-                logger.info("Smart tray manager initialized successfully")
-            else:
-                logger.warning("Smart tray manager created but no backend available")
-                self.tray_manager = None
-            
+            self.tray_manager = SystemTrayManager(self.config.ui)
+            logger.info("System tray manager initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize smart tray manager: {e}")
-            # Fallback to original pystray implementation
-            try:
-                logger.info("Falling back to pystray tray manager")
-                self.tray_manager = SystemTrayManager(self.config.ui)
-                logger.info("pystray tray manager initialized successfully")
-            except Exception as fallback_error:
-                logger.error(f"Fallback tray manager also failed: {fallback_error}")
-                self.tray_manager = None
+            logger.error(f"Failed to initialize system tray manager: {e}")
+            self.tray_manager = None
     
     def _attempt_recovery(self) -> None:
         """Attempt to recover from error state."""
