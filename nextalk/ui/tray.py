@@ -6,9 +6,39 @@ Simple and lightweight tray implementation using pystray.
 
 import logging
 import threading
+import os
 from enum import Enum
-from typing import Optional, Callable
+from typing import Optional, Callable, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pystray
+    from PIL import Image
 from pathlib import Path
+
+# Force GTK backend to avoid AppIndicator D-Bus issues in GNOME
+os.environ.setdefault('PYSTRAY_BACKEND', 'gtk')
+
+# Initialize GTK environment properly for terminals
+try:
+    # Set GTK backend to X11 for better compatibility with terminals
+    os.environ.setdefault('GDK_BACKEND', 'x11')
+    
+    # Suppress GTK warnings about missing widgets
+    os.environ.setdefault('GTK_CSD', '0')
+    os.environ.setdefault('GTK_USE_PORTAL', '0')
+    
+    # Initialize GTK properly
+    import gi
+    gi.require_version('Gtk', '3.0')
+    from gi.repository import Gtk
+    
+    # Initialize GTK main loop if not already done
+    if not Gtk.init_check():
+        logging.warning("GTK initialization failed, falling back to Xorg backend")
+        os.environ['PYSTRAY_BACKEND'] = 'xorg'
+except Exception as e:
+    logging.debug(f"GTK initialization issue: {e}, using fallback backend")
+    os.environ['PYSTRAY_BACKEND'] = 'xorg'
 
 # Try to import GUI dependencies
 try:
@@ -16,6 +46,8 @@ try:
     from PIL import Image
     TRAY_AVAILABLE = True
 except ImportError:
+    pystray = None
+    Image = None
     TRAY_AVAILABLE = False
     logging.warning("System tray support not available. Install pystray and Pillow for GUI support.")
 
@@ -94,23 +126,23 @@ class SystemTrayManager:
             try:
                 if icon_path.exists():
                     self._icon_cache[status] = Image.open(icon_path)
-                    logger.debug(f"Loaded icon: {filename}")
+                    logger.info(f"Loaded icon: {filename}")
                 else:
                     # Create fallback icon if file doesn't exist
                     self._icon_cache[status] = self._create_fallback_icon(status)
-                    logger.debug(f"Created fallback icon for {status.value}")
+                    logger.info(f"Created fallback icon for {status.value}")
             except Exception as e:
                 logger.warning(f"Failed to load icon {filename}: {e}")
                 self._icon_cache[status] = self._create_fallback_icon(status)
     
-    def _create_fallback_icon(self, status: TrayStatus) -> Optional[Image.Image]:
-        """Create a simple fallback icon."""
+    def _create_fallback_icon(self, status: TrayStatus) -> Optional['Image.Image']:
+        """Create optimized fallback icon for better visibility."""
         if not TRAY_AVAILABLE:
             return None
             
         try:
-            # Create a simple colored square
-            size = 22
+            # Use 128x128 for better visibility on high-DPI displays
+            size = 128
             color_map = {
                 TrayStatus.IDLE: (74, 144, 226, 255),    # Blue
                 TrayStatus.ACTIVE: (76, 175, 80, 255),   # Green
@@ -119,30 +151,49 @@ class SystemTrayManager:
             
             color = color_map.get(status, (128, 128, 128, 255))
             
-            # Create transparent background image
+            # Create RGBA image for transparency
             image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
             
-            # Draw a simple circle
             from PIL import ImageDraw
             draw = ImageDraw.Draw(image)
-            margin = 3
-            draw.ellipse([margin, margin, size - margin, size - margin], fill=color)
             
-            # Add status-specific indicators
+            # Reduce margin, increase content area
+            margin = max(8, size // 16)
+            
+            # Thicker lines for better visibility
+            line_width = max(4, size // 20)
+            
+            # Draw clearer circle outline
+            draw.ellipse([margin, margin, size - margin, size - margin], 
+                        fill=None, outline=color, width=line_width)
+            
+            # More prominent center indicators
+            center = size // 2
             if status == TrayStatus.ACTIVE:
-                # Add small dots for active state
-                dot_size = 2
-                for i in range(3):
-                    x = size // 2 - 2 + i * 2
-                    y = size // 2
-                    draw.ellipse([x-dot_size, y-dot_size, x+dot_size, y+dot_size], 
-                               fill=(255, 255, 255, 255))
+                # Thicker "+" for active
+                thickness = max(6, size // 16)
+                length = max(16, size // 6)
+                draw.line([(center-length//2, center), (center+length//2, center)], 
+                         fill=(255, 255, 255, 255), width=thickness)
+                draw.line([(center, center-length//2), (center, center+length//2)], 
+                         fill=(255, 255, 255, 255), width=thickness)
             elif status == TrayStatus.ERROR:
-                # Add X mark for error state
-                draw.line([(6, 6), (16, 16)], fill=(255, 255, 255, 255), width=2)
-                draw.line([(16, 6), (6, 16)], fill=(255, 255, 255, 255), width=2)
+                # Thicker "X" for error
+                thickness = max(6, size // 16)
+                offset = max(12, size // 8)
+                draw.line([(center-offset, center-offset), (center+offset, center+offset)], 
+                         fill=(255, 255, 255, 255), width=thickness)
+                draw.line([(center+offset, center-offset), (center-offset, center+offset)], 
+                         fill=(255, 255, 255, 255), width=thickness)
+            else:  # IDLE
+                # Larger center dot for idle
+                dot_size = max(8, size // 10)
+                draw.ellipse([center-dot_size, center-dot_size, center+dot_size, center+dot_size], 
+                           fill=(255, 255, 255, 255))
             
+            logger.warning(f"Using optimized fallback icon for {status.value} - PNG file not found!")
             return image
+            
         except Exception as e:
             logger.error(f"Failed to create fallback icon: {e}")
             return None
@@ -230,7 +281,7 @@ class SystemTrayManager:
             logger.error(f"Error running tray icon: {e}")
             self._running = False
     
-    def _create_pystray_menu(self) -> Optional[pystray.Menu]:
+    def _create_pystray_menu(self) -> Optional['pystray.Menu']:
         """Create pystray menu from TrayMenu."""
         if not TRAY_AVAILABLE:
             return None
