@@ -85,6 +85,16 @@ make dev
 
 # 检查依赖状态
 make check-deps
+
+# 修复 Portal 文本注入依赖 (虚拟环境)
+# 如果 Portal 机制不工作，执行以下命令链接系统级 D-Bus 模块
+cd .venv/lib/python3.*/site-packages
+ln -sf /usr/lib/python3/dist-packages/dbus .
+ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* .
+ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* .
+ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info .
+ln -sf /usr/lib/python3/dist-packages/gi .
+ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
 ```
 
 ## 核心架构
@@ -120,9 +130,11 @@ nextalk/
    - 分块处理: [5, 10, 5] chunk_size
 
 4. **文本注入系统**
-   - 自动将识别结果注入到光标位置
-   - 直接集成操作系统级别的输入法引擎(IME/Input Method Engine)来实现更稳定、更自然的文本输入
-   - 不要有回退机制\备选方案
+   - 现代化文本注入架构，支持多种注入机制
+   - **Portal 机制**: 基于 xdg-desktop-portal RemoteDesktop，适用于 Wayland 环境
+   - **xdotool 机制**: 传统 X11 环境的文本注入工具
+   - 智能环境检测和自动选择最佳注入方式
+   - 统一的注入接口，支持异步操作和错误恢复
 
 ### 配置系统
 
@@ -175,3 +187,71 @@ nextalk/
 2. 使用测试脚本: `test_im_injection.py`, `demo_im_injection.py`
 3. 检查网络连接: 确认 FunASR 服务器状态
 4. 音频设备测试: 使用 `scripts/verify_installation.py`
+
+### 常见问题排除
+
+#### Portal 文本注入机制不工作
+
+**症状**: 在 Wayland 环境下文本注入不工作，系统回退到 xdotool 机制
+
+**原因**: 虚拟环境中缺少 D-Bus Python 绑定
+
+**解决方案**:
+```bash
+# 1. 确认系统已安装必要包
+sudo apt install python3-dbus python3-gi
+
+# 2. 在项目根目录执行软链接命令
+cd .venv/lib/python3.*/site-packages
+ln -sf /usr/lib/python3/dist-packages/dbus .
+ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* .
+ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* .
+ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info .
+ln -sf /usr/lib/python3/dist-packages/gi .
+ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
+
+# 3. 验证修复
+python -c "
+from nextalk.output.environment_detector import EnvironmentDetector
+detector = EnvironmentDetector()
+env = detector.detect_environment(force_refresh=True)
+print(f'Portal available: {env.portal_available}')
+print(f'Recommended: {env.recommended_method.value}')
+"
+```
+
+**验证成功标志**:
+- `Portal available: True`
+- `Recommended: portal` (在 Wayland 环境下)
+- Portal 会话能够正常建立并获得键盘权限
+
+#### 环境检测问题
+
+**检查当前环境**:
+```bash
+python -c "
+from nextalk.output.environment_detector import EnvironmentDetector
+detector = EnvironmentDetector()
+debug_info = detector.get_debug_info()
+for key, value in debug_info.items():
+    print(f'{key}: {value}')
+"
+```
+
+**测试文本注入**:
+```bash
+python -c "
+from nextalk.output.text_injector import TextInjector
+import asyncio
+
+async def test():
+    injector = TextInjector()
+    success = await injector.initialize()
+    if success:
+        status = await injector.get_ime_status()
+        print(f'Active method: {status.get(\"active_method\")}')
+    await injector.cleanup()
+
+asyncio.run(test())
+"
+```

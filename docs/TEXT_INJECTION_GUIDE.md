@@ -145,9 +145,75 @@ text_injection:
 
 ### 常见问题
 
-#### 1. Portal注入失败
+#### 1. Portal注入失败 - 虚拟环境依赖问题
 
-**症状:** 在Wayland环境下无法注入文本
+**症状:** 在Wayland环境下Portal机制不工作，系统回退到xdotool
+
+**根本原因:** 虚拟环境中缺失D-Bus Python绑定
+
+**诊断步骤:**
+```bash
+# 检查dbus模块是否可导入
+python -c "
+try:
+    import dbus
+    print('✓ dbus模块可用')
+except ImportError as e:
+    print('✗ dbus模块不可用:', e)
+"
+
+# 检查环境检测结果
+python -c "
+from nextalk.output.environment_detector import EnvironmentDetector
+detector = EnvironmentDetector()
+env = detector.detect_environment()
+print(f'Portal available: {env.portal_available}')
+print(f'Display server: {env.display_server.value}')
+print(f'Recommended method: {env.recommended_method.value}')
+"
+```
+
+**解决方案:**
+```bash
+# 1. 确认系统已安装必要包
+sudo apt install python3-dbus python3-gi
+
+# 2. 在项目根目录执行软链接命令
+cd .venv/lib/python3.*/site-packages
+ln -sf /usr/lib/python3/dist-packages/dbus .
+ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* .
+ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* .
+ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info .
+ln -sf /usr/lib/python3/dist-packages/gi .
+ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
+
+# 3. 验证修复
+python -c "
+from nextalk.output.text_injector import TextInjector
+import asyncio
+
+async def test():
+    injector = TextInjector()
+    success = await injector.initialize()
+    if success:
+        status = await injector.get_ime_status()
+        print(f'✓ Active method: {status.get(\"active_method\")}')
+        if status.get('active_method') == 'portal':
+            print('✓ Portal机制工作正常!')
+    await injector.cleanup()
+
+asyncio.run(test())
+"
+```
+
+**验证成功标志:**
+- `Portal available: True`
+- `Active method: portal` (在Wayland环境下)
+- Portal会话能够正常建立并获得键盘权限
+
+#### 2. Portal服务问题
+
+**症状:** 即使依赖正常但Portal仍无法使用
 
 **诊断步骤:**
 ```bash
@@ -162,7 +228,7 @@ python -c "
 import dbus
 bus = dbus.SessionBus()
 proxy = bus.get_object('org.freedesktop.portal.Desktop', '/org/freedesktop/portal/desktop')
-print('Portal可用')
+print('Portal服务可用')
 "
 ```
 
@@ -171,7 +237,7 @@ print('Portal可用')
 - 检查桌面环境Portal支持
 - 切换到xdotool回退模式
 
-#### 2. XDoTool注入失败
+#### 3. XDoTool注入失败
 
 **症状:** 在X11环境下无法注入文本
 
@@ -193,7 +259,7 @@ xhost +local:
 - 设置X11权限: `xhost +local:`
 - 检查目标应用X11兼容性
 
-#### 3. 环境检测错误
+#### 4. 环境检测错误
 
 **症状:** 系统选择了错误的注入方法
 
