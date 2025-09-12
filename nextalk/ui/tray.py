@@ -53,6 +53,7 @@ except ImportError:
 
 from ..config.models import UIConfig
 from .menu import TrayMenu, MenuItem, MenuAction
+from .icon_manager import get_icon_manager
 
 
 logger = logging.getLogger(__name__)
@@ -86,9 +87,8 @@ class SystemTrayManager:
         self._running = False
         self._thread: Optional[threading.Thread] = None
         
-        # Icon paths
-        self.icons_dir = Path(__file__).parent / "icons"
-        self._icon_cache = {}
+        # 图标管理器
+        self._icon_manager = get_icon_manager()
         
         # Callbacks
         self._on_quit: Optional[Callable] = None
@@ -98,9 +98,6 @@ class SystemTrayManager:
         
         # Setup menu handlers
         self._setup_menu_handlers()
-        
-        # Load icons
-        self._load_icons()
     
     def _setup_menu_handlers(self) -> None:
         """Setup default menu action handlers."""
@@ -110,30 +107,13 @@ class SystemTrayManager:
         self._menu.register_handler(MenuAction.ABOUT, self._handle_about)
         self._menu.register_handler(MenuAction.VIEW_STATISTICS, self._handle_statistics)
     
-    def _load_icons(self) -> None:
-        """Load icon images into cache."""
+    def _get_icon_image(self, status: TrayStatus) -> 'Optional[Image.Image]':
+        """获取状态对应的图标图像"""
         if not TRAY_AVAILABLE:
-            return
-            
-        icon_files = {
-            TrayStatus.IDLE: "microphone-idle.png",
-            TrayStatus.ACTIVE: "microphone-active.png", 
-            TrayStatus.ERROR: "microphone-error.png"
-        }
+            return None
         
-        for status, filename in icon_files.items():
-            icon_path = self.icons_dir / filename
-            try:
-                if icon_path.exists():
-                    self._icon_cache[status] = Image.open(icon_path)
-                    logger.info(f"Loaded icon: {filename}")
-                else:
-                    # Create fallback icon if file doesn't exist
-                    self._icon_cache[status] = self._create_fallback_icon(status)
-                    logger.info(f"Created fallback icon for {status.value}")
-            except Exception as e:
-                logger.warning(f"Failed to load icon {filename}: {e}")
-                self._icon_cache[status] = self._create_fallback_icon(status)
+        # 使用图标管理器获取优化的图标
+        return self._icon_manager.get_optimized_icon_image(status.value)
     
     def _create_fallback_icon(self, status: TrayStatus) -> Optional['Image.Image']:
         """Create optimized fallback icon for better visibility."""
@@ -256,7 +236,7 @@ class SystemTrayManager:
             return
             
         # Get initial icon image
-        image = self._icon_cache.get(self._status)
+        image = self._get_icon_image(self._status)
         if image is None:
             logger.error("No icon available for initial state")
             return
@@ -317,7 +297,7 @@ class SystemTrayManager:
         
         if self._icon and self._running:
             # Update icon image
-            new_image = self._icon_cache.get(status)
+            new_image = self._get_icon_image(status)
             if new_image:
                 self._icon.icon = new_image
                 
