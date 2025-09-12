@@ -140,10 +140,10 @@ class XDoToolInjector(BaseInjector):
             # Validate text
             validated_text = await self._validate_text(text)
 
-            # Check if ready
-            if not self.is_ready:
+            # Check if injector is initialized (allow both READY and INJECTING states)
+            if not self.is_initialized:
                 raise InjectionFailedError(
-                    f"xdotool injector not ready. State: {self.state.value}",
+                    f"xdotool injector not initialized. State: {self.state.value}",
                     text=validated_text,
                     method=self.method.value,
                 )
@@ -200,9 +200,15 @@ class XDoToolInjector(BaseInjector):
             if not xdotool_path:
                 return False
 
-            # Test basic functionality
-            result = await self._run_xdotool_command(["--version"])
-            return result.returncode == 0
+            # Test basic functionality directly (don't depend on self._xdotool_path)
+            process = await asyncio.create_subprocess_exec(
+                xdotool_path, "--version", 
+                stdout=asyncio.subprocess.PIPE, 
+                stderr=asyncio.subprocess.PIPE
+            )
+            
+            stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5.0)
+            return process.returncode == 0
 
         except Exception as e:
             self._logger.debug(f"xdotool availability check failed: {e}")

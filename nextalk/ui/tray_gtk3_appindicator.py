@@ -9,6 +9,7 @@ import threading
 from enum import Enum
 from typing import Optional, Callable, Any
 import time
+from pathlib import Path
 from .icon_manager import get_icon_manager
 
 try:
@@ -101,12 +102,8 @@ if GTK3_AVAILABLE and INDICATOR_AVAILABLE:
         
         def _get_icon_path(self, status: TrayStatus) -> str:
             """Get the file path for the icon of the given status."""
-            logger.info(f"Getting icon for status: {status}, custom_icons_available: {self._custom_icons_available}")
+            logger.debug(f"Getting icon for status: {status}")
             
-            if not self._custom_icons_available:
-                logger.info(f"Using fallback system icon: {self._fallback_icons[status]}")
-                return self._fallback_icons[status]
-                
             try:
                 status_map = {
                     TrayStatus.IDLE: "idle",
@@ -115,19 +112,32 @@ if GTK3_AVAILABLE and INDICATOR_AVAILABLE:
                 }
                 
                 status_str = status_map.get(status, "idle")
-                icon_path = self._icon_manager.get_icon_path(status_str)
+                
+                # 使用增强的图标管理器获取最适合的图标
+                icon_path = self._icon_manager.get_icon_path(
+                    status_str, 
+                    size=self._icon_manager.get_preferred_size()
+                )
                 
                 if icon_path:
-                    logger.info(f"Using custom icon: {icon_path}")
-                    return icon_path
+                    # 检查是否为文件路径（自定义图标）还是系统图标名
+                    if Path(icon_path).exists():
+                        logger.debug(f"Using custom icon file: {icon_path}")
+                        return icon_path
+                    else:
+                        logger.debug(f"Using system icon: {icon_path}")
+                        return icon_path
                 else:
-                    logger.info(f"Custom icon not found, fallback to system icon: {self._fallback_icons[status]}")
-                    return self._fallback_icons[status]
+                    # 最终回退
+                    fallback = self._fallback_icons[status]
+                    logger.debug(f"Using fallback system icon: {fallback}")
+                    return fallback
                     
             except Exception as e:
                 logger.error(f"Error getting icon path: {e}")
-                logger.info(f"Exception fallback to system icon: {self._fallback_icons[status]}")
-                return self._fallback_icons[status]
+                fallback = self._fallback_icons[status]
+                logger.debug(f"Exception fallback to system icon: {fallback}")
+                return fallback
             
         def start(self) -> None:
             """Start the AppIndicator tray manager."""

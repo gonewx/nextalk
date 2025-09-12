@@ -5,6 +5,7 @@ Automatically selects the best tray implementation based on the current environm
 """
 
 import logging
+import os
 import sys
 from enum import Enum
 from typing import Optional, Callable, Any, Type
@@ -30,8 +31,27 @@ def detect_gtk_environment():
         'gtk4_available': False,
         'appindicator_available': False,
         'pystray_available': False,
-        'recommended_backend': None
+        'recommended_backend': None,
+        'desktop_environment': 'unknown',
+        'display_protocol': 'unknown'
     }
+    
+    # 检测桌面环境
+    desktop = os.environ.get('XDG_CURRENT_DESKTOP', '').lower()
+    if 'gnome' in desktop or 'unity' in desktop:
+        env_info['desktop_environment'] = 'gnome'
+    elif 'kde' in desktop or 'plasma' in desktop:
+        env_info['desktop_environment'] = 'kde'
+    elif 'xfce' in desktop:
+        env_info['desktop_environment'] = 'xfce'
+    elif 'lxde' in desktop or 'lxqt' in desktop:
+        env_info['desktop_environment'] = 'lxde'
+    
+    # 检测显示协议
+    if os.environ.get('WAYLAND_DISPLAY'):
+        env_info['display_protocol'] = 'wayland'
+    elif os.environ.get('DISPLAY'):
+        env_info['display_protocol'] = 'x11'
     
     try:
         # Check if gi is available

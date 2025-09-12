@@ -7,7 +7,7 @@ based on environment detection, with proper fallback and caching mechanisms.
 
 import logging
 import time
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Type
 from dataclasses import dataclass
 from enum import Enum
 

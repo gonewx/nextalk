@@ -9,6 +9,7 @@ import threading
 from enum import Enum
 from typing import Optional, Callable, Any
 import io
+from pathlib import Path
 
 # Try to import GUI dependencies
 try:
@@ -66,7 +67,7 @@ except ImportError:
 
 from ..config.models import UIConfig
 from .menu import TrayMenu, MenuItem, MenuAction
-from .icons import IconManager, IconTheme
+from .icon_manager import get_icon_manager
 
 
 logger = logging.getLogger(__name__)
@@ -96,7 +97,7 @@ class SystemTrayManager:
         self.config = config or UIConfig()
         self._icon: Optional[pystray.Icon] = None
         self._menu = TrayMenu()
-        self._icon_manager = IconManager(self._get_icon_theme())
+        self._icon_manager = get_icon_manager()
         self._status = TrayStatus.IDLE
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -109,15 +110,6 @@ class SystemTrayManager:
         
         # Setup menu handlers
         self._setup_menu_handlers()
-    
-    def _get_icon_theme(self) -> IconTheme:
-        """Get icon theme from configuration."""
-        theme_map = {
-            "auto": IconTheme.AUTO,
-            "light": IconTheme.LIGHT,
-            "dark": IconTheme.DARK
-        }
-        return theme_map.get(self.config.tray_icon_theme, IconTheme.AUTO)
     
     def _setup_menu_handlers(self) -> None:
         """Setup default menu action handlers."""
@@ -212,39 +204,46 @@ class SystemTrayManager:
             PIL Image object
         """
         try:
-            # Get icon data from icon manager
-            icon_data = self._icon_manager.get_icon(status.value)
+            status_map = {
+                TrayStatus.IDLE: "idle",
+                TrayStatus.ACTIVE: "active", 
+                TrayStatus.ERROR: "error"
+            }
             
-            # Create PIL image from data
-            image = Image.open(io.BytesIO(icon_data))
+            status_str = status_map.get(status, "idle")
             
-            # Convert to RGB mode to avoid RGBA issues
-            if image.mode in ('RGBA', 'LA'):
-                image = image.convert('RGB')
-            
-            # Ensure it's the right size (16x16 or 32x32)
-            if image.size != (16, 16):
-                image = image.resize((16, 16), Image.Resampling.LANCZOS)
-            
-            return image
+            # 使用优化的SVG到PIL转换
+            image = self._icon_manager.get_optimized_icon_image(status_str)
+            if image is not None:
+                logger.debug(f"Got optimized PIL Image for {status_str}: {image.mode} {image.size}")
+                return image
+            else:
+                # 使用内嵌的备用图标
+                logger.debug(f"No optimized image available, using fallback for {status_str}")
+                return self._create_fallback_icon(status)
             
         except Exception as e:
-            # Log as debug since we have fallback icons
-            logger.debug(f"Could not load icon from data: {e}")
-            # Return a simple colored square as fallback
+            logger.debug(f"Could not get icon image: {e}")
             return self._create_fallback_icon(status)
     
     def _create_fallback_icon(self, status: TrayStatus) -> Image:
         """Create a fallback icon."""
-        # Create a simple colored square
+        # Create a simple colored square with transparent background
         color_map = {
-            TrayStatus.IDLE: (128, 128, 128),  # Gray
-            TrayStatus.ACTIVE: (0, 255, 0),    # Green
-            TrayStatus.ERROR: (255, 0, 0)      # Red
+            TrayStatus.IDLE: (128, 128, 128, 255),    # Gray with alpha
+            TrayStatus.ACTIVE: (0, 255, 0, 255),      # Green with alpha
+            TrayStatus.ERROR: (255, 0, 0, 255)        # Red with alpha
         }
         
-        color = color_map.get(status, (128, 128, 128))
-        image = Image.new('RGB', (16, 16), color)
+        color = color_map.get(status, (128, 128, 128, 255))
+        # 使用RGBA模式支持透明背景
+        image = Image.new('RGBA', (22, 22), (0, 0, 0, 0))  # 透明背景
+        
+        # 在透明背景上绘制彩色圆形
+        from PIL import ImageDraw
+        draw = ImageDraw.Draw(image)
+        draw.ellipse([2, 2, 20, 20], fill=color)
+        
         return image
     
     def _create_pystray_menu(self) -> pystray.Menu:

@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+  <!-- 透明背景 -->
+  <rect width="22" height="22" fill="none"/>
+  
   <!-- 麦克风主体 - 阴影 -->
   <rect x="7.5" y="3.5" width="7" height="11" rx="3.5" ry="3.5" fill="#000000" opacity="0.3"/>
   
