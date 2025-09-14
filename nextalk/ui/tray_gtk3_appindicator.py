@@ -194,7 +194,7 @@ class GTK3AppIndicatorTrayManager:
             
             # 设置标题和标签
             self._indicator.set_title("NexTalk")
-            self._indicator.set_label("NexTalk", "NexTalk")
+            # self._indicator.set_label("NexTalk", "NexTalk")
             
             # 创建并设置菜单
             self._create_gtk_menu()
@@ -272,13 +272,13 @@ class GTK3AppIndicatorTrayManager:
                         self._indicator.set_icon(icon_path)
                         
                         # 更新标签
-                        labels = {
-                            TrayStatus.IDLE: "NexTalk - 待机",
-                            TrayStatus.ACTIVE: "NexTalk - 录音中",
-                            TrayStatus.ERROR: "NexTalk - 错误"
-                        }
-                        label = labels.get(status, "NexTalk")
-                        self._indicator.set_label(label, label)
+                        # labels = {
+                        #     TrayStatus.IDLE: "NexTalk - 待机",
+                        #     TrayStatus.ACTIVE: "NexTalk - 录音中",
+                        #     TrayStatus.ERROR: "NexTalk - 错误"
+                        # }
+                        # label = labels.get(status, "NexTalk")
+                        # self._indicator.set_label(label, label)
                         
                 except Exception as e:
                     logger.error(f"Failed to update indicator icon: {e}")

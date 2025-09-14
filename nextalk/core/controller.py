@@ -336,6 +336,7 @@ class MainController:
             self.ws_client.on_message = self._handle_ws_message
             self.ws_client.on_error = self._handle_ws_error
             self.ws_client.set_result_callback(self._handle_recognition_result)
+            self.ws_client.set_status_callback(self._handle_ws_status_change)
             
             # Hotkey manager  
             self.hotkey_manager = HotkeyManager(self.config.recording)
@@ -583,7 +584,11 @@ class MainController:
         # Clean up text injector
         if self.text_injector and hasattr(self.text_injector, 'cleanup'):
             try:
-                self.text_injector.cleanup()
+                # cleanup() is async, so we need to run it in the event loop
+                if asyncio.iscoroutinefunction(self.text_injector.cleanup):
+                    asyncio.run(self.text_injector.cleanup())
+                else:
+                    self.text_injector.cleanup()
             except Exception as e:
                 logger.error(f"Error cleaning up text injector: {e}")
         
@@ -697,16 +702,31 @@ class MainController:
         # Start session
         self.current_session.start()
         
-        # Initialize WebSocket streaming session asynchronously (non-blocking)
-        try:
-            asyncio.run_coroutine_threadsafe(
-                self.ws_client.initialize_streaming_session(),
-                self._event_loop
-            )
-            logger.info("WebSocket streaming session initialization started")
-        except Exception as e:
-            logger.warning(f"Failed to start streaming session initialization: {e}")
-            logger.info("Will retry initialization when first audio data arrives")
+        # Initialize WebSocket streaming session and wait for completion
+        streaming_initialized = False
+        for attempt in range(2):  # Try up to 2 times
+            try:
+                future = asyncio.run_coroutine_threadsafe(
+                    self.ws_client.initialize_streaming_session(),
+                    self._event_loop
+                )
+                # Wait for initialization to complete (with longer timeout)
+                future.result(timeout=8.0)
+                logger.info("WebSocket streaming session initialization completed")
+                streaming_initialized = True
+                break
+            except TimeoutError:
+                logger.warning(f"Streaming session initialization timed out (attempt {attempt + 1}/2)")
+                if attempt == 0:
+                    # Wait a bit before retrying
+                    time.sleep(1.0)
+            except Exception as e:
+                logger.warning(f"Failed to initialize streaming session: {e} (attempt {attempt + 1}/2)")
+                if attempt == 0:
+                    time.sleep(1.0)
+        
+        if not streaming_initialized:
+            logger.info("Will proceed without streaming session - audio data will be queued")
         
         # Start PyAudio recording with real-time streaming immediately
         self.audio_manager.set_data_callback(self._stream_audio_chunk)
@@ -743,16 +763,31 @@ class MainController:
         # Start session
         self.current_session.start()
         
-        # Initialize WebSocket streaming session asynchronously (non-blocking)
-        try:
-            asyncio.run_coroutine_threadsafe(
-                self.ws_client.initialize_streaming_session(),
-                self._event_loop
-            )
-            logger.info("WebSocket streaming session initialization started")
-        except Exception as e:
-            logger.warning(f"Failed to start streaming session initialization: {e}")
-            logger.info("Will retry initialization when first audio data arrives")
+        # Initialize WebSocket streaming session and wait for completion
+        streaming_initialized = False
+        for attempt in range(2):  # Try up to 2 times
+            try:
+                future = asyncio.run_coroutine_threadsafe(
+                    self.ws_client.initialize_streaming_session(),
+                    self._event_loop
+                )
+                # Wait for initialization to complete (with longer timeout)
+                future.result(timeout=8.0)
+                logger.info("WebSocket streaming session initialization completed")
+                streaming_initialized = True
+                break
+            except TimeoutError:
+                logger.warning(f"Streaming session initialization timed out (attempt {attempt + 1}/2)")
+                if attempt == 0:
+                    # Wait a bit before retrying
+                    time.sleep(1.0)
+            except Exception as e:
+                logger.warning(f"Failed to initialize streaming session: {e} (attempt {attempt + 1}/2)")
+                if attempt == 0:
+                    time.sleep(1.0)
+        
+        if not streaming_initialized:
+            logger.info("Will proceed without streaming session - audio data will be queued")
         
         # Start PyAudio recording with real-time streaming immediately
         self.audio_manager.set_data_callback(self._stream_audio_chunk)
@@ -856,7 +891,7 @@ class MainController:
             self.current_session.add_audio_data(audio_data.data)
             
             # Stream immediately to WebSocket (real-time like original client)
-            if self.ws_client and self.ws_client.is_connected():
+            if self.ws_client and self.ws_client.is_ready():
                 try:
                     asyncio.run_coroutine_threadsafe(
                         self.ws_client.send_audio_chunk(audio_data.data),
@@ -866,7 +901,10 @@ class MainController:
                 except Exception as e:
                     logger.error(f"Failed to stream audio chunk: {e}")
             else:
-                logger.warning("WebSocket not connected, cannot stream audio chunk")
+                if self.ws_client and self.ws_client.is_connected():
+                    logger.debug("WebSocket connected but not ready for streaming, waiting...")
+                else:
+                    logger.warning("WebSocket not connected, cannot stream audio chunk")
     
     def _handle_recognition_result(self, result: RecognitionResult) -> None:
         """
@@ -937,6 +975,22 @@ class MainController:
         logger.error(f"WebSocket error: {error}")
         if self.current_session:
             self.current_session.report_error(f"网络错误: {error}")
+    
+    def _handle_ws_status_change(self, state) -> None:
+        """
+        Handle WebSocket connection status change.
+        
+        Args:
+            state: New connection state
+        """
+        logger.info(f"WebSocket state changed to: {state.value}")
+        
+        if state.value == "connected":
+            logger.info("Connected to WebSocket server")
+        elif state.value == "ready":
+            logger.info("WebSocket ready for streaming")
+        elif state.value == "disconnected":
+            logger.warning("WebSocket disconnected")
     
     def _handle_session_state(self, state: SessionState) -> None:
         """

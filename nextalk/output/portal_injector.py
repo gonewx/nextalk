@@ -411,10 +411,17 @@ class PortalInjector(BaseInjector):
 
             request_path = self._remote_desktop_interface.CreateSession(options)
             self._logger.debug(f"Session request: {request_path}")
+            
+            # Validate request path before using it
+            if not request_path or not isinstance(request_path, str) or not request_path.startswith('/'):
+                raise PortalSessionError(f"Invalid request path returned: {request_path}")
 
             # Listen for response
-            request_obj = self._dbus_bus.get_object("org.freedesktop.portal.Desktop", request_path)
-            request_obj.connect_to_signal("Response", handle_session_response)
+            try:
+                request_obj = self._dbus_bus.get_object("org.freedesktop.portal.Desktop", request_path)
+                request_obj.connect_to_signal("Response", handle_session_response)
+            except Exception as e:
+                raise PortalSessionError(f"Failed to connect to request signal for path {request_path}: {e}")
 
             # Wait for session creation with timeout
             await asyncio.wait_for(session_future, timeout=self._portal_timeout)
@@ -469,10 +476,17 @@ class PortalInjector(BaseInjector):
             request_path = self._remote_desktop_interface.SelectDevices(
                 self._portal_session.session_handle, options
             )
+            
+            # Validate request path before using it
+            if not request_path or not isinstance(request_path, str) or not request_path.startswith('/'):
+                raise PortalSessionError(f"Invalid request path returned for SelectDevices: {request_path}")
 
             # Listen for response
-            request_obj = self._dbus_bus.get_object("org.freedesktop.portal.Desktop", request_path)
-            request_obj.connect_to_signal("Response", handle_devices_response)
+            try:
+                request_obj = self._dbus_bus.get_object("org.freedesktop.portal.Desktop", request_path)
+                request_obj.connect_to_signal("Response", handle_devices_response)
+            except Exception as e:
+                raise PortalSessionError(f"Failed to connect to SelectDevices signal for path {request_path}: {e}")
 
             await asyncio.wait_for(device_future, timeout=self._portal_timeout)
             self._logger.debug("Device selection completed")
@@ -517,10 +531,17 @@ class PortalInjector(BaseInjector):
             request_path = self._remote_desktop_interface.Start(
                 self._portal_session.session_handle, "", options  # parent_window
             )
+            
+            # Validate request path before using it
+            if not request_path or not isinstance(request_path, str) or not request_path.startswith('/'):
+                raise PortalSessionError(f"Invalid request path returned for Start: {request_path}")
 
             # Listen for response
-            request_obj = self._dbus_bus.get_object("org.freedesktop.portal.Desktop", request_path)
-            request_obj.connect_to_signal("Response", handle_start_response)
+            try:
+                request_obj = self._dbus_bus.get_object("org.freedesktop.portal.Desktop", request_path)
+                request_obj.connect_to_signal("Response", handle_start_response)
+            except Exception as e:
+                raise PortalSessionError(f"Failed to connect to Start signal for path {request_path}: {e}")
 
             await asyncio.wait_for(start_future, timeout=self._portal_timeout)
             self._logger.info("Portal session started successfully")

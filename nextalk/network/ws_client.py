@@ -863,6 +863,10 @@ class FunASRWebSocketClient:
         """Check if client is connected and ready."""
         return self._state in [ConnectionState.CONNECTED, ConnectionState.READY]
     
+    def is_ready(self) -> bool:
+        """Check if client is ready for streaming audio."""
+        return self._state == ConnectionState.READY
+    
     def get_connection_stats(self) -> Dict[str, Any]:
         """Get comprehensive connection statistics."""
         uptime = 0.0

@@ -124,13 +124,18 @@ class NexTalkApp:
             if self.controller and hasattr(self.controller, 'toggle_recording'):
                 try:
                     # 使用线程安全的方式调度到事件循环
-                    if hasattr(self.controller, '_event_loop') and self.controller._event_loop:
+                    if (hasattr(self.controller, '_event_loop') and 
+                        self.controller._event_loop and 
+                        not self.controller._event_loop.is_closed()):
                         # 使用controller的事件循环
                         future = asyncio.run_coroutine_threadsafe(
                             self.controller.toggle_recording(),
                             self.controller._event_loop
                         )
                         logging.info("Toggle recording task scheduled")
+                    elif hasattr(self.controller, '_event_loop') and self.controller._event_loop.is_closed():
+                        logging.warning("Event loop is closed, cannot toggle recording")
+                        return
                     else:
                         # 回退到同步方式直接调用_toggle_recognition
                         logging.info("Using synchronous toggle method")
@@ -234,6 +239,12 @@ class NexTalkApp:
         logging.info("Cleaning up...")
         
         try:
+            # Reset signal handlers to prevent receiving signals after cleanup
+            import sys
+            if sys.platform != "win32":
+                signal.signal(signal.SIGUSR1, signal.SIG_DFL)
+                logging.debug("Signal handlers reset")
+            
             if self.controller:
                 self.controller.shutdown()
                 

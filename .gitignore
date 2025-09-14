@@ -208,3 +208,4 @@ temp/
 ime_diagnostic_report_*.json
 
 .spec-workflow/
+.claude/settings.local.json

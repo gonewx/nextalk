@@ -1,402 +1,280 @@
 """
-System tray manager for NexTalk.
+系统托盘管理器 - 智能选择最佳托盘实现
 
-Simple and lightweight tray implementation using pystray.
+自动检测环境并选择最佳的托盘后端：GTK3+AppIndicator → GTK4 → pystray
 """
 
 import logging
-import threading
 import os
+import sys
 from enum import Enum
-from typing import Optional, Callable, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import pystray
-    from PIL import Image
-from pathlib import Path
-
-# Force GTK backend to avoid AppIndicator D-Bus issues in GNOME
-os.environ.setdefault('PYSTRAY_BACKEND', 'gtk')
-
-# Initialize GTK environment properly for terminals
-try:
-    # Set GTK backend to X11 for better compatibility with terminals
-    os.environ.setdefault('GDK_BACKEND', 'x11')
-    
-    # Suppress GTK warnings about missing widgets
-    os.environ.setdefault('GTK_CSD', '0')
-    os.environ.setdefault('GTK_USE_PORTAL', '0')
-    
-    # Initialize GTK properly
-    import gi
-    gi.require_version('Gtk', '3.0')
-    from gi.repository import Gtk
-    
-    # Initialize GTK main loop if not already done
-    if not Gtk.init_check():
-        logging.warning("GTK initialization failed, falling back to Xorg backend")
-        os.environ['PYSTRAY_BACKEND'] = 'xorg'
-except Exception as e:
-    logging.debug(f"GTK initialization issue: {e}, using fallback backend")
-    os.environ['PYSTRAY_BACKEND'] = 'xorg'
-
-# Try to import GUI dependencies
-try:
-    import pystray
-    from PIL import Image
-    TRAY_AVAILABLE = True
-except ImportError:
-    pystray = None
-    Image = None
-    TRAY_AVAILABLE = False
-    logging.warning("System tray support not available. Install pystray and Pillow for GUI support.")
+from typing import Optional, Callable, Any, Dict
 
 from ..config.models import UIConfig
-from .menu import TrayMenu, MenuItem, MenuAction
-from .icon_manager import get_icon_manager
-
 
 logger = logging.getLogger(__name__)
 
 
 class TrayStatus(Enum):
-    """System tray status indicators."""
+    """系统托盘状态指示器"""
     IDLE = "idle"
     ACTIVE = "active"
     ERROR = "error"
 
 
+def detect_gtk_environment() -> Dict[str, Any]:
+    """
+    检测当前GTK环境和可用后端
+    
+    Returns:
+        dict: 环境信息包括GTK版本、AppIndicator支持等
+    """
+    env_info = {
+        'gtk_loaded': False,
+        'gtk_version': None,
+        'gtk3_available': False,
+        'gtk4_available': False,
+        'appindicator_available': False,
+        'pystray_available': False,
+        'recommended_backend': None,
+        'desktop_environment': 'unknown',
+        'display_protocol': 'unknown'
+    }
+    
+    # 检测桌面环境
+    desktop = os.environ.get('XDG_CURRENT_DESKTOP', '').lower()
+    if 'gnome' in desktop or 'unity' in desktop:
+        env_info['desktop_environment'] = 'gnome'
+    elif 'kde' in desktop or 'plasma' in desktop:
+        env_info['desktop_environment'] = 'kde'
+    elif 'xfce' in desktop:
+        env_info['desktop_environment'] = 'xfce'
+    elif 'lxde' in desktop or 'lxqt' in desktop:
+        env_info['desktop_environment'] = 'lxde'
+    
+    # 检测显示协议
+    if os.environ.get('WAYLAND_DISPLAY'):
+        env_info['display_protocol'] = 'wayland'
+    elif os.environ.get('DISPLAY'):
+        env_info['display_protocol'] = 'x11'
+    
+    try:
+        # 检查gi是否可用
+        import gi
+        
+        # 检查GTK是否已加载
+        if 'gi.repository.Gtk' in sys.modules:
+            env_info['gtk_loaded'] = True
+            import gi.repository.Gtk as Gtk
+            env_info['gtk_version'] = f"{Gtk.get_major_version()}.{Gtk.get_minor_version()}"
+            logger.debug(f"GTK already loaded: version {env_info['gtk_version']}")
+        
+        # 测试GTK3可用性
+        try:
+            if not env_info['gtk_loaded']:
+                gi.require_version('Gtk', '3.0')
+                from gi.repository import Gtk
+                env_info['gtk3_available'] = True
+                env_info['gtk_version'] = f"{Gtk.get_major_version()}.{Gtk.get_minor_version()}"
+                logger.debug("GTK3 is available")
+            elif env_info['gtk_version'].startswith('3.'):
+                env_info['gtk3_available'] = True
+        except (ImportError, ValueError):
+            logger.debug("GTK3 not available")
+            
+        # 测试GTK4可用性（仅在GTK未预加载时）
+        if not env_info['gtk_loaded']:
+            try:
+                gi.require_version('Gtk', '4.0')
+                from gi.repository import Gtk as Gtk4
+                env_info['gtk4_available'] = True
+                logger.debug("GTK4 is available")
+            except (ImportError, ValueError):
+                logger.debug("GTK4 not available")
+        
+        # 测试AppIndicator可用性
+        try:
+            # 重置GTK版本用于AppIndicator测试
+            if env_info['gtk3_available']:
+                gi.require_version('Gtk', '3.0')
+                gi.require_version('AppIndicator3', '0.1')
+                from gi.repository import AppIndicator3
+                env_info['appindicator_available'] = True
+                logger.debug("AppIndicator3 is available")
+        except (ImportError, ValueError):
+            try:
+                # 尝试Ayatana AppIndicator
+                gi.require_version('AyatanaAppIndicator3', '0.1')
+                from gi.repository import AyatanaAppIndicator3
+                env_info['appindicator_available'] = True
+                logger.debug("AyatanaAppIndicator3 is available")
+            except (ImportError, ValueError):
+                logger.debug("No AppIndicator available")
+                
+    except ImportError:
+        logger.debug("gi (PyGObject) not available")
+    
+    # 测试pystray可用性
+    try:
+        import pystray
+        from PIL import Image
+        env_info['pystray_available'] = True
+        logger.debug("pystray is available")
+    except ImportError:
+        logger.debug("pystray not available")
+    
+    # 确定推荐后端
+    if env_info['gtk3_available'] and env_info['appindicator_available']:
+        env_info['recommended_backend'] = 'gtk3_appindicator'
+    elif env_info['gtk4_available'] and not env_info['gtk_loaded']:
+        env_info['recommended_backend'] = 'gtk4'
+    elif env_info['pystray_available']:
+        env_info['recommended_backend'] = 'pystray'
+    else:
+        env_info['recommended_backend'] = None
+        
+    logger.info(f"Recommended tray backend: {env_info['recommended_backend']}")
+    return env_info
+
+
+def create_optimal_tray_manager(config: UIConfig):
+    """
+    创建最佳可用的托盘管理器
+    
+    Args:
+        config: UI配置对象
+        
+    Returns:
+        托盘管理器实例或None（如果没有可用的）
+    """
+    env_info = detect_gtk_environment()
+    
+    if env_info['recommended_backend'] == 'gtk3_appindicator':
+        logger.info("Using GTK3 + AppIndicator tray manager")
+        try:
+            from .tray_gtk3_appindicator import GTK3AppIndicatorTrayManager
+            return GTK3AppIndicatorTrayManager(config)
+        except Exception as e:
+            logger.warning(f"GTK3 AppIndicator failed: {e}")
+    
+    elif env_info['recommended_backend'] == 'gtk4':
+        logger.info("Using GTK4 tray manager")
+        try:
+            from .tray_gtk4 import GTK4TrayManager
+            return GTK4TrayManager(config)
+        except Exception as e:
+            logger.warning(f"GTK4 tray manager failed: {e}")
+    
+    elif env_info['recommended_backend'] == 'pystray':
+        logger.info("Using pystray tray manager")
+        try:
+            from .tray_pystray import PystrayTrayManager
+            return PystrayTrayManager(config)
+        except Exception as e:
+            logger.warning(f"pystray tray manager failed: {e}")
+    
+    logger.error("No suitable tray manager available")
+    return None
+
+
 class SystemTrayManager:
     """
-    Simple system tray manager using pystray.
+    智能系统托盘管理器 - 自动选择最佳实现
     
-    Provides basic tray functionality with status indication and context menu.
+    作为实际托盘实现的代理，提供统一的接口。
+    根据环境自动选择最适合的托盘后端实现。
     """
     
     def __init__(self, config: Optional[UIConfig] = None):
-        """
-        Initialize the system tray manager.
-        
-        Args:
-            config: UI configuration
-        """
+        """初始化智能托盘管理器"""
         self.config = config or UIConfig()
-        self._icon: Optional[pystray.Icon] = None
-        self._menu = TrayMenu()
-        self._status = TrayStatus.IDLE
-        self._running = False
-        self._thread: Optional[threading.Thread] = None
-        
-        # 图标管理器
-        self._icon_manager = get_icon_manager()
-        
-        # Callbacks
-        self._on_quit: Optional[Callable] = None
-        self._on_toggle: Optional[Callable] = None
-        self._on_settings: Optional[Callable] = None
-        self._on_about: Optional[Callable] = None
-        
-        # Setup menu handlers
-        self._setup_menu_handlers()
+        self._impl = None
+        self._env_info = detect_gtk_environment()
+        self._create_implementation()
     
-    def _setup_menu_handlers(self) -> None:
-        """Setup default menu action handlers."""
-        self._menu.register_handler(MenuAction.QUIT, self._handle_quit)
-        self._menu.register_handler(MenuAction.TOGGLE_RECOGNITION, self._handle_toggle)
-        self._menu.register_handler(MenuAction.OPEN_SETTINGS, self._handle_settings)
-        self._menu.register_handler(MenuAction.ABOUT, self._handle_about)
-        self._menu.register_handler(MenuAction.VIEW_STATISTICS, self._handle_statistics)
+    def _create_implementation(self):
+        """创建实际的托盘实现"""
+        self._impl = create_optimal_tray_manager(self.config)
+        if not self._impl:
+            logger.error("Failed to create any tray manager implementation")
     
-    def _get_icon_image(self, status: TrayStatus) -> 'Optional[Image.Image]':
-        """获取状态对应的图标图像"""
-        if not TRAY_AVAILABLE:
-            return None
+    def get_environment_info(self) -> Dict[str, Any]:
+        """获取环境检测信息"""
+        return self._env_info.copy()
+    
+    def get_backend_name(self) -> str:
+        """获取当前使用的后端名称"""
+        if not self._impl:
+            return "none"
         
-        # 使用图标管理器获取优化的图标
-        return self._icon_manager.get_optimized_icon_image(status.value)
+        impl_class = self._impl.__class__.__name__
+        if "GTK3" in impl_class:
+            return "gtk3_appindicator"
+        elif "GTK4" in impl_class:
+            return "gtk4"
+        elif "Pystray" in impl_class:
+            return "pystray"
+        else:
+            return "unknown"
     
-    def _create_fallback_icon(self, status: TrayStatus) -> Optional['Image.Image']:
-        """Create optimized fallback icon for better visibility."""
-        if not TRAY_AVAILABLE:
-            return None
-            
-        try:
-            # Use 128x128 for better visibility on high-DPI displays
-            size = 128
-            color_map = {
-                TrayStatus.IDLE: (74, 144, 226, 255),    # Blue
-                TrayStatus.ACTIVE: (76, 175, 80, 255),   # Green
-                TrayStatus.ERROR: (244, 67, 54, 255)     # Red
-            }
-            
-            color = color_map.get(status, (128, 128, 128, 255))
-            
-            # Create RGBA image for transparency
-            image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-            
-            from PIL import ImageDraw
-            draw = ImageDraw.Draw(image)
-            
-            # Reduce margin, increase content area
-            margin = max(8, size // 16)
-            
-            # Thicker lines for better visibility
-            line_width = max(4, size // 20)
-            
-            # Draw clearer circle outline
-            draw.ellipse([margin, margin, size - margin, size - margin], 
-                        fill=None, outline=color, width=line_width)
-            
-            # More prominent center indicators
-            center = size // 2
-            if status == TrayStatus.ACTIVE:
-                # Thicker "+" for active
-                thickness = max(6, size // 16)
-                length = max(16, size // 6)
-                draw.line([(center-length//2, center), (center+length//2, center)], 
-                         fill=(255, 255, 255, 255), width=thickness)
-                draw.line([(center, center-length//2), (center, center+length//2)], 
-                         fill=(255, 255, 255, 255), width=thickness)
-            elif status == TrayStatus.ERROR:
-                # Thicker "X" for error
-                thickness = max(6, size // 16)
-                offset = max(12, size // 8)
-                draw.line([(center-offset, center-offset), (center+offset, center+offset)], 
-                         fill=(255, 255, 255, 255), width=thickness)
-                draw.line([(center+offset, center-offset), (center-offset, center+offset)], 
-                         fill=(255, 255, 255, 255), width=thickness)
-            else:  # IDLE
-                # Larger center dot for idle
-                dot_size = max(8, size // 10)
-                draw.ellipse([center-dot_size, center-dot_size, center+dot_size, center+dot_size], 
-                           fill=(255, 255, 255, 255))
-            
-            logger.warning(f"Using optimized fallback icon for {status.value} - PNG file not found!")
-            return image
-            
-        except Exception as e:
-            logger.error(f"Failed to create fallback icon: {e}")
-            return None
-    
+    # 代理所有方法到实际实现
     def start(self) -> None:
-        """Start the system tray icon."""
-        if not TRAY_AVAILABLE:
-            logger.warning("Tray not available - pystray/Pillow not installed")
-            return
-            
-        if self._running:
-            logger.warning("System tray already running")
-            return
-        
-        if not self.config.show_tray_icon:
-            logger.info("System tray disabled in configuration")
-            return
-        
-        self._running = True
-        
-        try:
-            # Create tray icon
-            self._create_icon()
-            
-            # Run in separate thread
-            self._thread = threading.Thread(target=self._run, daemon=True)
-            self._thread.start()
-            
-            logger.info("System tray started")
-        except Exception as e:
-            logger.error(f"Failed to start system tray: {e}")
-            self._running = False
+        """启动托盘管理器"""
+        if self._impl:
+            return self._impl.start()
+        else:
+            logger.warning("No tray implementation available")
     
     def stop(self) -> None:
-        """Stop the system tray icon."""
-        if not self._running:
-            return
-        
-        self._running = False
-        
-        if self._icon:
-            try:
-                self._icon.stop()
-            except Exception as e:
-                logger.error(f"Error stopping tray icon: {e}")
-        
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
-            if self._thread.is_alive():
-                logger.warning("Tray thread did not stop cleanly")
-        
-        self._icon = None
-        self._thread = None
-        
-        logger.info("System tray stopped")
-    
-    def _create_icon(self) -> None:
-        """Create the system tray icon."""
-        if not TRAY_AVAILABLE:
-            return
-            
-        # Get initial icon image
-        image = self._get_icon_image(self._status)
-        if image is None:
-            logger.error("No icon available for initial state")
-            return
-        
-        # Create pystray menu
-        menu = self._create_pystray_menu()
-        
-        # Create icon
-        self._icon = pystray.Icon(
-            "NexTalk",
-            image,
-            "NexTalk - Voice Recognition",
-            menu
-        )
-    
-    def _run(self) -> None:
-        """Run the system tray icon (blocking)."""
-        try:
-            if self._icon:
-                self._icon.run()
-        except Exception as e:
-            logger.error(f"Error running tray icon: {e}")
-            self._running = False
-    
-    def _create_pystray_menu(self) -> Optional['pystray.Menu']:
-        """Create pystray menu from TrayMenu."""
-        if not TRAY_AVAILABLE:
-            return None
-            
-        menu_items = []
-        
-        for item in self._menu.get_items():
-            if item.action == MenuAction.SEPARATOR:
-                menu_items.append(pystray.Menu.SEPARATOR)
-            else:
-                # Create pystray menu item
-                pystray_item = pystray.MenuItem(
-                    item.label,
-                    lambda icon, i=item: self._menu.trigger_action(i),
-                    checked=lambda i=item: i.checked,
-                    enabled=lambda i=item: i.enabled
-                )
-                menu_items.append(pystray_item)
-        
-        return pystray.Menu(*menu_items)
+        """停止托盘管理器"""
+        if self._impl:
+            return self._impl.stop()
     
     def update_status(self, status: TrayStatus) -> None:
-        """
-        Update the tray icon status.
-        
-        Args:
-            status: New status
-        """
-        if status == self._status:
-            return
-        
-        self._status = status
-        
-        if self._icon and self._running:
-            # Update icon image
-            new_image = self._get_icon_image(status)
-            if new_image:
-                self._icon.icon = new_image
-                
-                # Update tooltip
-                tooltips = {
-                    TrayStatus.IDLE: "NexTalk - Idle",
-                    TrayStatus.ACTIVE: "NexTalk - Recording",
-                    TrayStatus.ERROR: "NexTalk - Error"
-                }
-                self._icon.title = tooltips.get(status, "NexTalk")
-        
-        logger.debug(f"Tray status updated to: {status.value}")
+        """更新托盘状态"""
+        if self._impl:
+            return self._impl.update_status(status)
     
     def show_notification(self, title: str, message: str, timeout: float = 3.0) -> None:
-        """
-        Show a system notification.
-        
-        Args:
-            title: Notification title
-            message: Notification message
-            timeout: Notification timeout in seconds (ignored)
-        """
-        if not self.config.show_notifications:
-            return
-        
-        if self._icon and TRAY_AVAILABLE:
-            try:
-                self._icon.notify(title, message)
-            except Exception as e:
-                logger.debug(f"Could not show notification: {e}")
-                # Fallback to logging
-                logger.info(f"Notification: {title} - {message}")
-        else:
-            logger.info(f"Notification: {title} - {message}")
+        """显示通知"""
+        if self._impl:
+            return self._impl.show_notification(title, message, timeout)
     
-    def update_menu(self) -> None:
-        """Update the tray menu."""
-        if self._icon and TRAY_AVAILABLE:
-            self._icon.menu = self._create_pystray_menu()
-    
-    # Callback setters
     def set_on_quit(self, callback: Callable) -> None:
-        """Set quit callback."""
-        self._on_quit = callback
+        """设置退出回调"""
+        if self._impl:
+            return self._impl.set_on_quit(callback)
     
     def set_on_toggle(self, callback: Callable) -> None:
-        """Set toggle recognition callback."""
-        self._on_toggle = callback
+        """设置切换识别回调"""
+        if self._impl:
+            return self._impl.set_on_toggle(callback)
     
     def set_on_settings(self, callback: Callable) -> None:
-        """Set open settings callback."""
-        self._on_settings = callback
+        """设置打开设置回调"""
+        if self._impl:
+            return self._impl.set_on_settings(callback)
     
     def set_on_about(self, callback: Callable) -> None:
-        """Set about callback."""
-        self._on_about = callback
+        """设置关于回调"""
+        if self._impl:
+            return self._impl.set_on_about(callback)
     
-    # Menu handlers
-    def _handle_quit(self, item: MenuItem) -> None:
-        """Handle quit action."""
-        logger.info("Quit requested from tray")
-        if self._on_quit:
-            self._on_quit()
-        self.stop()
-    
-    def _handle_toggle(self, item: MenuItem) -> None:
-        """Handle toggle recognition action."""
-        logger.info("Toggle recognition requested from tray")
-        if self._on_toggle:
-            self._on_toggle()
-    
-    def _handle_settings(self, item: MenuItem) -> None:
-        """Handle open settings action."""
-        logger.info("Open settings requested from tray")
-        if self._on_settings:
-            self._on_settings()
-        else:
-            self.show_notification("设置", "设置界面尚未实现")
-    
-    def _handle_about(self, item: MenuItem) -> None:
-        """Handle about action."""
-        logger.info("About requested from tray")
-        if self._on_about:
-            self._on_about()
-        else:
-            self.show_notification(
-                "关于 NexTalk",
-                "NexTalk v0.1.0\n个人轻量级实时语音识别与输入系统"
-            )
-    
-    def _handle_statistics(self, item: MenuItem) -> None:
-        """Handle view statistics action."""
-        logger.info("View statistics requested from tray")
-        self.show_notification("统计信息", "统计功能尚未实现")
+    def update_menu(self) -> None:
+        """更新托盘菜单"""
+        if self._impl and hasattr(self._impl, 'update_menu'):
+            return self._impl.update_menu()
     
     def is_running(self) -> bool:
-        """Check if tray is running."""
-        return self._running and self._icon is not None
+        """检查托盘是否运行"""
+        if self._impl:
+            return self._impl.is_running()
+        return False
+    
+    def is_available(self) -> bool:
+        """检查托盘是否可用"""
+        return self._impl is not None
 
 
-# Provide backwards compatibility
+# 向后兼容性别名
 TrayManager = SystemTrayManager
