@@ -750,8 +750,8 @@ class MainController:
                     self.ws_client.initialize_streaming_session(),
                     self._event_loop
                 )
-                # Wait for initialization to complete (with longer timeout)
-                future.result(timeout=8.0)
+                # Wait for initialization to complete (with shorter timeout for responsiveness)
+                future.result(timeout=3.0)
                 logger.info("WebSocket streaming session initialization completed")
                 streaming_initialized = True
                 break
@@ -811,8 +811,8 @@ class MainController:
                     self.ws_client.initialize_streaming_session(),
                     self._event_loop
                 )
-                # Wait for initialization to complete (with longer timeout)
-                future.result(timeout=8.0)
+                # Wait for initialization to complete (with shorter timeout for responsiveness)
+                future.result(timeout=3.0)
                 logger.info("WebSocket streaming session initialization completed")
                 streaming_initialized = True
                 break

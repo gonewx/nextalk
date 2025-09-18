@@ -278,6 +278,49 @@ python scripts/verify_installation.py
 
 应该看到所有核心依赖都已正确安装。
 
+## 快捷键支持（Wayland 环境）
+
+在 Wayland 环境下，系统全局热键可能无法正常工作。项目提供了 `toggle_recording.py` 脚本作为替代方案：
+
+### 使用方法
+
+```bash
+# 直接运行切换录音状态
+python toggle_recording.py
+```
+
+### 功能说明
+
+- **智能切换**：如果 NexTalk 已运行，发送切换信号；否则自动启动应用
+- **进程检测**：自动查找运行中的 NexTalk 进程
+- **依赖检查**：启动前检查 FunASR 服务器是否运行
+
+### 系统集成
+
+可以将此脚本绑定到系统快捷键：
+
+#### GNOME (Ubuntu/Fedora)
+```bash
+# 打开设置 -> 键盘 -> 查看和自定义快捷键 -> 自定义快捷键
+# 添加新快捷键：
+# 名称：NexTalk 切换
+# 命令：python /path/to/nextalk/toggle_recording.py
+# 快捷键：Ctrl+Shift+Space
+```
+
+#### KDE
+```bash
+# 系统设置 -> 快捷键 -> 自定义快捷键 -> 编辑 -> 新建 -> 全局快捷键 -> 命令/URL
+# 触发器：Ctrl+Shift+Space
+# 动作：python /path/to/nextalk/toggle_recording.py
+```
+
+### 注意事项
+
+- 确保脚本路径正确
+- FunASR 服务器必须先启动
+- 脚本会在后台启动 NexTalk（无控制台输出）
+
 ## 卸载
 
 ```bash

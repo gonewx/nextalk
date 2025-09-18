@@ -123,26 +123,12 @@ class NexTalkApp:
             logging.info("Received SIGUSR1 signal, toggling recording...")
             if self.controller and hasattr(self.controller, 'toggle_recording'):
                 try:
-                    # 使用线程安全的方式调度到事件循环
-                    if (hasattr(self.controller, '_event_loop') and 
-                        self.controller._event_loop and 
-                        not self.controller._event_loop.is_closed()):
-                        # 使用controller的事件循环
-                        future = asyncio.run_coroutine_threadsafe(
-                            self.controller.toggle_recording(),
-                            self.controller._event_loop
-                        )
-                        logging.info("Toggle recording task scheduled")
-                    elif hasattr(self.controller, '_event_loop') and self.controller._event_loop.is_closed():
-                        logging.warning("Event loop is closed, cannot toggle recording")
-                        return
+                    # 直接使用同步方法，与快捷键保持一致的执行路径
+                    logging.info("Using synchronous toggle method")
+                    if hasattr(self.controller, '_toggle_recognition'):
+                        self.controller._toggle_recognition()
                     else:
-                        # 回退到同步方式直接调用_toggle_recognition
-                        logging.info("Using synchronous toggle method")
-                        if hasattr(self.controller, '_toggle_recognition'):
-                            self.controller._toggle_recognition()
-                        else:
-                            logging.error("No toggle method available")
+                        logging.error("No toggle method available")
                 except Exception as e:
                     logging.error(f"Error toggling recording: {e}")
                     import traceback
