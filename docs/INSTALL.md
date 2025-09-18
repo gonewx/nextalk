@@ -178,15 +178,6 @@ sudo dnf install -y \
 # 安装 Python 依赖
 pip install -r requirements.txt
 
-# 如果使用虚拟环境，需要链接系统 D-Bus 模块以支持 Portal 文本注入
-cd .venv/lib/python3.*/site-packages
-ln -sf /usr/lib/python3*/site-packages/dbus .
-ln -sf /usr/lib/python3*/site-packages/_dbus_bindings.* .
-ln -sf /usr/lib/python3*/site-packages/_dbus_glib_bindings.* .
-ln -sf /usr/lib/python3*/site-packages/dbus_python*.egg-info .
-ln -sf /usr/lib/python3*/site-packages/gi .
-ln -sf /usr/lib/python3*/site-packages/PyGObject*.egg-info .
-```
 
 ## 故障排除
 
@@ -281,24 +272,6 @@ pip install pycairo PyGObject
 sudo apt install python3-dbus python3-gi  # Ubuntu/Debian
 # 或
 sudo dnf install python3-dbus python3-gobject  # Fedora/RHEL
-
-# 2. 在虚拟环境中链接系统模块
-cd .venv/lib/python3.*/site-packages
-ln -sf /usr/lib/python3/dist-packages/dbus .
-ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info .
-ln -sf /usr/lib/python3/dist-packages/gi .
-ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
-
-# 3. 验证修复
-python -c "
-from nextalk.output.environment_detector import EnvironmentDetector
-detector = EnvironmentDetector()
-env = detector.detect_environment(force_refresh=True)
-print(f'Portal available: {env.portal_available}')
-print(f'Recommended method: {env.recommended_method.value}')
-"
 ```
 
 **详细解决步骤**：请参考 [文本注入指南](docs/TEXT_INJECTION_GUIDE.md) 中的故障排除部分。

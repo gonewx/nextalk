@@ -46,54 +46,6 @@ sudo dnf install python3-dbus python3-gobject
 sudo pacman -S python-dbus python-gobject
 ```
 
-3. **链接到虚拟环境**：
-```bash
-# 进入虚拟环境的 site-packages 目录
-cd .venv/lib/python3.*/site-packages
-
-# 创建软链接
-ln -sf /usr/lib/python3/dist-packages/dbus .
-ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info .
-ln -sf /usr/lib/python3/dist-packages/gi .
-ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
-```
-
-4. **验证修复**：
-```bash
-# 测试 dbus 导入
-python -c "
-try:
-    import dbus
-    from dbus.mainloop.glib import DBusGMainLoop
-    print('✅ D-Bus 模块可用')
-except ImportError as e:
-    print('❌ D-Bus 模块不可用:', e)
-"
-
-# 测试 Portal 机制
-python -c "
-from nextalk.output.text_injector import TextInjector
-import asyncio
-
-async def test():
-    injector = TextInjector()
-    success = await injector.initialize()
-    if success:
-        status = await injector.get_ime_status()
-        method = status.get('active_method', 'unknown')
-        print(f'✅ 文本注入器初始化成功，使用方法: {method}')
-        if method == 'portal':
-            print('✅ Portal 机制工作正常!')
-    else:
-        print('❌ 文本注入器初始化失败')
-    await injector.cleanup()
-
-asyncio.run(test())
-"
-```
-
 ### XDoTool 机制不工作
 
 **问题描述**：
@@ -518,67 +470,6 @@ except Exception as e:
 EOF
 
 python diagnostic.py
-```
-
-### 快速修复脚本
-
-```bash
-# 创建一键修复脚本
-cat > fix_portal.sh << 'EOF'
-#!/bin/bash
-echo "=== NexTalk Portal 修复脚本 ==="
-
-# 检查系统包
-echo "检查系统依赖..."
-if command -v apt &> /dev/null; then
-    sudo apt install -y python3-dbus python3-gi
-elif command -v dnf &> /dev/null; then
-    sudo dnf install -y python3-dbus python3-gobject
-elif command -v pacman &> /dev/null; then
-    sudo pacman -S --needed python-dbus python-gobject
-else
-    echo "未识别的包管理器，请手动安装 python3-dbus 和 python3-gi"
-fi
-
-# 查找虚拟环境
-if [ -d ".venv" ]; then
-    SITE_PACKAGES=$(find .venv -name "site-packages" -type d | head -1)
-    if [ -n "$SITE_PACKAGES" ]; then
-        echo "在 $SITE_PACKAGES 中创建软链接..."
-        cd "$SITE_PACKAGES"
-        
-        # 创建软链接
-        ln -sf /usr/lib/python3/dist-packages/dbus . 2>/dev/null || \
-        ln -sf /usr/lib/python3*/site-packages/dbus . 2>/dev/null
-        
-        ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* . 2>/dev/null || \
-        ln -sf /usr/lib/python3*/site-packages/_dbus_bindings.* . 2>/dev/null
-        
-        ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* . 2>/dev/null || \
-        ln -sf /usr/lib/python3*/site-packages/_dbus_glib_bindings.* . 2>/dev/null
-        
-        ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info . 2>/dev/null || \
-        ln -sf /usr/lib/python3*/site-packages/dbus_python*.egg-info . 2>/dev/null
-        
-        ln -sf /usr/lib/python3/dist-packages/gi . 2>/dev/null || \
-        ln -sf /usr/lib/python3*/site-packages/gi . 2>/dev/null
-        
-        ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info . 2>/dev/null || \
-        ln -sf /usr/lib/python3*/site-packages/PyGObject*.egg-info . 2>/dev/null
-        
-        echo "软链接创建完成"
-        cd - > /dev/null
-    else
-        echo "未找到 site-packages 目录"
-    fi
-else
-    echo "未找到虚拟环境，如果使用虚拟环境请先激活"
-fi
-
-echo "=== 修复完成，请测试 Portal 功能 ==="
-EOF
-
-chmod +x fix_portal.sh
 ```
 
 ## 获取帮助
