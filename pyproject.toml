@@ -18,6 +18,8 @@ dependencies = [
     "pillow>=10.4.0",
     "psutil>=7.0.0",
     "cairosvg>=2.7.1",
+    "pycairo>=1.26.1",
+    "pygobject>=3.48.2",
 ]
 
 [project.optional-dependencies]

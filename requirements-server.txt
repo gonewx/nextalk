@@ -1,7 +1,7 @@
 # Dependencies for FunASR WebSocket Server
 
 # FunASR and model management
-funasr>=1.0.0          # FunASR speech recognition framework
+funasr>=1.2.7          # FunASR speech recognition framework
 modelscope>=1.9.0      # Model downloading from ModelScope
 
 # WebSocket server

@@ -142,6 +142,8 @@ sudo apt-get install -y \
     libcairo2-dev \
     pkg-config \
     ffmpeg \
+    libayatana-appindicator3-dev　\
+    gir1.2-ayatanaappindicator3-0.1　\
     xdotool
 
 # 安装 Python 依赖
