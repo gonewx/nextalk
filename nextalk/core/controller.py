@@ -224,17 +224,20 @@ class MainController:
     def __init__(self, config_path: Optional[str] = None):
         """
         Initialize the main controller.
-        
+
         Args:
             config_path: Path to configuration file
         """
         # State management
         self.state_manager = StateManager()
         self._setup_state_listeners()
-        
+
         # Configuration
         self.config_manager = ConfigManager(config_path)
         self.config: Optional[NexTalkConfig] = None
+
+        # Application exit callback
+        self._app_exit_callback: Optional[Callable] = None
         
         # Modules
         self.audio_manager: Optional[AudioCaptureManager] = None
@@ -278,7 +281,16 @@ class MainController:
         self._user_stopped_recording = False
         
         logger.info("MainController initialized")
-    
+
+    def set_app_exit_callback(self, callback: Callable) -> None:
+        """
+        设置应用程序退出回调函数
+
+        Args:
+            callback: 应用程序退出回调函数
+        """
+        self._app_exit_callback = callback
+
     def _setup_state_listeners(self) -> None:
         """Setup state transition listeners."""
         # Register state entry listeners
@@ -372,7 +384,7 @@ class MainController:
             if self.config.ui.show_tray_icon:
                 self._initialize_tray_manager()
                 if self.tray_manager:
-                    self.tray_manager.set_on_quit(self.shutdown)
+                    self.tray_manager.set_on_quit(self._handle_tray_quit)
                     self.tray_manager.set_on_toggle(self._toggle_recognition)
                     self.tray_manager.set_on_settings(self._open_settings)
             
@@ -536,11 +548,39 @@ class MainController:
                     f"{mode_text} - 音频采集已开始"
                 )
     
+    def _handle_tray_quit(self) -> None:
+        """处理托盘退出请求"""
+        logger.info("Tray quit requested")
+
+        # 先通知主程序退出
+        if self._app_exit_callback:
+            logger.info("Calling app exit callback")
+            try:
+                self._app_exit_callback()
+                logger.info("App exit callback completed")
+            except Exception as e:
+                logger.error(f"Error in app exit callback: {e}")
+        else:
+            logger.warning("No app exit callback set, only shutting down controller")
+            self.shutdown()
+
+        # 强制退出机制：如果5秒后程序还没退出，强制终止
+        import threading
+        import os
+        import time
+
+        def force_exit():
+            time.sleep(5.0)
+            logger.warning("Program did not exit gracefully, forcing exit")
+            os._exit(0)
+
+        threading.Thread(target=force_exit, daemon=True).start()
+
     def shutdown(self) -> None:
         """Shutdown the controller and all modules."""
         if self.state_manager.get_state() == ControllerState.SHUTDOWN:
             return
-        
+
         logger.info("Shutting down MainController...")
         self.state_manager.transition(ControllerEvent.SHUTDOWN)
         

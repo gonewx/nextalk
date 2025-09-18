@@ -92,24 +92,24 @@ def detect_gtk_environment() -> Dict[str, Any]:
             except (ImportError, ValueError):
                 logger.debug("GTK4 not available")
         
-        # 测试AppIndicator可用性
-        try:
-            # 重置GTK版本用于AppIndicator测试
-            if env_info['gtk3_available']:
-                gi.require_version('Gtk', '3.0')
-                gi.require_version('AppIndicator3', '0.1')
-                from gi.repository import AppIndicator3
-                env_info['appindicator_available'] = True
-                logger.debug("AppIndicator3 is available")
-        except (ImportError, ValueError):
+        # 测试AppIndicator可用性（优先Ayatana，符合Ubuntu 22.04最佳实践）
+        if env_info['gtk3_available']:
+            gi.require_version('Gtk', '3.0')
             try:
-                # 尝试Ayatana AppIndicator
+                # 优先尝试Ayatana AppIndicator (Ubuntu 22.04推荐)
                 gi.require_version('AyatanaAppIndicator3', '0.1')
                 from gi.repository import AyatanaAppIndicator3
                 env_info['appindicator_available'] = True
                 logger.debug("AyatanaAppIndicator3 is available")
             except (ImportError, ValueError):
-                logger.debug("No AppIndicator available")
+                try:
+                    # 回退到传统AppIndicator3
+                    gi.require_version('AppIndicator3', '0.1')
+                    from gi.repository import AppIndicator3
+                    env_info['appindicator_available'] = True
+                    logger.debug("AppIndicator3 is available")
+                except (ImportError, ValueError):
+                    logger.debug("No AppIndicator available")
                 
     except ImportError:
         logger.debug("gi (PyGObject) not available")

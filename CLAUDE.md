@@ -14,88 +14,6 @@ NexTalk 是一个个人轻量级实时语音识别与输入系统，基于 FunAS
 
 use mcp__deepwiki 查看相关项目文档。不要简单的使用 read_wiki_contents, 要提出具体问题。
 
-## 常用开发命令
-
-### 测试命令
-```bash
-# 运行完整测试套件
-make test
-
-# 运行快速单元测试 
-make test-quick
-
-# 运行集成测试
-make test-integration
-
-# 使用 pytest 直接运行
-python -m pytest tests/ -v
-```
-
-### 代码质量检查
-```bash
-# 运行所有代码检查
-make lint
-
-# 单独运行各项检查
-python -m flake8 nextalk/     # 代码风格检查
-python -m mypy nextalk/       # 类型检查
-python -m black nextalk/      # 代码格式检查
-python -m black --check nextalk/  # 仅检查不修改
-
-# 自动格式化代码
-make format
-```
-
-### 构建和打包
-```bash
-# 构建可执行文件
-make build
-
-# 构建带 GUI 版本
-make build-gui
-
-# 创建分发包
-make package
-
-# 完整发布流程
-make release
-```
-
-### 开发运行
-```bash
-# 启动完整系统 (FunASR 服务器 + NexTalk)
-python start_all.py
-
-# 仅启动 NexTalk (需要先启动 FunASR 服务器)
-python -m nextalk
-# 或
-nextalk
-
-# 调试模式运行
-make debug
-```
-
-### 依赖管理
-```bash
-# 安装运行时依赖
-make install
-
-# 安装开发依赖
-make dev
-
-# 检查依赖状态
-make check-deps
-
-# 修复 Portal 文本注入依赖 (虚拟环境)
-# 如果 Portal 机制不工作，执行以下命令链接系统级 D-Bus 模块
-cd .venv/lib/python3.*/site-packages
-ln -sf /usr/lib/python3/dist-packages/dbus .
-ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info .
-ln -sf /usr/lib/python3/dist-packages/gi .
-ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
-```
 
 ## 核心架构
 
@@ -112,30 +30,6 @@ nextalk/
 └── utils/          # 工具函数 (logger.py, monitor.py, system.py)
 ```
 
-### 关键组件
-
-1. **Controller** (`core/controller.py:31-40`)
-   - 主状态机: UNINITIALIZED → INITIALIZING → READY → ACTIVE
-   - 协调所有模块，管理应用生命周期
-   - 异步架构，基于 asyncio
-
-2. **FunASR 集成**
-   - `funasr_wss_server.py` - FunASR WebSocket 服务器 
-   - `network/ws_client.py` - WebSocket 客户端连接
-   - 支持自动重连和错误恢复
-
-3. **音频处理**
-   - 实时音频采集，支持设备选择
-   - 配置参数: 采样率 16000Hz，单声道
-   - 分块处理: [5, 10, 5] chunk_size
-
-4. **文本注入系统**
-   - 现代化文本注入架构，支持多种注入机制
-   - **Portal 机制**: 基于 xdg-desktop-portal RemoteDesktop，适用于 Wayland 环境
-   - **xdotool 机制**: 传统 X11 环境的文本注入工具
-   - 智能环境检测和自动选择最佳注入方式
-   - 统一的注入接口，支持异步操作和错误恢复
-
 ### 配置系统
 
 主配置文件: `config/nextalk.yaml`
@@ -145,12 +39,6 @@ nextalk/
 - UI 设置: 系统托盘、通知、语言
 - 识别模式: 2pass 模式，支持 ITN 和标点
 
-### 启动流程
-
-**必需步骤**:
-1. 启动 FunASR 服务器: `python funasr_wss_server.py`
-2. 等待模型加载完成 (显示 "model loaded!")
-3. 启动 NexTalk: `python -m nextalk`
 
 **依赖关系**:
 - NexTalk 依赖 FunASR WebSocket 服务 (localhost:10095)
@@ -168,10 +56,13 @@ nextalk/
 1. **异步编程**: 核心使用 asyncio，注意 async/await 使用
 2. **类型检查**: 启用了 mypy 严格模式，需要完整类型标注
 3. **跨平台**: 支持 Windows/macOS/Linux，注意平台特定代码
-4. **权限要求**: 
+4. **权限要求**:
    - macOS 需要辅助功能权限
    - Linux 需要 X11/Wayland 支持
    - Windows 建议管理员权限
+5. **依赖安装常见问题**:
+   - PyGObject 安装失败: 需要 `libgirepository-2.0-dev` 等系统依赖
+   - 参考 `docs/INSTALL.md` 中的故障排除部分
 
 ### 常见开发任务
 
@@ -181,77 +72,3 @@ nextalk/
 - 自定义文本注入: 修改 `output/text_injector.py`
 - 添加新的 UI 功能: 扩展 `ui/` 模块
 
-### 调试技巧
-
-1. 启用调试日志: 设置 `logging.level: "DEBUG"`
-2. 使用测试脚本: `test_im_injection.py`, `demo_im_injection.py`
-3. 检查网络连接: 确认 FunASR 服务器状态
-4. 音频设备测试: 使用 `scripts/verify_installation.py`
-
-### 常见问题排除
-
-#### Portal 文本注入机制不工作
-
-**症状**: 在 Wayland 环境下文本注入不工作，系统回退到 xdotool 机制
-
-**原因**: 虚拟环境中缺少 D-Bus Python 绑定
-
-**解决方案**:
-```bash
-# 1. 确认系统已安装必要包
-sudo apt install python3-dbus python3-gi
-
-# 2. 在项目根目录执行软链接命令
-cd .venv/lib/python3.*/site-packages
-ln -sf /usr/lib/python3/dist-packages/dbus .
-ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info .
-ln -sf /usr/lib/python3/dist-packages/gi .
-ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
-
-# 3. 验证修复
-python -c "
-from nextalk.output.environment_detector import EnvironmentDetector
-detector = EnvironmentDetector()
-env = detector.detect_environment(force_refresh=True)
-print(f'Portal available: {env.portal_available}')
-print(f'Recommended: {env.recommended_method.value}')
-"
-```
-
-**验证成功标志**:
-- `Portal available: True`
-- `Recommended: portal` (在 Wayland 环境下)
-- Portal 会话能够正常建立并获得键盘权限
-
-#### 环境检测问题
-
-**检查当前环境**:
-```bash
-python -c "
-from nextalk.output.environment_detector import EnvironmentDetector
-detector = EnvironmentDetector()
-debug_info = detector.get_debug_info()
-for key, value in debug_info.items():
-    print(f'{key}: {value}')
-"
-```
-
-**测试文本注入**:
-```bash
-python -c "
-from nextalk.output.text_injector import TextInjector
-import asyncio
-
-async def test():
-    injector = TextInjector()
-    success = await injector.initialize()
-    if success:
-        status = await injector.get_ime_status()
-        print(f'Active method: {status.get(\"active_method\")}')
-    await injector.cleanup()
-
-asyncio.run(test())
-"
-```

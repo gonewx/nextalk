@@ -182,7 +182,10 @@ class NexTalkApp:
             
             # Create controller
             self.controller = MainController(self.config_path)
-            
+
+            # Set app exit callback so tray can properly exit the application
+            self.controller.set_app_exit_callback(self._shutdown)
+
             # Initialize controller
             if not await self.controller.initialize():
                 logging.error("Failed to initialize controller")
@@ -227,12 +230,30 @@ class NexTalkApp:
     
     def _shutdown(self) -> None:
         """Trigger application shutdown."""
+        logging.info("_shutdown() called")
+
         if self._shutdown_in_progress or not self._running:
+            logging.info("Already shutting down or not running")
             return
-        
+
         self._shutdown_in_progress = True
         self._running = False
+
+        logging.info("Setting shutdown event")
         self._shutdown_event.set()
+
+        # 强制退出保险机制
+        import threading
+        import os
+        import time
+
+        def emergency_exit():
+            time.sleep(3.0)
+            logging.warning("Emergency exit triggered - forcing process termination")
+            os._exit(0)
+
+        threading.Thread(target=emergency_exit, daemon=True).start()
+        logging.info("Emergency exit timer started")
     
     async def cleanup(self) -> None:
         """Clean up resources."""

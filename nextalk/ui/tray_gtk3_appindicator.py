@@ -30,19 +30,19 @@ try:
     import gi
     gi.require_version('Gtk', '3.0')
     
-    # 尝试AppIndicator3
+    # 优先尝试AyatanaAppIndicator3（Ubuntu 22.04推荐）
     try:
-        gi.require_version('AppIndicator3', '0.1')
-        from gi.repository import AppIndicator3 as AppIndicator
+        gi.require_version('AyatanaAppIndicator3', '0.1')
+        from gi.repository import AyatanaAppIndicator3 as AppIndicator
         APPINDICATOR_AVAILABLE = True
-        logger.debug("Using AppIndicator3")
+        logger.debug("Using AyatanaAppIndicator3")
     except (ImportError, ValueError):
         try:
-            # 尝试AyatanaAppIndicator3
-            gi.require_version('AyatanaAppIndicator3', '0.1')
-            from gi.repository import AyatanaAppIndicator3 as AppIndicator
+            # 回退到传统AppIndicator3
+            gi.require_version('AppIndicator3', '0.1')
+            from gi.repository import AppIndicator3 as AppIndicator
             APPINDICATOR_AVAILABLE = True
-            logger.debug("Using AyatanaAppIndicator3")
+            logger.debug("Using AppIndicator3")
         except (ImportError, ValueError):
             logger.debug("No AppIndicator available")
     
@@ -176,16 +176,19 @@ class GTK3AppIndicatorTrayManager:
     def _create_indicator(self) -> None:
         """创建AppIndicator"""
         try:
-            # 获取初始图标
-            icon_path = self._get_icon_path(self._status)
-            if not icon_path:
-                logger.error("No icon available for initial state")
-                return
-            
-            # 创建AppIndicator  
+            # 优先使用主题图标名，回退到绝对路径
+            icon_id = self._get_theme_icon_name(self._status)
+            if not icon_id:
+                # 回退到自定义图标路径
+                icon_id = self._get_icon_path(self._status)
+                if not icon_id:
+                    # 回退到默认主题图标
+                    icon_id = "indicator-messages"
+
+            # 创建AppIndicator
             self._indicator = AppIndicator.Indicator.new(
                 "nextalk-tray",
-                icon_path,
+                icon_id,
                 AppIndicator.IndicatorCategory.APPLICATION_STATUS
             )
             
@@ -248,6 +251,16 @@ class GTK3AppIndicatorTrayManager:
         except Exception as e:
             logger.error(f"Error in menu activate handler: {e}")
     
+    def _get_theme_icon_name(self, status: TrayStatus) -> Optional[str]:
+        """获取状态对应的主题图标名"""
+        # 映射到标准主题图标名
+        theme_icons = {
+            TrayStatus.IDLE: "audio-input-microphone",
+            TrayStatus.ACTIVE: "audio-input-microphone-high",
+            TrayStatus.ERROR: "dialog-error"
+        }
+        return theme_icons.get(status)
+
     def _get_icon_path(self, status: TrayStatus) -> Optional[str]:
         """获取状态对应的图标路径"""
         try:
@@ -267,9 +280,14 @@ class GTK3AppIndicatorTrayManager:
             # 在GTK主线程中安全更新
             def update_icon():
                 try:
-                    icon_path = self._get_icon_path(status)
-                    if icon_path:
-                        self._indicator.set_icon(icon_path)
+                    # 优先使用主题图标
+                    icon_id = self._get_theme_icon_name(status)
+                    if not icon_id:
+                        # 回退到自定义图标路径
+                        icon_id = self._get_icon_path(status)
+
+                    if icon_id:
+                        self._indicator.set_icon(icon_id)
                         
                         # 更新标签
                         # labels = {
@@ -287,14 +305,47 @@ class GTK3AppIndicatorTrayManager:
         
         logger.debug(f"Tray status updated to: {status.value}")
     
-    def show_notification(self, title: str, message: str, timeout: float = 3.0) -> None:
+    def show_notification(self, title: str, message: str, _timeout: float = 3.0) -> None:
         """显示系统通知"""
         if not self.config.show_notifications:
             return
-        
-        # GTK3环境下记录到日志
-        # 可以扩展为使用Gio.Notification或其他桌面通知方式
-        logger.info(f"Notification: {title} - {message}")
+
+        try:
+            # 使用 GLib 在 GTK 主线程中安全发送通知
+            def send_notification():
+                try:
+                    from gi.repository import Gio, GLib
+
+                    # 创建应用程序对象（如果尚未存在）
+                    app = Gio.Application.get_default()
+                    if not app:
+                        app = Gio.Application(application_id="com.nextalk.app")
+                        app.register()
+
+                    # 创建通知
+                    notification = Gio.Notification.new(title)
+                    notification.set_body(message)
+
+                    # 设置图标
+                    try:
+                        icon = Gio.ThemedIcon.new("audio-input-microphone")
+                        notification.set_icon(icon)
+                    except Exception:
+                        pass  # 忽略图标错误
+
+                    # 发送通知
+                    app.send_notification("nextalk-notification", notification)
+
+                except Exception as e:
+                    # 回退到日志记录
+                    logger.warning(f"Failed to send desktop notification: {e}")
+                    logger.info(f"Notification: {title} - {message}")
+
+            GLib.idle_add(send_notification)
+        except Exception as e:
+            # 完全回退到日志记录
+            logger.warning(f"Notification system unavailable: {e}")
+            logger.info(f"Notification: {title} - {message}")
     
     def update_menu(self) -> None:
         """更新托盘菜单"""
@@ -326,28 +377,44 @@ class GTK3AppIndicatorTrayManager:
         self._on_about = callback
     
     # 菜单处理器
-    def _handle_quit(self, item: MenuItem) -> None:
+    def _handle_quit(self, _item: MenuItem) -> None:
         """处理退出动作"""
         logger.info("Quit requested from GTK3 tray")
-        if self._on_quit:
-            self._on_quit()
-        self.stop()
-    
-    def _handle_toggle(self, item: MenuItem) -> None:
+
+        # 在独立线程中处理退出以避免阻塞GTK主循环
+        def handle_quit_async():
+            try:
+                if self._on_quit:
+                    logger.info("Calling quit callback")
+                    self._on_quit()
+                    logger.info("Quit callback completed")
+                else:
+                    logger.warning("No quit callback set")
+                    self.stop()
+            except Exception as e:
+                logger.error(f"Error in quit handler: {e}")
+                # 如果回调失败，强制退出
+                import os
+                os._exit(1)
+
+        import threading
+        threading.Thread(target=handle_quit_async, daemon=True).start()
+
+    def _handle_toggle(self, _item: MenuItem) -> None:
         """处理切换识别动作"""
         logger.info("Toggle recognition requested from GTK3 tray")
         if self._on_toggle:
             self._on_toggle()
-    
-    def _handle_settings(self, item: MenuItem) -> None:
+
+    def _handle_settings(self, _item: MenuItem) -> None:
         """处理打开设置动作"""
         logger.info("Open settings requested from GTK3 tray")
         if self._on_settings:
             self._on_settings()
         else:
             self.show_notification("设置", "设置界面尚未实现")
-    
-    def _handle_about(self, item: MenuItem) -> None:
+
+    def _handle_about(self, _item: MenuItem) -> None:
         """处理关于动作"""
         logger.info("About requested from GTK3 tray")
         if self._on_about:
@@ -357,8 +424,8 @@ class GTK3AppIndicatorTrayManager:
                 "关于 NexTalk",
                 "NexTalk v0.1.0\n个人轻量级实时语音识别与输入系统"
             )
-    
-    def _handle_statistics(self, item: MenuItem) -> None:
+
+    def _handle_statistics(self, _item: MenuItem) -> None:
         """处理查看统计信息动作"""
         logger.info("View statistics requested from GTK3 tray")
         self.show_notification("统计信息", "统计功能尚未实现")

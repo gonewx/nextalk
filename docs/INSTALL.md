@@ -131,12 +131,17 @@ pip install -r requirements.txt
 # 安装系统依赖
 sudo apt-get update
 sudo apt-get install -y \
+    build-essential \
     python3-dev \
     portaudio19-dev \
     python3-tk \
     python3-pyaudio \
     python3-dbus \
     python3-gi \
+    libgirepository-2.0-dev \
+    libcairo2-dev \
+    pkg-config \
+    ffmpeg \
     xdotool
 
 # 安装 Python 依赖
@@ -157,11 +162,17 @@ ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
 ```bash
 # 安装系统依赖
 sudo dnf install -y \
+    gcc \
+    gcc-c++ \
+    make \
     python3-devel \
     portaudio-devel \
     python3-tkinter \
     python3-dbus \
     python3-gobject \
+    gobject-introspection-devel \
+    cairo-devel \
+    pkgconfig \
     xdotool
 
 # 安装 Python 依赖
@@ -196,6 +207,24 @@ pip install PyQt6 --upgrade
 pip install -r requirements.txt  # 仅安装核心依赖
 ```
 
+### 问题：PyAudio 编译失败
+
+**症状**：安装 GUI 依赖时出现 `error: command 'cc' failed: No such file or directory`
+
+**原因**：缺少 C 编译器和相关构建工具
+
+**解决**：
+```bash
+# Ubuntu/Debian
+sudo apt install build-essential python3-dev portaudio19-dev
+
+# Fedora/RHEL
+sudo dnf install gcc gcc-c++ make python3-devel portaudio-devel
+
+# 然后重试安装
+uv pip install -r requirements-gui.txt
+```
+
 ### 问题：sounddevice 安装失败
 
 **解决**：
@@ -219,6 +248,27 @@ echo $DISPLAY  # 应该显示 :0 或类似值
 
 # 安装必要的库
 sudo apt-get install python3-xlib
+```
+
+### 问题：PyGObject 安装失败
+
+**症状**：安装 GUI 依赖时出现 `ERROR: Dependency 'girepository-2.0' is required but not found`
+
+**原因**：缺少 girepository-2.0 开发包
+
+**解决**：
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install -y libgirepository-2.0-dev libcairo2-dev pkg-config python3-dev
+
+# Fedora/RHEL
+sudo dnf install -y gobject-introspection-devel cairo-devel pkgconfig python3-devel
+
+# 然后重试安装 PyGObject
+uv pip install pycairo PyGObject
+# 或
+pip install pycairo PyGObject
 ```
 
 ### 问题：Portal 文本注入不工作

@@ -69,52 +69,6 @@ class TrayMenu:
                 label="",
                 action=MenuAction.SEPARATOR
             ),
-            # IME状态和控制菜单
-            MenuItem(
-                label="IME状态: 检测中...",
-                action=MenuAction.VIEW_IME_STATUS,
-                enabled=False,
-                icon="ime_status"
-            ),
-            MenuItem(
-                label="启用/禁用IME注入",
-                action=MenuAction.TOGGLE_IME,
-                checked=True,
-                icon="ime_toggle"
-            ),
-            MenuItem(
-                label="测试IME注入",
-                action=MenuAction.TEST_IME_INJECTION,
-                icon="ime_test"
-            ),
-            MenuItem(
-                label="IME设置",
-                action=MenuAction.IME_SETTINGS,
-                icon="ime_settings"
-            ),
-            MenuItem(
-                label="",
-                action=MenuAction.SEPARATOR
-            ),
-            MenuItem(
-                label="设置",
-                action=MenuAction.OPEN_SETTINGS,
-                icon="settings"
-            ),
-            MenuItem(
-                label="统计信息",
-                action=MenuAction.VIEW_STATISTICS,
-                icon="stats"
-            ),
-            MenuItem(
-                label="",
-                action=MenuAction.SEPARATOR
-            ),
-            MenuItem(
-                label="关于 NexTalk",
-                action=MenuAction.ABOUT,
-                icon="info"
-            ),
             MenuItem(
                 label="退出",
                 action=MenuAction.QUIT,
