@@ -147,16 +147,6 @@ sudo apt-get install -y \
 # 安装 Python 依赖
 pip install -r requirements.txt
 
-# 如果使用虚拟环境，需要链接系统 D-Bus 模块以支持 Portal 文本注入
-cd .venv/lib/python3.*/site-packages
-ln -sf /usr/lib/python3/dist-packages/dbus .
-ln -sf /usr/lib/python3/dist-packages/_dbus_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/_dbus_glib_bindings.* .
-ln -sf /usr/lib/python3/dist-packages/dbus_python*.egg-info .
-ln -sf /usr/lib/python3/dist-packages/gi .
-ln -sf /usr/lib/python3/dist-packages/PyGObject*.egg-info .
-```
-
 ### Linux (Fedora/RHEL)
 
 ```bash
