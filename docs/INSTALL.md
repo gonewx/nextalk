@@ -231,6 +231,16 @@ echo $DISPLAY  # 应该显示 :0 或类似值
 
 # 安装必要的库
 sudo apt-get install python3-xlib
+
+# 如果仍有权限问题，添加 X11 权限
+xhost +local:
+```
+
+**运行应用**：
+```bash
+# 在授权 X11 权限后运行 NexTalk
+xhost +local:
+python -m nextalk -c config/nextalk.yaml
 ```
 
 ### 问题：PyGObject 安装失败
