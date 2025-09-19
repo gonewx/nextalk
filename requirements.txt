@@ -11,6 +11,7 @@ PyYAML>=6.0
 pynput>=1.7.6          # Global hotkey detection and keyboard/mouse control
 pyautogui>=0.9.54      # GUI automation for text injection
 pyperclip>=1.8.2       # Clipboard operations
+dbus-python>=1.4.0    # D-Bus bindings for Portal text injection (Linux)
 
 # Audio processing
 pyaudio>=0.2.11        # Audio I/O library
