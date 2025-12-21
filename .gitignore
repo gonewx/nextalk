@@ -1,0 +1,33 @@
+# Build artifacts
+**/build/
+*.so
+*.o
+*.a
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Flutter
+voice_capsule/.dart_tool/
+voice_capsule/.packages
+voice_capsule/build/
+voice_capsule/.flutter-plugins
+voice_capsule/.flutter-plugins-dependencies
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Debug
+*.log
+core

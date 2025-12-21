@@ -1,0 +1,8 @@
+[Addon]
+Name=Nextalk
+Category=Module
+Library=nextalk
+Type=SharedLibrary
+OnDemand=False
+Configurable=False
+Version=@PROJECT_VERSION@

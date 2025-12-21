@@ -1,0 +1,95 @@
+# Workflow Status - BMM Methodology Tracking
+# This tracks progress through BMM methodology Analysis, Planning, and Solutioning phases.
+# Implementation phase is tracked separately in sprint-status.yaml
+
+# STATUS DEFINITIONS:
+# ==================
+# Initial Status (before completion):
+#   - required: Must be completed to progress
+#   - optional: Can be completed but not required
+#   - recommended: Strongly suggested but not required
+#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
+#
+# Completion Status:
+#   - {file-path}: File created/found (e.g., "docs/product-brief.md")
+#   - skipped: Optional/conditional workflow that was skipped
+
+generated: "2025-12-21"
+project: "nextalk_fcitx5_v2"
+project_type: "software"
+selected_track: "bmad-method"
+field_type: "greenfield"
+workflow_path: "method-greenfield.yaml"
+
+workflow_status:
+  # Phase 0: Discovery (Optional)
+  phase_0_discovery:
+    name: "Discovery"
+    status: "skipped"
+    workflows:
+      brainstorm-project:
+        status: "skipped"
+        agent: "analyst"
+      research:
+        status: "skipped"
+        agent: "analyst"
+      product-brief:
+        status: "skipped"
+        agent: "analyst"
+
+  # Phase 1: Planning
+  phase_1_planning:
+    name: "Planning"
+    status: "completed"
+    workflows:
+      prd:
+        status: "docs/prd.md"
+        agent: "pm"
+        completed_date: "2025-12-21"
+      create-ux-design:
+        status: "docs/front-end-spec.md"
+        agent: "ux-designer"
+        completed_date: "2025-12-21"
+
+  # Phase 2: Solutioning
+  phase_2_solutioning:
+    name: "Solutioning"
+    status: "in_progress"
+    workflows:
+      create-architecture:
+        status: "docs/architecture.md"
+        agent: "architect"
+        completed_date: "2025-12-21"
+      create-epics-and-stories:
+        status: "required"
+        agent: "pm"
+        note: "NEXT: Break down PRD into implementable epics and stories"
+      test-design:
+        status: "recommended"
+        agent: "tea"
+        note: "System-level testability review"
+      validate-architecture:
+        status: "optional"
+        agent: "architect"
+      implementation-readiness:
+        status: "required"
+        agent: "architect"
+        note: "Gate check before implementation"
+
+  # Phase 3: Implementation
+  phase_3_implementation:
+    name: "Implementation"
+    status: "pending"
+    workflows:
+      sprint-planning:
+        status: "required"
+        agent: "sm"
+        note: "Creates sprint plan - subsequent work tracked in sprint-status.yaml"
+
+# Next Action
+next_workflow:
+  id: "create-epics-and-stories"
+  name: "Create Epics & Stories"
+  agent: "pm"
+  command: "/bmad:bmm:workflows:create-epics-and-stories"
+  description: "将 PRD 需求分解为可实现的 Epics 和 Stories"

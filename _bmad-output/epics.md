@@ -1,0 +1,541 @@
+---
+stepsCompleted: ["step-01-validate-prerequisites", "step-02-design-epics", "step-03-create-stories", "step-04-final-validation"]
+inputDocuments:
+  - docs/prd.md
+  - docs/architecture.md
+  - docs/front-end-spec.md
+---
+
+# Nextalk - Epic Breakdown
+
+## Overview
+
+This document provides the complete epic and story breakdown for Nextalk, decomposing the requirements from the PRD, UX Design, and Architecture requirements into implementable stories.
+
+## Requirements Inventory
+
+### Functional Requirements
+
+FR1 [UI/交互]: 悬浮胶囊窗口
+- 应用启动后默认隐藏，托盘显示图标
+- 激活时显示无边框、真透明胶囊窗口
+- 实时反馈：用户说话时，文字逐字显示在预览区
+
+FR2 [核心]: 实时语音识别 (ASR)
+- 模型：sherpa-onnx-streaming-zipformer-bilingual-zh-en (流式双语)
+- 采集：通过 Dart FFI + PortAudio 采集 16k 单声道音频
+
+FR3 [核心]: 智能端点检测 (VAD)
+- 使用 Sherpa 内置 VAD (默认停顿 ~1.5s 触发)
+- 检测到静音后，自动提交预览区文本
+
+FR4 [集成]: 文本上屏
+- 客户端通过 Unix Domain Socket 连接 $XDG_RUNTIME_DIR/nextalk-fcitx5.sock
+- 协议：[4字节长度 (LE)] + [UTF-8 文本]
+
+FR5 [系统]: 托盘管理
+- 支持显示/隐藏/退出
+
+FR6 [系统]: 全局快捷键
+- 默认键位：Right Alt
+- 逻辑：按下唤醒/开始录音；再次按下停止/上屏/隐藏
+- 支持配置文件自定义
+
+### NonFunctional Requirements
+
+NFR1: 端到端延迟 < 200ms
+NFR2: 纯离线推理，无网络请求（运行时）
+NFR3: 兼容 Ubuntu 22.04+ (X11/Wayland via XWayland)
+NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
+
+### Additional Requirements
+
+**架构需求:**
+- [结构] Monorepo 结构：/addons (C++ 插件) + /voice_capsule (Flutter 客户端)
+- [模型] 首次运行下载策略 (Download-on-Demand)，存储在 ~/.local/share/nextalk/models
+- [模型] 下载后必须校验 SHA256，防止文件损坏
+- [性能] 零拷贝 FFI 音频流水线设计
+- [安全] Socket 文件权限必须设为 0600
+- [构建] RPATH 配置确保运行时库查找 ($ORIGIN/lib)
+- [构建] libportaudio.so 系统动态链接，libsherpa-onnx-c-api.so 打包
+
+**UX 需求:**
+- [视觉] Dark Mode Only 策略
+- [尺寸] 胶囊尺寸：400x120 逻辑像素，高度 60px，圆角 40px
+- [动画] 波纹 1500ms EaseOutQuad，光标 800ms，红点呼吸 sin(t)
+- [状态] 三种状态指示：聆听中(红)、处理中(脉冲)、错误(黄/灰)
+- [托盘] 菜单项：显示/隐藏、设置(Post MVP)、退出
+- [交互] 瞬间出现/消失，无渐变动画
+- [交互] 支持拖拽移动并记忆位置
+- [错误] 异常处理 UX：音频设备异常、模型损坏、Socket 断开均有视觉反馈
+
+### FR Coverage Map
+
+| FR | 史诗 | 描述 |
+|----|------|------|
+| FR1 | Epic 3 | 悬浮胶囊窗口 - UI/交互 |
+| FR2 | Epic 2 | 实时语音识别 (ASR) |
+| FR3 | Epic 2 | 智能端点检测 (VAD) |
+| FR4 | Epic 1 | 文本上屏 - IPC 集成 |
+| FR5 | Epic 3 | 托盘管理 |
+| FR6 | Epic 3 | 全局快捷键 |
+
+## Epic List
+
+### Epic 1: IPC 桥梁 (The Bridge)
+
+**用户成果**：建立核心通信通道，使文本能够被注入到任何应用程序中。
+
+**FRs 覆盖**：FR4
+
+**范围说明**：
+- 集成现有的 C++ Fcitx5 插件到项目结构
+- 实现 Dart 端 Socket Client
+- 验证端到端文本注入能力
+- 编写插件安装脚本
+
+**完成标志**：可以通过代码发送文本到任何输入框
+
+---
+
+### Epic 2: 语音识别引擎 (The Brain)
+
+**用户成果**：用户可以说话，系统实时将语音转换为文本。
+
+**FRs 覆盖**：FR2, FR3
+
+**范围说明**：
+- 配置 Flutter Linux 构建环境，链接原生库
+- 实现 Dart FFI 绑定 (Sherpa + PortAudio)
+- 实现音频采集 → AI 推理的数据流水线
+- 实现 VAD 端点检测与自动提交
+- 模型管理：首次运行下载策略
+
+**完成标志**：可以识别语音并获得文本结果
+
+---
+
+### Epic 3: 完整产品体验 (The Product)
+
+**用户成果**：用户获得无缝、美观的语音输入体验，支持快捷键唤醒、视觉反馈和系统集成。
+
+**FRs 覆盖**：FR1, FR5, FR6
+
+**范围说明**：
+- 实现真透明无边框胶囊窗口 UI
+- 串联完整业务流：Right Alt → 录音 → 识别 → 上屏
+- 实现全局快捷键监听
+- 完善托盘与窗口显隐逻辑
+- 实现所有 UX 规范中的动画效果
+
+**完成标志**：完整的生产级语音输入工具
+
+---
+
+## Epic 1: IPC 桥梁 (The Bridge)
+
+建立核心通信通道，使文本能够被注入到任何应用程序中。
+
+### Story 1.1: Fcitx5 插件集成
+
+**As a** 开发者,
+**I want** 将现有的 Fcitx5 C++ 插件代码正确集成到 Monorepo 结构中,
+**So that** 项目有一个统一的代码库结构，便于后续开发和维护。
+
+**Acceptance Criteria:**
+
+**Given** 现有的 Fcitx5 插件源码位于 `/mnt/disk0/project/newx/nextalk/nextalk_fcitx5/addons`
+**When** 执行代码迁移
+**Then** 插件源码复制/链接到当前项目的 `/addons/fcitx5/` 目录下
+**And** CMakeLists.txt 正确配置，可独立编译插件
+**And** 移除 ydotool 回退逻辑（如存在）
+**And** 插件能成功编译生成 `.so` 文件
+
+---
+
+### Story 1.2: 插件安装脚本
+
+**As a** 开发者/用户,
+**I want** 通过一键脚本编译和安装 Fcitx5 插件,
+**So that** 可以快速部署插件而无需手动操作。
+
+**Acceptance Criteria:**
+
+**Given** 插件源码已在 `/addons/fcitx5/` 目录
+**When** 执行 `scripts/install_addon.sh`
+**Then** 脚本自动执行 cmake 配置和编译
+**And** 编译产物自动复制到 Fcitx5 插件目录 (`~/.local/lib/fcitx5/` 或系统目录)
+**And** 脚本输出清晰的成功/失败信息
+**And** 重启 Fcitx5 后插件正确加载
+
+---
+
+### Story 1.3: Dart Socket Client 实现
+
+**As a** Flutter 客户端,
+**I want** 能够通过 Unix Domain Socket 与 Fcitx5 插件通信,
+**So that** 可以将识别出的文本注入到任何应用程序的输入框中。
+
+**Acceptance Criteria:**
+
+**Given** Fcitx5 插件已安装并运行，Socket 文件存在于 `$XDG_RUNTIME_DIR/nextalk-fcitx5.sock`
+**When** Dart 客户端调用 `sendText("Hello World")`
+**Then** 客户端按协议格式发送数据：[4字节长度 LE] + [UTF-8 文本]
+**And** 文本成功出现在当前活动窗口的输入框中
+**And** 连接异常时返回明确的错误信息
+
+**Given** Socket 文件不存在或连接失败
+**When** 尝试发送文本
+**Then** 返回连接错误，不崩溃
+**And** 提供可用于 UI 显示的错误状态
+
+---
+
+### Story 1.4: Flutter 项目初始化
+
+**As a** 开发者,
+**I want** 创建 Flutter Linux 项目的基础结构,
+**So that** 有一个可扩展的代码基础用于后续功能开发。
+
+**Acceptance Criteria:**
+
+**Given** Monorepo 根目录
+**When** 初始化 Flutter 项目
+**Then** `/voice_capsule/` 目录包含完整的 Flutter Linux 项目
+**And** `pubspec.yaml` 配置正确的项目名称和依赖
+**And** `linux/CMakeLists.txt` 预配置 RPATH 设置 (`$ORIGIN/lib`)
+**And** 目录结构符合架构文档：`lib/ffi/`, `lib/services/`, `lib/ui/`
+**And** 项目可成功执行 `flutter build linux`
+
+---
+
+## Epic 2: 语音识别引擎 (The Brain)
+
+用户可以说话，系统实时将语音转换为文本。
+
+### Story 2.1: 原生库链接配置
+
+**As a** 开发者,
+**I want** 正确配置 Flutter Linux 构建系统以链接 Sherpa 和 PortAudio 原生库,
+**So that** Dart 代码可以通过 FFI 调用这些库的功能。
+
+**Acceptance Criteria:**
+
+**Given** Flutter 项目已初始化，原生库文件位于 `/libs/` 目录
+**When** 执行 `flutter build linux`
+**Then** `libsherpa-onnx-c-api.so` 被复制到构建产物的 `lib/` 目录
+**And** `libportaudio.so` 从系统动态链接
+**And** RPATH 设置为 `$ORIGIN/lib`，确保运行时能找到私有库
+**And** 构建成功无链接错误
+
+---
+
+### Story 2.2: PortAudio FFI 绑定
+
+**As a** Flutter 客户端,
+**I want** 通过 Dart FFI 调用 PortAudio 进行音频采集,
+**So that** 可以获取麦克风输入用于语音识别。
+
+**Acceptance Criteria:**
+
+**Given** PortAudio 库已正确链接
+**When** 调用 `AudioCapture.start()`
+**Then** 成功打开默认麦克风设备
+**And** 以 16kHz 采样率、单声道、Float32 格式采集音频
+**And** 音频数据写入预分配的堆外内存缓冲区 (`Pointer<Float>`)
+
+**Given** 音频采集正在进行
+**When** 调用 `AudioCapture.read(buffer, samples)`
+**Then** 返回指定数量的音频样本
+**And** 延迟 < 50ms
+
+**Given** 麦克风设备不可用或被占用
+**When** 尝试初始化音频采集
+**Then** 返回明确的错误状态（设备异常）
+**And** 不崩溃
+
+---
+
+### Story 2.3: Sherpa-onnx FFI 绑定
+
+**As a** Flutter 客户端,
+**I want** 通过 Dart FFI 调用 Sherpa-onnx 进行语音识别,
+**So that** 可以将音频数据转换为文本。
+
+**Acceptance Criteria:**
+
+**Given** Sherpa 库已正确链接，模型文件已就绪
+**When** 调用 `SherpaService.initialize(modelPath)`
+**Then** 成功创建流式识别器实例
+**And** 配置为双语模式 (zh-en)
+
+**Given** 识别器已初始化
+**When** 调用 `acceptWaveform(sampleRate, buffer, samples)`
+**Then** 音频数据被送入识别引擎
+**And** 使用与 PortAudio 相同的内存指针（零拷贝）
+
+**Given** 音频数据已送入
+**When** 调用 `getResult()`
+**Then** 返回当前识别出的文本（部分结果或最终结果）
+**And** 处理 100ms 音频块耗时 < 10ms
+
+---
+
+### Story 2.4: 模型管理器
+
+**As a** 用户,
+**I want** 应用首次运行时自动下载所需的 AI 模型,
+**So that** 无需手动配置即可使用语音识别功能。
+
+**Acceptance Criteria:**
+
+**Given** 应用首次启动，模型目录 `~/.local/share/nextalk/models` 不存在或为空
+**When** 应用检测模型状态
+**Then** 返回"模型缺失"状态，触发下载流程
+
+**Given** 需要下载模型
+**When** 执行下载
+**Then** 从配置的 URL (HuggingFace/GitHub) 下载模型压缩包
+**And** 提供下载进度回调（百分比）
+**And** 下载完成后自动解压到模型目录
+
+**Given** 模型文件已下载
+**When** 执行完整性校验
+**Then** 计算 SHA256 并与预期值比对
+**And** 校验失败时删除损坏文件并提示重新下载
+
+**Given** 模型已存在且校验通过
+**When** 应用启动
+**Then** 直接初始化识别引擎，跳过下载流程
+
+---
+
+### Story 2.5: 音频-推理流水线
+
+**As a** 用户,
+**I want** 说话时实时看到识别出的文字,
+**So that** 获得即时的视觉反馈。
+
+**Acceptance Criteria:**
+
+**Given** 音频采集和识别引擎均已初始化
+**When** 调用 `Pipeline.start()`
+**Then** 启动音频采集循环
+**And** 每 100ms 音频块自动送入 Sherpa 引擎
+**And** 使用同一内存指针，无数据拷贝
+
+**Given** 流水线正在运行
+**When** 用户说话
+**Then** 识别结果通过 Stream 实时输出
+**And** 端到端延迟 < 200ms (NFR1)
+
+**Given** 流水线正在运行
+**When** 调用 `Pipeline.stop()`
+**Then** 停止音频采集
+**And** 返回最终识别结果
+**And** 释放相关资源
+
+---
+
+### Story 2.6: VAD 端点检测
+
+**As a** 用户,
+**I want** 停止说话后系统自动完成输入,
+**So that** 无需手动确认，实现"即说即打"体验。
+
+**Acceptance Criteria:**
+
+**Given** 流水线正在运行，用户正在说话
+**When** 检测到持续静音超过阈值（默认 1.5s）
+**Then** VAD 触发端点事件
+**And** 自动停止录音
+**And** 返回最终识别文本
+
+**Given** VAD 配置
+**When** 设置自定义静音阈值
+**Then** 使用新阈值进行端点检测
+
+**Given** 用户说话中间有短暂停顿（< 1.5s）
+**When** VAD 检测
+**Then** 不触发端点，继续录音
+
+---
+
+## Epic 3: 完整产品体验 (The Product)
+
+用户获得无缝、美观的语音输入体验，支持快捷键唤醒、视觉反馈和系统集成。
+
+### Story 3.1: 透明胶囊窗口基础
+
+**As a** 用户,
+**I want** 应用窗口是无边框、真透明的悬浮窗,
+**So that** 获得现代化、不干扰桌面的视觉体验。
+
+**Acceptance Criteria:**
+
+**Given** 应用启动
+**When** 窗口显示
+**Then** 窗口无系统边框和标题栏
+**And** 窗口背景完全透明（可看到桌面）
+**And** 窗口尺寸为 400x120 逻辑像素
+**And** 窗口出现在屏幕中央（或上次记忆位置）
+
+**Given** 应用启动
+**When** 窗口首次渲染
+**Then** 无黑框闪烁现象 (NFR4)
+**And** 窗口瞬间出现，无渐变动画
+
+**Given** Linux 桌面环境 (X11/Wayland via XWayland)
+**When** 窗口显示
+**Then** 兼容 Ubuntu 22.04+ (NFR3)
+**And** 窗口层级正确（始终在最前）
+
+---
+
+### Story 3.2: 胶囊 UI 组件
+
+**As a** 用户,
+**I want** 看到美观的胶囊形状界面,
+**So that** 获得愉悦的视觉体验。
+
+**Acceptance Criteria:**
+
+**Given** 窗口已显示
+**When** 渲染胶囊组件
+**Then** 胶囊高度 60px，宽度 280-380px（自适应内容）
+**And** 圆角 40px（完全圆角）
+**And** 背景色 `rgba(25, 25, 25, 0.95)`（深灰微透）
+**And** 内发光描边 `rgba(255, 255, 255, 0.2)`
+**And** 外部柔和阴影提供悬浮感
+
+**Given** 胶囊组件
+**When** 显示内容
+**Then** 左侧为状态指示器区域（30x30）
+**And** 中间为文本预览区（白色，18px，单行省略）
+**And** 右侧为光标区域
+**And** 左右内边距各 25px
+
+---
+
+### Story 3.3: 状态机与动画系统
+
+**As a** 用户,
+**I want** 通过视觉反馈了解当前状态,
+**So that** 清楚知道系统是"正在听"、"处理中"还是"出错了"。
+
+**Acceptance Criteria:**
+
+**Given** 状态为"聆听中"
+**When** 渲染状态指示器
+**Then** 显示红色实心圆点 (`#FF4757`)
+**And** 圆点呼吸动画：Scale 1.0 -> 1.1 -> 1.0，公式 `1.0 + 0.1 * sin(t)`
+**And** 波纹扩散动画：1500ms，EaseOutQuad，Scale 1.0->3.0，Opacity 0.5->0.0
+**And** 光标闪烁：800ms 周期，EaseInOut
+
+**Given** 状态为"处理中"
+**When** 渲染状态指示器
+**Then** 红点转为快速脉冲或转圈 Loading
+**And** 文字颜色变暗（0.8 opacity）
+
+**Given** 状态为"错误"
+**When** 渲染状态指示器
+**Then** 圆点变为黄色（警告）或灰色（无设备）
+**And** 中间显示错误提示文字
+
+---
+
+### Story 3.4: 系统托盘集成
+
+**As a** 用户,
+**I want** 应用在系统托盘驻留,
+**So that** 不占用任务栏空间，随时可以访问。
+
+**Acceptance Criteria:**
+
+**Given** 应用启动
+**When** 初始化完成
+**Then** 系统托盘显示 Nextalk 图标（麦克风图标）
+**And** 主窗口默认隐藏
+
+**Given** 托盘图标
+**When** 右键点击
+**Then** 显示菜单：显示/隐藏、退出
+**And** 菜单样式符合系统风格
+
+**Given** 托盘菜单
+**When** 点击"显示/隐藏"
+**Then** 切换主窗口显示状态
+
+**Given** 托盘菜单
+**When** 点击"退出"
+**Then** 应用完全退出，释放所有资源
+
+---
+
+### Story 3.5: 全局快捷键监听
+
+**As a** 用户,
+**I want** 通过快捷键快速唤醒语音输入,
+**So that** 无需鼠标操作，实现高效输入。
+
+**Acceptance Criteria:**
+
+**Given** 应用在后台运行
+**When** 按下 Right Alt 键
+**Then** 主窗口瞬间出现
+**And** 自动开始录音
+**And** 状态切换为"聆听中"
+
+**Given** 正在录音
+**When** 再次按下 Right Alt 键
+**Then** 立即停止录音
+**And** 提交当前识别文本到活动窗口
+**And** 主窗口瞬间隐藏
+
+**Given** 配置文件存在
+**When** 设置自定义快捷键
+**Then** 使用新键位替代默认的 Right Alt
+
+**Given** 快捷键被其他应用占用
+**When** 尝试注册
+**Then** 输出警告日志，不崩溃
+
+---
+
+### Story 3.6: 完整业务流串联
+
+**As a** 用户,
+**I want** 完整的语音输入体验,
+**So that** 可以在任何应用中通过语音快速输入文字。
+
+**Acceptance Criteria:**
+
+**Given** 应用已启动，用户在任意输入框中
+**When** 按下 Right Alt
+**Then** 胶囊窗口出现，开始录音，红灯呼吸，波纹扩散
+
+**Given** 正在录音
+**When** 用户说话
+**Then** 文字实时逐字显示在预览区
+**And** 文字超长时自动省略（Ellipsis）
+
+**Given** 正在录音
+**When** VAD 检测到静音超过 1.5s
+**Then** 自动停止录音，提交文字，窗口消失
+**And** 文字出现在之前的输入框中
+
+**Given** 正在录音
+**When** 用户再次按下 Right Alt
+**Then** 手动停止录音，提交文字，窗口消失
+
+**Given** 胶囊窗口可见
+**When** 用户拖拽窗口
+**Then** 窗口跟随鼠标移动
+**And** 松开后记录位置，下次出现在此位置
+
+**Given** Socket 连接断开
+**When** 尝试提交文字
+**Then** 状态指示器变为错误状态
+**And** 显示 "Fcitx5 未连接"
+**And** 3秒后自动隐藏或等待用户操作
+

@@ -1,0 +1,11 @@
+installation:
+  version: 6.0.0-alpha.19
+  installDate: 2025-12-21T10:35:48.590Z
+  lastUpdated: 2025-12-21T10:35:48.590Z
+modules:
+  - core
+  - bmm
+ides:
+  - claude-code
+  - cursor
+  - antigravity

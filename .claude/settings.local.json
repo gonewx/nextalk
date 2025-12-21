@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(/tmp/claude)",
+      "Write(/tmp/claude)",
+      "Execute(/tmp/claude)",
+      "Read(/run/user/1000/nextalk.sock)",
+      "Write(/run/user/1000/nextalk.sock)",
+      "Execute(/run/user/1000/nextalk.sock)",
+      "Edit(/run/user/1000/nextalk.sock)"
+    ],
+    "deny": [],
+    "defaultMode": "bypassPermissions"
+  },
+  "enableAllProjectMcpServers": false,
+  "enabledMcpjsonServers": [
+    "deepwiki"
+  ],
+  "hooks": {},
+  "sandbox": {
+    "enabled": false,
+    "autoAllowBashIfSandboxed": false,
+    "network": {
+      "allowUnixSockets": [
+        "/tmp/nextalk.sock",
+        "/run/user/1000/nextalk.sock"
+      ]
+    },
+    "excludedCommands": [
+      "cargo:*",
+      "RUST_LOG=info cargo:*"
+    ]
+  }
+}
