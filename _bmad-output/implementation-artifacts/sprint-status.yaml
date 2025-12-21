@@ -45,7 +45,7 @@ development_status:
   # ============================================
   epic-1: in-progress
   1-1-fcitx5-plugin-integration: done
-  1-2-plugin-install-script: backlog
+  1-2-plugin-install-script: done
   1-3-dart-socket-client: backlog
   1-4-flutter-project-init: backlog
   epic-1-retrospective: optional
