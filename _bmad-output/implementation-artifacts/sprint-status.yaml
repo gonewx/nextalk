@@ -57,7 +57,7 @@ development_status:
   # ============================================
   epic-2: in-progress
   2-1-native-library-linking: done
-  2-2-portaudio-ffi-binding: backlog
+  2-2-portaudio-ffi-binding: done
   2-3-sherpa-onnx-ffi-binding: backlog
   2-4-model-manager: backlog
   2-5-audio-inference-pipeline: backlog
