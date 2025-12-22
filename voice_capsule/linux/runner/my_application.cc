@@ -4,6 +4,9 @@
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -20,34 +23,52 @@ static void my_application_activate(GApplication* application) {
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
-  // Use a header bar when running in GNOME as this is the common style used
-  // by applications and is the setup most users will be using (e.g. Ubuntu
-  // desktop).
-  // If running on X and not using GNOME then just use a traditional title bar
-  // in case the window manager does more exotic layout, e.g. tiling.
-  // If running on Wayland assume the header bar will work (may need changing
-  // if future cases occur).
-  gboolean use_header_bar = TRUE;
-#ifdef GDK_WINDOWING_X11
+  // ============================================
+  // NEXTALK: Transparent Capsule Window Configuration
+  // Story 3-1: 透明胶囊窗口基础
+  // ⚠️ CRITICAL: All transparency config MUST happen BEFORE fl_view_new()
+  // ============================================
+
+  // 1. 禁用窗口装饰 (无边框、无标题栏) - AC1
+  gtk_window_set_decorated(window, FALSE);
+
+  // 2. 设置窗口类型提示 (确保跳过任务栏，在所有桌面环境生效) - AC7
+  gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_UTILITY);
+
+  // 3. 设置窗口可绘制透明 - AC2
+  gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
+
+  // 4. 设置 RGBA Visual (支持透明) - 必须在 fl_view_new() 前! - AC2, AC5
   GdkScreen* screen = gtk_window_get_screen(window);
-  if (GDK_IS_X11_SCREEN(screen)) {
-    const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
-    if (g_strcmp0(wm_name, "GNOME Shell") != 0) {
-      use_header_bar = FALSE;
-    }
-  }
-#endif
-  if (use_header_bar) {
-    GtkHeaderBar* header_bar = GTK_HEADER_BAR(gtk_header_bar_new());
-    gtk_widget_show(GTK_WIDGET(header_bar));
-    gtk_header_bar_set_title(header_bar, "voice_capsule");
-    gtk_header_bar_set_show_close_button(header_bar, TRUE);
-    gtk_window_set_titlebar(window, GTK_WIDGET(header_bar));
+  GdkVisual* visual = gdk_screen_get_rgba_visual(screen);
+  if (visual != NULL && gdk_screen_is_composited(screen)) {
+    gtk_widget_set_visual(GTK_WIDGET(window), visual);
+    g_message("NEXTALK: Transparent window enabled (RGBA visual active)");
   } else {
-    gtk_window_set_title(window, "voice_capsule");
+    g_warning("NEXTALK: Transparent window not supported by compositor - fallback to opaque");
   }
 
-  gtk_window_set_default_size(window, 1280, 720);
+  // 5. 设置固定尺寸 400x120 (逻辑像素) - AC3
+  gtk_window_set_default_size(window, 400, 120);
+  gtk_window_set_resizable(window, FALSE);
+
+  // 6. 检测运行环境并记录日志 (用于调试) - AC8
+#ifdef GDK_WINDOWING_X11
+  if (GDK_IS_X11_SCREEN(screen)) {
+    g_message("NEXTALK: Running on X11");
+  }
+#endif
+#ifdef GDK_WINDOWING_WAYLAND
+  GdkDisplay* display = gdk_display_get_default();
+  if (GDK_IS_WAYLAND_DISPLAY(display)) {
+    g_message("NEXTALK: Running on Wayland - if transparency fails, try GDK_BACKEND=x11");
+  }
+#endif
+
+  // ============================================
+  // END: Transparency configuration
+  // ============================================
+
   gtk_widget_show(GTK_WIDGET(window));
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
