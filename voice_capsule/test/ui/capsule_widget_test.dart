@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:voice_capsule/constants/capsule_colors.dart';
 import 'package:voice_capsule/constants/window_constants.dart';
+import 'package:voice_capsule/state/capsule_state.dart';
 import 'package:voice_capsule/ui/capsule_widget.dart';
 import 'package:voice_capsule/ui/capsule_text_preview.dart';
+import 'package:voice_capsule/ui/cursor_blink.dart';
+import 'package:voice_capsule/ui/state_indicator.dart';
 
 // ⚠️ 注意: 这些测试专注于 Widget 渲染，不测试拖拽功能
 // 拖拽功能需要 WindowService 环境，在集成测试中验证
@@ -143,10 +146,11 @@ void main() {
       expect(decoration.boxShadow!.first.color, CapsuleColors.shadow);
     });
 
-    testWidgets('contains indicator placeholder', (tester) async {
+    testWidgets('contains StateIndicator (Story 3-3)', (tester) async {
       await tester.pumpWidget(buildTestWidget(const CapsuleWidget()));
 
-      // 查找圆形的红色指示器
+      // Story 3-3: 指示器现在使用 StateIndicator 组合组件
+      // 查找圆形的红色指示器 (现在由 BreathingDot + RippleEffect 组成)
       final indicator = find.descendant(
         of: find.byType(CapsuleWidget),
         matching: find.byWidgetPredicate(
@@ -156,7 +160,8 @@ void main() {
               (widget.decoration as BoxDecoration).shape == BoxShape.circle,
         ),
       );
-      expect(indicator, findsOneWidget);
+      // 默认 listening 状态: BreathingDot(1) + RippleEffect(2 borders) = 至少 1 个
+      expect(indicator, findsAtLeastNWidgets(1));
     });
 
     testWidgets('has correct horizontal padding (AC9)', (tester) async {
@@ -293,6 +298,93 @@ void main() {
           CapsuleTextStyles.processingText.color, CapsuleColors.textProcessing);
       expect(CapsuleTextStyles.processingText.fontSize, 18.0);
       expect(CapsuleTextStyles.processingText.fontWeight, FontWeight.w500);
+    });
+  });
+
+  // Story 3-3: 状态机与动画系统测试
+  group('CapsuleWidget State Machine Tests (Story 3-3)', () {
+    testWidgets('contains StateIndicator component', (tester) async {
+      await tester.pumpWidget(buildTestWidget(const CapsuleWidget()));
+
+      expect(find.byType(StateIndicator), findsOneWidget);
+    });
+
+    testWidgets('shows CursorBlink in default (listening) state', (tester) async {
+      await tester.pumpWidget(buildTestWidget(const CapsuleWidget()));
+
+      expect(find.byType(CursorBlink), findsOneWidget);
+    });
+
+    testWidgets('hides CursorBlink in processing state', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        CapsuleWidget(
+          stateData: CapsuleStateData.processing(text: '处理中'),
+        ),
+      ));
+
+      expect(find.byType(CursorBlink), findsNothing);
+    });
+
+    testWidgets('shows error message in error state', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        CapsuleWidget(
+          stateData: CapsuleStateData.error(CapsuleErrorType.audioDeviceError),
+        ),
+      ));
+
+      expect(find.text('音频设备异常'), findsOneWidget);
+    });
+
+    testWidgets('uses processing style in processing state', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        CapsuleWidget(
+          text: '处理中文本',
+          stateData: CapsuleStateData.processing(text: '处理中文本'),
+        ),
+      ));
+
+      final textWidget = tester.widget<Text>(find.text('处理中文本'));
+      expect(textWidget.style?.color, CapsuleColors.textProcessing);
+    });
+
+    testWidgets('backward compatible when stateData is null', (tester) async {
+      // 不传入 stateData 时应该使用默认的 listening 状态
+      await tester.pumpWidget(buildTestWidget(
+        const CapsuleWidget(text: '你好'),
+      ));
+
+      expect(find.byType(StateIndicator), findsOneWidget);
+      expect(find.byType(CursorBlink), findsOneWidget);
+      expect(find.text('你好'), findsOneWidget);
+    });
+  });
+
+  group('CapsuleTextPreview Processing Style Tests (Story 3-3)', () {
+    testWidgets('uses processing style when isProcessing is true', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        const CapsuleTextPreview(
+          text: '处理中',
+          isProcessing: true,
+        ),
+      ));
+
+      final textWidget = tester.widget<Text>(find.byType(Text));
+      expect(textWidget.style?.color, CapsuleColors.textProcessing);
+    });
+
+    testWidgets('processing style overrides hint style', (tester) async {
+      await tester.pumpWidget(buildTestWidget(
+        const CapsuleTextPreview(
+          text: '',
+          showHint: true,
+          hintText: '提示',
+          isProcessing: true,
+        ),
+      ));
+
+      final textWidget = tester.widget<Text>(find.byType(Text));
+      // 处理中样式优先级高于提示样式
+      expect(textWidget.style?.color, CapsuleColors.textProcessing);
     });
   });
 }

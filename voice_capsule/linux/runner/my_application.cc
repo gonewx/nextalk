@@ -69,16 +69,22 @@ static void my_application_activate(GApplication* application) {
   // END: Transparency configuration
   // ============================================
 
-  gtk_widget_show(GTK_WIDGET(window));
-
+  // 创建 Flutter 项目和视图
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
   FlView* view = fl_view_new(project);
-  gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
+  // ⚠️ 关键修复: 设置 FlView 背景透明 (Flutter 官方修复方案)
+  // FlView 默认背景是黑色，必须显式设置为透明
+  GdkRGBA background_color = {0.0, 0.0, 0.0, 0.0};
+  fl_view_set_background_color(view, &background_color);
+
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+
+  // 显示窗口
+  gtk_widget_show_all(GTK_WIDGET(window));
 
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
