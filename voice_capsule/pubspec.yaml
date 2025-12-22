@@ -23,6 +23,8 @@ dependencies:
   window_manager: ^0.3.9  # 窗口管理 (size, position, alwaysOnTop)
   shared_preferences: ^2.2.2  # 位置持久化存储
   system_tray: ^2.0.3  # 系统托盘支持 (Story 3-4)
+  hotkey_manager: ^0.2.3  # 全局快捷键支持 (Story 3-5)
+  yaml: ^3.1.2  # 配置文件解析 (Story 3-5)
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.

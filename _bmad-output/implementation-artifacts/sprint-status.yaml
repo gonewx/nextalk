@@ -74,6 +74,6 @@ development_status:
   3-2-capsule-ui-component: done
   3-3-state-machine-animations: done
   3-4-system-tray-integration: done
-  3-5-global-hotkey-listener: backlog
+  3-5-global-hotkey-listener: done
   3-6-full-business-flow: backlog
   epic-3-retrospective: optional

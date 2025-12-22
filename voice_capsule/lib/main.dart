@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'services/hotkey_service.dart';
 import 'services/tray_service.dart';
 import 'services/window_service.dart';
 import 'ui/capsule_widget.dart';
@@ -7,6 +8,7 @@ import 'ui/capsule_widget.dart';
 /// Nextalk Voice Capsule 入口
 /// Story 3-1: 透明胶囊窗口基础
 /// Story 3-4: 系统托盘集成
+/// Story 3-5: 全局快捷键监听
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -16,6 +18,19 @@ Future<void> main() async {
 
   // 初始化托盘服务 (必须在 WindowService 之后)
   await TrayService.instance.initialize();
+
+  // Story 3-5 AC8: 初始化全局快捷键服务
+  // 注意: 完整的 HotkeyController 集成将在 Story 3-6 完成
+  await HotkeyService.instance.initialize();
+
+  // AC7: 检查快捷键注册状态并记录日志
+  if (HotkeyService.instance.registrationFailed) {
+    // ignore: avoid_print
+    print('[main] ⚠️ 快捷键注册失败，请检查是否被其他应用占用');
+  } else if (HotkeyService.instance.currentHotkey != null) {
+    // ignore: avoid_print
+    print('[main] ✅ 快捷键已注册');
+  }
 
   // TODO(Story 3-6): 设置 onBeforeExit 回调释放 Epic 2 资源
   // TrayService.instance.onBeforeExit = () async {

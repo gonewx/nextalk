@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:system_tray/system_tray.dart';
 
 import '../constants/tray_constants.dart';
+import 'hotkey_service.dart';
 import 'window_service.dart';
 
 /// 退出回调类型 - 用于注入 Pipeline 释放逻辑
@@ -116,6 +117,9 @@ class TrayService {
 
   /// 退出应用 - ⚠️ 必须释放所有资源 (AC7, AC8)
   Future<void> _exitApp() async {
+    // 0. 注销全局快捷键 (Story 3-5 AC9)
+    await HotkeyService.instance.dispose();
+
     // 1. 调用外部注入的释放回调 (Pipeline/AudioCapture/SherpaService)
     //    由 Story 3-6 或 main.dart 在初始化时注入
     if (onBeforeExit != null) {
