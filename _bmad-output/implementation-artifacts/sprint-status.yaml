@@ -61,7 +61,7 @@ development_status:
   2-3-sherpa-onnx-ffi-binding: done
   2-4-model-manager: done
   2-5-audio-inference-pipeline: done
-  2-6-vad-endpoint-detection: backlog
+  2-6-vad-endpoint-detection: done
   epic-2-retrospective: optional
 
   # ============================================

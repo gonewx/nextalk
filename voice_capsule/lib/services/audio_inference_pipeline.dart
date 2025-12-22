@@ -50,6 +50,60 @@ class LatencyStats {
       'max: ${maxLatencyMs.toStringAsFixed(1)}ms, over200ms: $overThresholdCount)';
 }
 
+/// VAD 端点事件 (Story 2-6)
+class EndpointEvent {
+  /// 最终识别文本
+  final String finalText;
+
+  /// 是否由 VAD 自动触发 (true: VAD, false: 手动 stop)
+  final bool isVadTriggered;
+
+  /// 端点触发前的识别时长 (毫秒)
+  final int durationMs;
+
+  /// 延迟统计
+  final LatencyStats latencyStats;
+
+  const EndpointEvent({
+    required this.finalText,
+    required this.isVadTriggered,
+    required this.durationMs,
+    required this.latencyStats,
+  });
+
+  @override
+  String toString() =>
+      'EndpointEvent(text: "$finalText", vad: $isVadTriggered, duration: ${durationMs}ms)';
+}
+
+/// VAD 配置 (Story 2-6)
+class VadConfig {
+  /// 是否启用 VAD 自动停止
+  final bool autoStopOnEndpoint;
+
+  /// 端点触发后是否自动重置流状态 (用于连续识别)
+  final bool autoReset;
+
+  /// 自定义 Rule 2 静音阈值 (秒)，null 表示使用 SherpaConfig 默认值
+  /// 注意: 此值在 start() 时传递给 Sherpa，运行时修改需重启 Pipeline
+  final double? silenceThresholdSec;
+
+  const VadConfig({
+    this.autoStopOnEndpoint = true,
+    this.autoReset = false,
+    this.silenceThresholdSec,
+  });
+
+  /// 默认配置: 自动停止，不自动重置
+  factory VadConfig.defaultConfig() => const VadConfig();
+
+  /// 连续识别配置: 不停止，自动重置
+  factory VadConfig.continuous() => const VadConfig(
+        autoStopOnEndpoint: false,
+        autoReset: true,
+      );
+}
+
 /// 音频-推理流水线
 ///
 /// 将音频采集和语音识别整合为一体的流水线服务。
@@ -70,6 +124,9 @@ class LatencyStats {
 /// await pipeline.dispose();
 /// ```
 class AudioInferencePipeline {
+  // === 常量定义 ===
+  /// 默认 Rule2 静音阈值 (秒) - 与 SherpaConfig 默认值保持一致
+  static const double kDefaultRule2Silence = 1.2;
   // === 依赖注入 (通过构造函数传入，便于测试) ===
   final AudioCapture _audioCapture;
   final SherpaService _sherpaService;
@@ -83,12 +140,19 @@ class AudioInferencePipeline {
       StreamController.broadcast();
   final StreamController<PipelineState> _stateController =
       StreamController.broadcast();
+  final StreamController<EndpointEvent> _endpointController =
+      StreamController.broadcast(); // Story 2-6: VAD 端点事件流
   PipelineState _state = PipelineState.idle;
   PipelineError _lastError = PipelineError.none;
   bool _stopRequested = false;
   String _lastEmittedText = ''; // 用于去重
   Completer<void>? _loopCompleter; // 跟踪循环完成状态
   bool _isDisposed = false; // M1 修复: 防止在关闭后访问 StreamController
+
+  // Story 2-6: VAD 相关状态
+  VadConfig _vadConfig = VadConfig.defaultConfig();
+  DateTime? _recordingStartTime;
+  bool _vadTriggeredStop = false; // 防止 VAD 和 stop() 发送重复事件
 
   // AC5 延迟测量 (H1 修复)
   static const int _latencyThresholdMs = 200;
@@ -101,9 +165,14 @@ class AudioInferencePipeline {
     required SherpaService sherpaService,
     required ModelManager modelManager,
     this.enableDebugLog = false,
+    VadConfig? vadConfig, // Story 2-6: 可选 VAD 配置
   })  : _audioCapture = audioCapture,
         _sherpaService = sherpaService,
-        _modelManager = modelManager;
+        _modelManager = modelManager {
+    if (vadConfig != null) {
+      _vadConfig = vadConfig;
+    }
+  }
 
   // === 公开接口 ===
 
@@ -113,6 +182,9 @@ class AudioInferencePipeline {
   /// 状态变化流
   Stream<PipelineState> get stateStream => _stateController.stream;
 
+  /// Story 2-6: VAD 端点事件流
+  Stream<EndpointEvent> get endpointStream => _endpointController.stream;
+
   /// 是否正在运行
   bool get isRunning => _state == PipelineState.running;
 
@@ -121,6 +193,25 @@ class AudioInferencePipeline {
 
   /// 最近一次错误
   PipelineError get lastError => _lastError;
+
+  /// Story 2-6: 当前 VAD 配置
+  VadConfig get vadConfig => _vadConfig;
+
+  /// Story 2-6: 设置 VAD 配置 (仅在 idle 状态有效)
+  ///
+  /// 返回 true 表示设置成功，返回 false 表示当前状态不允许修改。
+  /// 注意: 如果 Pipeline 正在运行，配置将不会生效，需要先调用 stop()。
+  bool setVadConfig(VadConfig config) {
+    if (_state != PipelineState.idle) {
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[Pipeline] ⚠️ setVadConfig 失败: 当前状态为 $_state，需要 idle 状态');
+      }
+      return false;
+    }
+    _vadConfig = config;
+    return true;
+  }
 
   /// 获取延迟统计信息 (AC5: 端到端延迟 < 200ms)
   LatencyStats get latencyStats {
@@ -158,20 +249,25 @@ class AudioInferencePipeline {
     _latencySamples.clear();
     _maxLatencyMs = 0;
 
+    // Story 2-6: 重置 VAD 状态
+    _recordingStartTime = DateTime.now();
+    _vadTriggeredStop = false;
+
     // 1. 检查模型就绪状态
     if (!_modelManager.isModelReady) {
       _setError(PipelineError.modelNotReady);
       return _lastError;
     }
 
-    // 2. 初始化 SherpaService
+    // 2. 初始化 SherpaService (使用 VadConfig 中的静音阈值)
+    final silenceThreshold = _vadConfig.silenceThresholdSec ?? kDefaultRule2Silence;
     final config = SherpaConfig(
       modelDir: _modelManager.modelPath,
       numThreads: 2,
       sampleRate: 16000,
-      enableEndpoint: true, // 为 Story 2-6 VAD 准备
+      enableEndpoint: true, // Story 2-6: VAD 端点检测
       rule1MinTrailingSilence: 2.4,
-      rule2MinTrailingSilence: 1.2,
+      rule2MinTrailingSilence: silenceThreshold,
       rule3MinUtteranceLength: 20.0,
     );
     final sherpaError = await _sherpaService.initialize(config);
@@ -222,6 +318,20 @@ class AudioInferencePipeline {
     }
     final finalResult = _sherpaService.getResult();
 
+    // Story 2-6: 发送手动停止事件 (仅当不是 VAD 触发时)
+    if (!_vadTriggeredStop && !_isDisposed && !_endpointController.isClosed) {
+      final durationMs = _recordingStartTime != null
+          ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
+          : 0;
+      final event = EndpointEvent(
+        finalText: finalResult.text,
+        isVadTriggered: false,
+        durationMs: durationMs,
+        latencyStats: latencyStats,
+      );
+      _endpointController.add(event);
+    }
+
     // 停止音频采集
     await _audioCapture.stop();
 
@@ -232,6 +342,8 @@ class AudioInferencePipeline {
     _stopRequested = false;
     _lastEmittedText = '';
     _loopCompleter = null;
+    _vadTriggeredStop = false; // Story 2-6: 重置标志
+    _recordingStartTime = null; // Story 2-6: 清空录音开始时间
     _setState(PipelineState.idle);
 
     return finalResult.text;
@@ -261,6 +373,7 @@ class AudioInferencePipeline {
     // 2. 关闭 StreamController
     await _resultController.close();
     await _stateController.close();
+    await _endpointController.close(); // Story 2-6: 关闭端点事件流
 
     // 3. 释放原生资源
     _audioCapture.dispose();
@@ -309,6 +422,17 @@ class AudioInferencePipeline {
     // 循环结束，标记完成
     if (!_loopCompleter!.isCompleted) {
       _loopCompleter!.complete();
+    }
+
+    // Story 2-6: VAD 自动停止时的清理逻辑
+    if (_vadTriggeredStop && _state == PipelineState.running) {
+      await _audioCapture.stop();
+      _sherpaService.reset();
+      _stopRequested = false;
+      _lastEmittedText = '';
+      _vadTriggeredStop = false;
+      _recordingStartTime = null;
+      _setState(PipelineState.idle);
     }
   }
 
@@ -377,6 +501,57 @@ class AudioInferencePipeline {
           _resultController.add(result.text);
         }
       }
+
+      // Story 2-6: VAD 端点检测
+      if (_sherpaService.isEndpoint() && !_vadTriggeredStop) {
+        await _handleEndpoint();
+      }
+    }
+  }
+
+  /// Story 2-6: 处理 VAD 端点检测
+  Future<void> _handleEndpoint() async {
+    try {
+      // 1. 调用 inputFinished() 确保最终解码
+      _sherpaService.inputFinished();
+      while (_sherpaService.isReady()) {
+        _sherpaService.decode();
+      }
+      final finalResult = _sherpaService.getResult();
+
+      // 2. 计算录音时长
+      final durationMs = _recordingStartTime != null
+          ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
+          : 0;
+
+      // 3. 创建并发送端点事件
+      final event = EndpointEvent(
+        finalText: finalResult.text,
+        isVadTriggered: true,
+        durationMs: durationMs,
+        latencyStats: latencyStats,
+      );
+      if (!_isDisposed && !_endpointController.isClosed) {
+        _endpointController.add(event);
+      }
+
+      // 4. 根据配置决定后续行为
+      if (_vadConfig.autoStopOnEndpoint) {
+        _vadTriggeredStop = true; // 标记 VAD 触发，防止 stop() 重复发送事件
+        _stopRequested = true;
+      } else if (_vadConfig.autoReset) {
+        _sherpaService.reset();
+        _lastEmittedText = '';
+        _recordingStartTime = DateTime.now();
+      }
+    } catch (e) {
+      // FFI 层或其他异常处理
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[Pipeline] ⚠️ _handleEndpoint 异常: $e');
+      }
+      // 即使出错也尝试停止，避免用户无感知
+      _stopRequested = true;
     }
   }
 
