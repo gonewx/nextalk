@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-import 'constants/window_constants.dart';
 import 'services/window_service.dart';
+import 'ui/capsule_widget.dart';
 
 /// Nextalk Voice Capsule 入口
 /// Story 3-1: 透明胶囊窗口基础
@@ -24,59 +24,15 @@ class NextalkApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Nextalk Voice Capsule',
       theme: ThemeData.dark().copyWith(
-        // 确保 Scaffold 背景透明 - AC2
+        // 确保 Scaffold 背景透明 - Story 3-1 AC2
         scaffoldBackgroundColor: Colors.transparent,
       ),
-      home: const TransparentCapsule(),
-    );
-  }
-}
-
-/// 透明胶囊测试 Widget
-/// 临时实现用于验证透明效果，Story 3-2 将替换为完整 UI
-class TransparentCapsule extends StatelessWidget {
-  const TransparentCapsule({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: GestureDetector(
-        // 拖拽移动支持 - AC9
-        onPanStart: (_) => WindowService.instance.startDragging(),
-        child: Center(
-          child: Container(
-            width: WindowConstants.capsuleWidth,
-            height: WindowConstants.capsuleHeight,
-            decoration: BoxDecoration(
-              // 半透明黑色背景用于测试
-              color: const Color.fromRGBO(0, 0, 0, 0.7),
-              borderRadius: BorderRadius.circular(WindowConstants.capsuleRadius),
-              // 添加边框以便在透明背景上可见
-              border: Border.all(
-                color: const Color.fromRGBO(255, 255, 255, 0.3),
-                width: 1,
-              ),
-              // 添加阴影效果
-              boxShadow: const [
-                BoxShadow(
-                  color: Color.fromRGBO(0, 0, 0, 0.3),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: const Center(
-              child: Text(
-                '🎤 Nextalk',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ),
-          ),
+      home: const Scaffold(
+        backgroundColor: Colors.transparent,
+        body: CapsuleWidget(
+          text: '', // Story 3-3 将绑定实际文本
+          showHint: true,
+          hintText: '正在聆听...',
         ),
       ),
     );
