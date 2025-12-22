@@ -55,8 +55,8 @@ development_status:
   # 用户可以说话，系统实时将语音转换为文本
   # FRs: FR2, FR3
   # ============================================
-  epic-2: backlog
-  2-1-native-library-linking: backlog
+  epic-2: in-progress
+  2-1-native-library-linking: done
   2-2-portaudio-ffi-binding: backlog
   2-3-sherpa-onnx-ffi-binding: backlog
   2-4-model-manager: backlog

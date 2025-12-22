@@ -22,11 +22,17 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 # ============================================
 # Nextalk: 原生库复制配置 (Story 2-1 实现)
 # ============================================
-# TODO: Story 2-1 将添加以下配置:
-# set(LIBS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../libs")
-# install(FILES "${LIBS_DIR}/libsherpa-onnx-c-api.so"
-#         DESTINATION "${CMAKE_INSTALL_PREFIX}/lib"
-#         COMPONENT Runtime)
+set(LIBS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../libs")
+
+# 验证库文件存在
+if(NOT EXISTS "${LIBS_DIR}/libsherpa-onnx-c-api.so")
+  message(FATAL_ERROR "缺少 libsherpa-onnx-c-api.so，请先执行 Story 2-1 Task 2 下载库文件")
+endif()
+if(NOT EXISTS "${LIBS_DIR}/libonnxruntime.so")
+  message(FATAL_ERROR "缺少 libonnxruntime.so，请先执行 Story 2-1 Task 2 下载库文件")
+endif()
+
+# 复制库到 bundle/lib (install 规则在文件末尾执行)
 
 # Root filesystem for cross-building.
 if(FLUTTER_TARGET_PLATFORM_SYSROOT)
@@ -138,3 +144,13 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# ============================================
+# Nextalk: 原生库安装 (Story 2-1)
+# ============================================
+install(FILES "${LIBS_DIR}/libsherpa-onnx-c-api.so"
+        DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+        COMPONENT Runtime)
+install(FILES "${LIBS_DIR}/libonnxruntime.so"
+        DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+        COMPONENT Runtime)
