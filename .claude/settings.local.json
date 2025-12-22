@@ -28,7 +28,8 @@
     },
     "excludedCommands": [
       "cargo:*",
-      "RUST_LOG=info cargo:*"
+      "RUST_LOG=info cargo:*",
+      "convert:*"
     ]
   }
 }

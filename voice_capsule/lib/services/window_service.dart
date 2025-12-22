@@ -37,13 +37,15 @@ class WindowService with WindowListener {
 
   /// 初始化窗口 (在 main() 中调用)
   ///
+  /// [showOnStartup] 是否在启动时显示窗口，默认 false (托盘驻留)
+  ///
   /// 配置:
   /// - 透明背景
   /// - 无标题栏
   /// - 固定尺寸 400x120
   /// - 跳过任务栏
   /// - 始终在最前
-  Future<void> initialize() async {
+  Future<void> initialize({bool showOnStartup = false}) async {
     if (_isInitialized) return;
 
     await windowManager.ensureInitialized();
@@ -73,12 +75,18 @@ class WindowService with WindowListener {
       // 尝试恢复上次保存的位置
       await _restorePosition();
 
-      // 首次显示窗口
-      await windowManager.show();
-      await windowManager.focus();
+      // Story 3-4: 根据参数决定是否显示窗口
+      if (showOnStartup) {
+        await windowManager.show();
+        await windowManager.focus();
+        _isVisible = true;
+      } else {
+        // 默认隐藏，托盘驻留
+        await windowManager.hide();
+        _isVisible = false;
+      }
     });
 
-    _isVisible = true;
     _isInitialized = true;
   }
 
@@ -97,8 +105,12 @@ class WindowService with WindowListener {
   }
 
   /// 隐藏窗口
+  ///
+  /// 抛出 [StateError] 如果服务未初始化。
   Future<void> hide() async {
-    if (!_isInitialized) return;
+    if (!_isInitialized) {
+      throw StateError('WindowService not initialized. Call initialize() first.');
+    }
     if (!_isVisible) return;
 
     // 保存当前位置 - AC10
