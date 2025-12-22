@@ -92,10 +92,11 @@ check_fcitx5_dev() {
     fi
 
     # Verify headers exist using pkg-config includedir (M3 fix - tighter validation)
+    # pkg-config returns the actual include path (e.g., /usr/include/Fcitx5/Core)
     local includedir
-    includedir="$(pkg-config --variable=includedir Fcitx5Core 2>/dev/null || echo '/usr/include')"
-    if [[ ! -d "${includedir}/Fcitx5" ]] && [[ ! -d "${includedir}/Fcitx5Core" ]]; then
-        error "Fcitx5 headers not found at ${includedir}/Fcitx5"
+    includedir="$(pkg-config --variable=includedir Fcitx5Core 2>/dev/null || echo '')"
+    if [[ -z "$includedir" ]] || [[ ! -d "${includedir}" ]]; then
+        error "Fcitx5 headers not found (includedir: ${includedir:-not set})"
         error "Install with: sudo apt install libfcitx5core-dev"
         return 1
     fi
