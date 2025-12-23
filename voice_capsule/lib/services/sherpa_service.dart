@@ -12,6 +12,9 @@ class SherpaConfig {
   /// 模型目录路径
   final String modelDir;
 
+  /// 是否使用 int8 量化模型 (默认 true)
+  final bool useInt8Model;
+
   /// 线程数 (默认 2，建议不超过 CPU 核心数)
   final int numThreads;
 
@@ -41,6 +44,7 @@ class SherpaConfig {
 
   const SherpaConfig({
     required this.modelDir,
+    this.useInt8Model = true,
     this.numThreads = 2,
     this.sampleRate = 16000,
     this.featureDim = 80,
@@ -54,8 +58,8 @@ class SherpaConfig {
 
   @override
   String toString() {
-    return 'SherpaConfig(modelDir: $modelDir, numThreads: $numThreads, '
-        'sampleRate: $sampleRate, enableEndpoint: $enableEndpoint)';
+    return 'SherpaConfig(modelDir: $modelDir, useInt8Model: $useInt8Model, '
+        'numThreads: $numThreads, sampleRate: $sampleRate, enableEndpoint: $enableEndpoint)';
   }
 }
 
@@ -130,6 +134,9 @@ class SherpaService {
   SherpaError _lastError = SherpaError.none;
   DynamicLibrary? _lib;
 
+  /// 当前使用的模型类型 (用于热切换判断)
+  bool _useInt8Model = true;
+
   /// 是否启用调试日志
   final bool enableDebugLog;
 
@@ -144,19 +151,38 @@ class SherpaService {
   /// 最近一次错误
   SherpaError get lastError => _lastError;
 
+  /// 当前使用的是否为 int8 模型
+  bool get useInt8Model => _useInt8Model;
+
   /// 在模型目录中查找指定类型的模型文件
   ///
   /// [modelDir] 模型目录路径
   /// [prefix] 文件前缀 (encoder, decoder, joiner)
+  /// [useInt8] 是否查找 int8 版本
   ///
   /// 返回找到的文件路径，未找到返回 null
-  String? _findModelFile(String modelDir, String prefix) {
+  String? _findModelFile(String modelDir, String prefix, {required bool useInt8}) {
     final dir = Directory(modelDir);
     try {
       for (final entity in dir.listSync()) {
         if (entity is File) {
           final name = entity.path.split('/').last;
           if (name.startsWith(prefix) && name.endsWith('.onnx')) {
+            // 精确匹配版本
+            final isInt8File = name.contains('.int8.');
+            if (useInt8 == isInt8File) {
+              return entity.path;
+            }
+          }
+        }
+      }
+      // 如果未找到指定版本，尝试回退到任意版本
+      for (final entity in dir.listSync()) {
+        if (entity is File) {
+          final name = entity.path.split('/').last;
+          if (name.startsWith(prefix) && name.endsWith('.onnx')) {
+            // ignore: avoid_print
+            print('[SherpaService] ⚠️ 未找到 ${useInt8 ? "int8" : "标准"} 版本的 $prefix，使用: $name');
             return entity.path;
           }
         }
@@ -184,11 +210,21 @@ class SherpaService {
       return _lastError;
     }
 
-    // 2. 查找模型文件 (支持不同版本的模型)
-    final encoderPath = _findModelFile(config.modelDir, 'encoder');
-    final decoderPath = _findModelFile(config.modelDir, 'decoder');
-    final joinerPath = _findModelFile(config.modelDir, 'joiner');
+    // 2. 查找模型文件 (根据配置选择 int8 或标准版本)
+    _useInt8Model = config.useInt8Model;
+    final encoderPath = _findModelFile(config.modelDir, 'encoder', useInt8: config.useInt8Model);
+    final decoderPath = _findModelFile(config.modelDir, 'decoder', useInt8: config.useInt8Model);
+    final joinerPath = _findModelFile(config.modelDir, 'joiner', useInt8: config.useInt8Model);
     final tokensPath = '${config.modelDir}/tokens.txt';
+
+    // ignore: avoid_print
+    print('[SherpaService] 使用模型版本: ${config.useInt8Model ? "int8" : "标准"}');
+    // ignore: avoid_print
+    print('[SherpaService] encoder: $encoderPath');
+    // ignore: avoid_print
+    print('[SherpaService] decoder: $decoderPath');
+    // ignore: avoid_print
+    print('[SherpaService] joiner: $joinerPath');
 
     if (encoderPath == null) {
       _lastError = SherpaError.encoderNotFound;

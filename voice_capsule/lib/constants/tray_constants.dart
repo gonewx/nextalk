@@ -1,6 +1,7 @@
 /// 系统托盘常量
 /// Story 3-4: 系统托盘集成
 /// Story 3-7: 新增状态图标和重连菜单
+/// 模型设置子菜单
 class TrayConstants {
   TrayConstants._();
 
@@ -29,12 +30,25 @@ class TrayConstants {
   /// Story 3-7: 重新连接 Fcitx5 (AC16)
   static const String menuReconnectFcitx = '重新连接 Fcitx5';
 
+  /// 模型设置子菜单标题
+  static const String menuModelSettings = '模型设置';
+
+  /// int8 模型选项
+  static const String menuModelInt8 = 'int8 版本 (更快)';
+
+  /// 标准模型选项
+  static const String menuModelStandard = '标准版本 (更准)';
+
+  /// 打开配置目录
+  static const String menuOpenConfig = '打开配置目录...';
+
   /// 设置 (Post MVP - 灰色禁用)
   static const String menuSettings = '设置...';
 
   /// 退出
   static const String menuExit = '退出';
 }
+
 
 
 

@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:system_tray/system_tray.dart';
 
+import '../constants/settings_constants.dart';
 import '../constants/tray_constants.dart';
 import 'hotkey_service.dart';
+import 'settings_service.dart';
 import 'window_service.dart';
 
 /// 退出回调类型 - 用于注入 Pipeline 释放逻辑
@@ -119,7 +121,10 @@ class TrayService {
 
   /// 构建托盘右键菜单
   /// Story 3-7: 新增"重新连接 Fcitx5"菜单项 (AC16)
+  /// 模型设置子菜单
   Future<void> _buildMenu() async {
+    final currentType = SettingsService.instance.modelType;
+
     final menu = Menu();
     await menu.buildFrom([
       MenuItemLabel(label: TrayConstants.menuTitle, enabled: false),
@@ -132,6 +137,26 @@ class TrayService {
         label: TrayConstants.menuReconnectFcitx,  // AC16: 新增
         onClicked: (_) => _reconnectFcitx(),
       ),
+      SubMenu(
+        label: TrayConstants.menuModelSettings,
+        children: [
+          MenuItemCheckbox(
+            label: TrayConstants.menuModelInt8,
+            checked: currentType == ModelType.int8,
+            onClicked: (_) => _switchModel(ModelType.int8),
+          ),
+          MenuItemCheckbox(
+            label: TrayConstants.menuModelStandard,
+            checked: currentType == ModelType.standard,
+            onClicked: (_) => _switchModel(ModelType.standard),
+          ),
+          MenuSeparator(),
+          MenuItemLabel(
+            label: TrayConstants.menuOpenConfig,
+            onClicked: (_) => _openConfigDirectory(),
+          ),
+        ],
+      ),
       MenuItemLabel(label: TrayConstants.menuSettings, enabled: false),
       MenuSeparator(),
       MenuItemLabel(
@@ -140,6 +165,23 @@ class TrayService {
       ),
     ]);
     await _systemTray.setContextMenu(menu);
+  }
+
+  /// 切换模型版本
+  Future<void> _switchModel(ModelType newType) async {
+    final success = await SettingsService.instance.switchModelType(newType);
+    if (success) {
+      // 重新构建菜单以更新选中状态
+      await _buildMenu();
+      debugPrint('TrayService: 模型切换成功: $newType');
+    } else {
+      debugPrint('TrayService: 模型切换失败');
+    }
+  }
+
+  /// 打开配置目录
+  Future<void> _openConfigDirectory() async {
+    await SettingsService.instance.openConfigDirectory();
   }
 
   /// Story 3-7: 重新连接 Fcitx5 (AC16)
@@ -207,6 +249,7 @@ class TrayService {
     _isInitialized = false;
   }
 }
+
 
 
 

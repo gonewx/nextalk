@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:voice_capsule/app/nextalk_app.dart';
+import 'package:voice_capsule/services/model_manager.dart';
 import 'package:voice_capsule/state/capsule_state.dart';
 import 'package:voice_capsule/ui/capsule_widget.dart';
 
@@ -13,9 +14,11 @@ import 'package:voice_capsule/ui/capsule_widget.dart';
 void main() {
   group('Full Business Flow Tests', () {
     late StreamController<CapsuleStateData> stateController;
+    late ModelManager modelManager;
 
     setUp(() {
       stateController = StreamController<CapsuleStateData>.broadcast();
+      modelManager = ModelManager();
     });
 
     tearDown(() async {
@@ -24,7 +27,7 @@ void main() {
 
     group('状态流转测试', () {
       testWidgets('AC1: idle -> listening 时应显示呼吸动画状态', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // 切换到 listening 状态
@@ -39,7 +42,7 @@ void main() {
       });
 
       testWidgets('AC2: 识别文本应实时显示', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // 模拟识别过程中的文本更新
@@ -60,7 +63,7 @@ void main() {
       });
 
       testWidgets('AC4: listening -> processing 流转正确', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // listening 状态
@@ -77,7 +80,7 @@ void main() {
       });
 
       testWidgets('processing -> idle 流转正确 (提交完成)', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         stateController.add(CapsuleStateData.processing(text: '提交中'));
@@ -94,7 +97,7 @@ void main() {
 
     group('错误处理测试', () {
       testWidgets('AC9, AC10: Socket 断开时显示错误消息', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // Socket 错误
@@ -111,7 +114,7 @@ void main() {
         // AC11: 错误状态 3 秒后自动隐藏
         // 注意: 3 秒延迟逻辑在 HotkeyController._handleError 中实现
         // 此测试验证 UI 层面能够正确响应状态从 error -> idle 的变化
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // 进入错误状态
@@ -132,7 +135,7 @@ void main() {
       });
 
       testWidgets('音频设备错误显示正确消息', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         stateController
@@ -144,7 +147,7 @@ void main() {
       });
 
       testWidgets('模型错误显示正确消息', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         stateController
@@ -156,7 +159,7 @@ void main() {
       });
 
       testWidgets('错误状态后可恢复到 idle', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // 先进入错误状态
@@ -176,7 +179,7 @@ void main() {
 
     group('UI 状态绑定测试', () {
       testWidgets('CapsuleWidget 正确接收 stateData', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // 验证 CapsuleWidget 被渲染
@@ -184,7 +187,7 @@ void main() {
       });
 
       testWidgets('多次状态更新正确处理', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // 快速连续更新
@@ -199,7 +202,7 @@ void main() {
       });
 
       testWidgets('StreamBuilder 初始状态为 listening', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
@@ -211,7 +214,7 @@ void main() {
     group('完整业务流程测试', () {
       testWidgets('完整录音流程: idle -> listening -> processing -> idle',
           (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
@@ -244,7 +247,7 @@ void main() {
       });
 
       testWidgets('录音中遇到错误的流程', (tester) async {
-        await tester.pumpWidget(NextalkApp(stateController: stateController));
+        await tester.pumpWidget(NextalkApp(stateController: stateController, modelManager: modelManager));
         await tester.pump();
 
         // 1. 开始录音

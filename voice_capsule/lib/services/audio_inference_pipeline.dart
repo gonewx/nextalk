@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:ffi';
 
+import '../constants/settings_constants.dart';
 import 'audio_capture.dart';
 import 'model_manager.dart';
+import 'settings_service.dart';
 import 'sherpa_service.dart';
 
 /// 流水线状态枚举
@@ -133,7 +134,7 @@ class AudioInferencePipeline {
   static const double kDefaultRule2Silence = 1.2;
   // === 依赖注入 (通过构造函数传入，便于测试) ===
   final AudioCapture _audioCapture;
-  final SherpaService _sherpaService;
+  SherpaService _sherpaService;  // 改为非 final 以支持热切换
   final ModelManager _modelManager;
 
   // === 配置选项 ===
@@ -220,6 +221,54 @@ class AudioInferencePipeline {
     return true;
   }
 
+  /// 热切换模型版本
+  ///
+  /// 停止当前采集（如果正在运行），释放旧的 SherpaService，
+  /// 使用新的模型类型重新创建 SherpaService。
+  ///
+  /// [useInt8] 是否使用 int8 量化模型
+  ///
+  /// 返回 true 表示切换成功，false 表示失败
+  Future<bool> switchModelType(ModelType modelType) async {
+    final useInt8 = modelType == ModelType.int8;
+    final wasRunning = _state == PipelineState.running;
+
+    // ignore: avoid_print
+    print('[Pipeline] 开始切换模型: ${useInt8 ? "int8" : "标准"} (之前状态: $_state)');
+
+    try {
+      // 1. 如果正在运行，先停止
+      if (wasRunning) {
+        await stop();
+      }
+
+      // 2. 释放旧的 SherpaService
+      _sherpaService.dispose();
+
+      // 3. 创建新的 SherpaService
+      _sherpaService = SherpaService(enableDebugLog: enableDebugLog);
+
+      // ignore: avoid_print
+      print('[Pipeline] ✅ 模型切换成功: ${useInt8 ? "int8" : "标准"}');
+
+      // 4. 如果之前在运行，自动重新启动
+      if (wasRunning) {
+        final error = await start();
+        if (error != PipelineError.none) {
+          // ignore: avoid_print
+          print('[Pipeline] ⚠️ 重新启动失败: $error');
+          return false;
+        }
+      }
+
+      return true;
+    } catch (e) {
+      // ignore: avoid_print
+      print('[Pipeline] ❌ 模型切换失败: $e');
+      return false;
+    }
+  }
+
   /// 获取延迟统计信息 (AC5: 端到端延迟 < 200ms)
   LatencyStats get latencyStats {
     if (_latencySamples.isEmpty) {
@@ -266,10 +315,14 @@ class AudioInferencePipeline {
       return _lastError;
     }
 
-    // 2. 初始化 SherpaService (使用 VadConfig 中的静音阈值)
+    // 2. 初始化 SherpaService (使用 VadConfig 中的静音阈值和 SettingsService 中的模型类型)
     final silenceThreshold = _vadConfig.silenceThresholdSec ?? kDefaultRule2Silence;
+    final useInt8 = SettingsService.instance.isInitialized
+        ? SettingsService.instance.modelType == ModelType.int8
+        : true;  // 默认使用 int8
     final config = SherpaConfig(
       modelDir: _modelManager.modelPath,
+      useInt8Model: useInt8,
       numThreads: 2,
       sampleRate: 16000,
       enableEndpoint: true, // Story 2-6: VAD 端点检测

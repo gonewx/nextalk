@@ -7,6 +7,8 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 
+import 'settings_service.dart';
+
 /// 模型状态枚举
 enum ModelStatus {
   notFound, // 模型不存在
@@ -36,7 +38,7 @@ class ModelManager {
       'sherpa-onnx-streaming-zipformer-bilingual-zh-en';
   static const String _archiveName =
       'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20';
-  static const String _downloadUrl =
+  static const String _defaultDownloadUrl =
       'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
       '$_archiveName.tar.bz2';
   static const String _expectedSha256 =
@@ -47,8 +49,20 @@ class ModelManager {
 
   // === Story 3-7: 新增公开静态属性 ===
 
-  /// 获取模型下载 URL (用于手动安装引导显示)
-  static String get downloadUrl => _downloadUrl;
+  /// 获取模型下载 URL (优先使用自定义 URL)
+  static String get downloadUrl {
+    // 优先使用 SettingsService 中的自定义 URL
+    if (SettingsService.instance.isInitialized) {
+      final customUrl = SettingsService.instance.customModelUrl;
+      if (customUrl != null && customUrl.isNotEmpty) {
+        return customUrl;
+      }
+    }
+    return _defaultDownloadUrl;
+  }
+
+  /// 获取默认下载 URL (用于显示默认值)
+  static String get defaultDownloadUrl => _defaultDownloadUrl;
 
   /// 获取模型根目录路径 (用于手动安装引导显示)
   static String get modelDirectory => _modelBaseDir;
@@ -178,13 +192,13 @@ models/$_modelName/
     _cancelToken = CancelToken();
 
     // 获取最终下载 URL (跟随重定向)
-    String finalUrl = _downloadUrl;
+    String finalUrl = downloadUrl;
     try {
       final redirectDio = Dio();
       redirectDio.options.followRedirects = false;
       redirectDio.options.validateStatus = (status) => status != null && status < 400;
 
-      var currentUrl = _downloadUrl;
+      var currentUrl = downloadUrl;
       for (var i = 0; i < 5; i++) { // 最多跟随 5 次重定向
         final response = await redirectDio.head(currentUrl, cancelToken: _cancelToken);
         if (response.statusCode == 301 || response.statusCode == 302) {

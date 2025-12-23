@@ -8,6 +8,7 @@ import 'services/fcitx_client.dart';
 import 'services/hotkey_controller.dart';
 import 'services/hotkey_service.dart';
 import 'services/model_manager.dart';
+import 'services/settings_service.dart';
 import 'services/sherpa_service.dart';
 import 'services/tray_service.dart';
 import 'services/window_service.dart';
@@ -49,13 +50,17 @@ Future<void> main() async {
     // 1. 初始化窗口管理服务 (配置透明、无边框等，但不显示)
     await WindowService.instance.initialize(showOnStartup: false);
 
-    // 2. 初始化托盘服务 (必须在 WindowService 之后)
+    // 2. 初始化设置服务 (必须在托盘服务之前)
+    await SettingsService.instance.initialize();
+    DiagnosticLogger.instance.info('main', '设置服务初始化完成');
+
+    // 3. 初始化托盘服务 (必须在 WindowService 和 SettingsService 之后)
     await TrayService.instance.initialize();
 
-    // 3. 初始化全局快捷键服务
+    // 4. 初始化全局快捷键服务
     await HotkeyService.instance.initialize();
 
-    // 4. 检查/下载模型
+    // 5. 检查/下载模型
     final modelManager = ModelManager();
     if (!modelManager.isModelReady) {
       // TODO: 显示下载进度 UI (Post-MVP)
@@ -65,11 +70,11 @@ Future<void> main() async {
       // 暂时跳过，允许应用启动
     }
 
-    // 5. 创建服务实例 (即使模型未就绪也创建，便于后续初始化)
+    // 6. 创建服务实例 (即使模型未就绪也创建，便于后续初始化)
     _audioCapture = AudioCapture();
     _sherpaService = SherpaService();
 
-    // 6. 创建音频推理流水线
+    // 7. 创建音频推理流水线
     _pipeline = AudioInferencePipeline(
       audioCapture: _audioCapture!,
       sherpaService: _sherpaService!,
@@ -77,17 +82,17 @@ Future<void> main() async {
       enableDebugLog: true, // 开发阶段启用日志
     );
 
-    // 7. 创建 FcitxClient (延迟连接)
+    // 8. 创建 FcitxClient (延迟连接)
     _fcitxClient = FcitxClient();
 
-    // 8. 初始化快捷键控制器 (核心集成点)
+    // 9. 初始化快捷键控制器 (核心集成点)
     await HotkeyController.instance.initialize(
       pipeline: _pipeline!,
       fcitxClient: _fcitxClient!,
       stateController: _stateController,
     );
 
-    // 9. 设置托盘回调 (AC12: 释放所有资源, AC16: 重连 Fcitx5)
+    // 10. 设置托盘回调 (AC12: 释放所有资源, AC16: 重连 Fcitx5)
     TrayService.instance.onBeforeExit = () async {
       DiagnosticLogger.instance.info('main', '开始清理资源...');
 
@@ -118,7 +123,16 @@ Future<void> main() async {
       }
     };
 
-    // 10. 启动应用
+    // 11. 设置模型切换回调 (热切换模型版本)
+    SettingsService.instance.onModelSwitch = (newType) async {
+      if (_pipeline != null) {
+        DiagnosticLogger.instance.info('main', '切换模型类型: $newType');
+        await _pipeline!.switchModelType(newType);
+        DiagnosticLogger.instance.info('main', '模型切换完成');
+      }
+    };
+
+    // 12. 启动应用
     // Story 3-7: 传递 modelManager 以便 NextalkApp 根据模型状态路由 UI
     runApp(NextalkApp(
       stateController: _stateController,
