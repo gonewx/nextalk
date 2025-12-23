@@ -85,17 +85,17 @@ void main() {
 
       test('error 状态应该支持不同错误类型', () {
         final audioError =
-            CapsuleStateData.error(CapsuleErrorType.audioDeviceError);
+            CapsuleStateData.error(CapsuleErrorType.audioInitFailed);
         expect(audioError.state, equals(CapsuleState.error));
-        expect(audioError.errorType, equals(CapsuleErrorType.audioDeviceError));
+        expect(audioError.errorType, equals(CapsuleErrorType.audioInitFailed));
 
-        final modelError = CapsuleStateData.error(CapsuleErrorType.modelError);
-        expect(modelError.errorType, equals(CapsuleErrorType.modelError));
+        final modelError = CapsuleStateData.error(CapsuleErrorType.modelLoadFailed);
+        expect(modelError.errorType, equals(CapsuleErrorType.modelLoadFailed));
 
         final socketError =
-            CapsuleStateData.error(CapsuleErrorType.socketDisconnected);
+            CapsuleStateData.error(CapsuleErrorType.socketError);
         expect(
-            socketError.errorType, equals(CapsuleErrorType.socketDisconnected));
+            socketError.errorType, equals(CapsuleErrorType.socketError));
       });
     });
 

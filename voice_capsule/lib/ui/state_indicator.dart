@@ -70,6 +70,16 @@ class StateIndicator extends StatelessWidget {
 
       case CapsuleState.idle:
         return const SizedBox.shrink();
+
+      // Story 3-7: 新增初始化状态显示
+      case CapsuleState.initializing:
+      case CapsuleState.downloading:
+      case CapsuleState.extracting:
+        // 初始化过程中显示脉冲指示器
+        return PulseIndicator(
+          color: CapsuleColors.warning,
+          size: size,
+        );
     }
   }
 
@@ -87,13 +97,23 @@ class StateIndicator extends StatelessWidget {
 
   Color _getErrorColor() {
     switch (stateData.errorType) {
-      case CapsuleErrorType.audioDeviceError:
-        return CapsuleColors.disabled; // 灰色 - 无设备
-      case CapsuleErrorType.modelError:
-      case CapsuleErrorType.socketDisconnected:
+      // 灰色 - 无设备
+      case CapsuleErrorType.audioNoDevice:
+        return CapsuleColors.disabled;
+      // 黄色 - 警告 (所有其他错误)
+      case CapsuleErrorType.audioDeviceBusy:
+      case CapsuleErrorType.audioPermissionDenied:
+      case CapsuleErrorType.audioDeviceLost:
+      case CapsuleErrorType.audioInitFailed:
+      case CapsuleErrorType.modelNotFound:
+      case CapsuleErrorType.modelIncomplete:
+      case CapsuleErrorType.modelCorrupted:
+      case CapsuleErrorType.modelLoadFailed:
+      case CapsuleErrorType.socketError:
       case CapsuleErrorType.unknown:
       case null:
-        return CapsuleColors.warning; // 黄色 - 警告
+        return CapsuleColors.warning;
     }
   }
 }
+

@@ -20,6 +20,16 @@ enum AudioCaptureError {
   readFailed,
 }
 
+/// 音频设备状态枚举 (Story 3-7: AC11-12)
+/// 用于在录音前预检测设备可用性
+enum AudioDeviceStatus {
+  available,        // 设备可用
+  noDevice,         // 无设备
+  deviceBusy,       // 设备被占用
+  permissionDenied, // 权限不足
+  unknown,          // 未知状态
+}
+
 /// 音频采集服务
 ///
 /// 使用 PortAudio 进行音频采集，支持零拷贝接口。
@@ -35,6 +45,94 @@ class AudioCapture {
   AudioCaptureError _lastReadError = AudioCaptureError.none;  // M2 修复: 记录最近的读取错误
 
   AudioCapture() : _bindings = PortAudioBindings();
+
+  /// Story 3-7: 检查音频设备状态 (不初始化流，仅检测)
+  /// 用于在录音前预检测设备可用性
+  ///
+  /// 返回值:
+  /// - [AudioDeviceStatus.available] 设备可用
+  /// - [AudioDeviceStatus.noDevice] 未检测到麦克风
+  /// - [AudioDeviceStatus.deviceBusy] 设备被其他应用占用
+  /// - [AudioDeviceStatus.permissionDenied] 权限不足
+  /// - [AudioDeviceStatus.unknown] 未知状态
+  static Future<AudioDeviceStatus> checkDeviceStatus() async {
+    final bindings = PortAudioBindings();
+
+    // 1. 初始化 PortAudio
+    final initResult = bindings.initialize();
+    if (initResult != paNoError) {
+      return AudioDeviceStatus.unknown;
+    }
+
+    try {
+      // 2. 获取默认输入设备
+      final deviceIndex = bindings.getDefaultInputDevice();
+      if (deviceIndex == paNoDevice) {
+        return AudioDeviceStatus.noDevice;
+      }
+
+      // 3. 获取设备信息
+      final deviceInfo = bindings.getDeviceInfo(deviceIndex);
+      if (deviceInfo == nullptr) {
+        return AudioDeviceStatus.noDevice;
+      }
+
+      // 4. 尝试打开流以检测设备是否被占用
+      final inputParams = calloc<PaStreamParameters>();
+      final streamPtr = calloc<Pointer<Void>>();
+
+      try {
+        inputParams.ref.device = deviceIndex;
+        inputParams.ref.channelCount = AudioConfig.channels;
+        inputParams.ref.sampleFormat = paFloat32;
+        inputParams.ref.suggestedLatency = deviceInfo.ref.defaultLowInputLatency;
+        inputParams.ref.hostApiSpecificStreamInfo = nullptr;
+
+        final openResult = bindings.openStream(
+          streamPtr,
+          inputParams,
+          nullptr,
+          AudioConfig.sampleRate.toDouble(),
+          AudioConfig.framesPerBuffer,
+          paClipOff,
+          nullptr,
+          nullptr,
+        );
+
+        if (openResult == paNoError) {
+          // 成功打开，立即关闭
+          bindings.closeStream(streamPtr.value);
+          return AudioDeviceStatus.available;
+        } else if (openResult == paDeviceUnavailable) {
+          return AudioDeviceStatus.deviceBusy;
+        } else if (openResult == paInvalidChannelCount) {
+          return AudioDeviceStatus.permissionDenied;
+        } else {
+          return _mapPaError(openResult);
+        }
+      } finally {
+        calloc.free(inputParams);
+        calloc.free(streamPtr);
+      }
+    } finally {
+      // 5. 释放 PortAudio
+      bindings.terminate();
+    }
+  }
+
+  /// 将 PortAudio 错误码映射到 AudioDeviceStatus
+  static AudioDeviceStatus _mapPaError(int paErrorCode) {
+    switch (paErrorCode) {
+      case paNoDevice:
+        return AudioDeviceStatus.noDevice;
+      case paDeviceUnavailable:
+        return AudioDeviceStatus.deviceBusy;
+      case paInternalError:
+        return AudioDeviceStatus.unknown;
+      default:
+        return AudioDeviceStatus.unknown;
+    }
+  }
 
   /// 启动音频采集
   ///

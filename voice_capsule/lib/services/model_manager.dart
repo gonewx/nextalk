@@ -41,7 +41,17 @@ class ModelManager {
       '$_archiveName.tar.bz2';
   static const String _expectedSha256 =
       'fb034d9c586c72c2b1e0c3c0cfcf68d0bfe7eec36f1e2073c7f2edbc1bc5b8e5';
-  static const int _requiredSpaceBytes = 300 * 1024 * 1024; // 300MB
+
+  /// Story 3-7: 下载取消令牌
+  CancelToken? _cancelToken;
+
+  // === Story 3-7: 新增公开静态属性 ===
+
+  /// 获取模型下载 URL (用于手动安装引导显示)
+  static String get downloadUrl => _downloadUrl;
+
+  /// 获取模型根目录路径 (用于手动安装引导显示)
+  static String get modelDirectory => _modelBaseDir;
 
   /// XDG 数据目录 (遵循 XDG Base Directory 规范)
   static String get _xdgDataHome {
@@ -95,6 +105,41 @@ class ModelManager {
   /// 快捷属性: 模型是否就绪
   bool get isModelReady => checkModelStatus() == ModelStatus.ready;
 
+  // === Story 3-7: 新增实例方法 ===
+
+  /// 使用 xdg-open 打开模型目录 (AC6: 打开目录按钮)
+  /// 如果目录不存在则先创建
+  Future<void> openModelDirectory() async {
+    final dir = Directory(modelDirectory);
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    await Process.run('xdg-open', [modelDirectory]);
+  }
+
+  /// 获取期望的目录结构描述 (用于手动安装引导显示)
+  String getExpectedStructure() => '''
+models/$_modelName/
+├── encoder-epoch-*.onnx
+├── decoder-epoch-*.onnx
+├── joiner-epoch-*.onnx
+└── tokens.txt
+''';
+
+  /// 删除现有模型目录 (用于"重新下载"操作)
+  Future<void> deleteModel() async {
+    final dir = Directory(modelPath);
+    if (dir.existsSync()) {
+      await dir.delete(recursive: true);
+    }
+  }
+
+  /// Story 3-7: 取消正在进行的下载 (AC4: 取消按钮)
+  void cancelDownload() {
+    _cancelToken?.cancel('用户取消下载');
+    _cancelToken = null;
+  }
+
   /// 下载模型 (支持代理、重试、进度回调)
   Future<String> downloadModel({
     ProgressCallback? onProgress,
@@ -130,6 +175,9 @@ class ModelManager {
     final tempFile = File(_tempFilePath);
     Object lastException = Exception('下载失败');
 
+    // Story 3-7: 创建新的取消令牌
+    _cancelToken = CancelToken();
+
     for (var attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         onProgress?.call(0.0, '下载中 (尝试 $attempt/$maxRetries)...');
@@ -137,6 +185,7 @@ class ModelManager {
         await dio.download(
           _downloadUrl,
           _tempFilePath,
+          cancelToken: _cancelToken,
           onReceiveProgress: (received, total) {
             if (total > 0) {
               final progress = received / total;

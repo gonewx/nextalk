@@ -64,16 +64,20 @@ class EndpointEvent {
   /// 延迟统计
   final LatencyStats latencyStats;
 
+  /// Story 3-7: 是否由设备断开触发
+  final bool isDeviceLost;
+
   const EndpointEvent({
     required this.finalText,
     required this.isVadTriggered,
     required this.durationMs,
     required this.latencyStats,
+    this.isDeviceLost = false,
   });
 
   @override
   String toString() =>
-      'EndpointEvent(text: "$finalText", vad: $isVadTriggered, duration: ${durationMs}ms)';
+      'EndpointEvent(text: "$finalText", vad: $isVadTriggered, duration: ${durationMs}ms, deviceLost: $isDeviceLost)';
 }
 
 /// VAD 配置 (Story 2-6)
@@ -464,6 +468,8 @@ class AudioInferencePipeline {
     if (samplesRead == -1) {
       final error = _audioCapture.lastReadError;
       if (error == AudioCaptureError.deviceUnavailable) {
+        // Story 3-7: 设备丢失时发送 EndpointEvent 并保存已识别文本
+        _handleDeviceLost();
         _setError(PipelineError.deviceUnavailable);
         _stopRequested = true; // 触发循环退出
       }
@@ -506,6 +512,54 @@ class AudioInferencePipeline {
       if (_sherpaService.isEndpoint() && !_vadTriggeredStop) {
         await _handleEndpoint();
       }
+    }
+  }
+
+  /// Story 3-7: 处理设备丢失事件
+  /// 当 PortAudio 检测到设备不可用时调用
+  /// 发送带有 isDeviceLost=true 的 EndpointEvent，保存当前识别的文本
+  void _handleDeviceLost() {
+    if (_isDisposed || _endpointController.isClosed) return;
+
+    // 1. 尝试获取当前已识别的文本
+    String preservedText = _lastEmittedText;
+
+    // 尝试从 Sherpa 获取最新结果
+    try {
+      _sherpaService.inputFinished();
+      while (_sherpaService.isReady()) {
+        _sherpaService.decode();
+      }
+      final result = _sherpaService.getResult();
+      if (result.text.isNotEmpty) {
+        preservedText = result.text;
+      }
+    } catch (e) {
+      // 忽略解码错误，使用已有的文本
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[Pipeline] ⚠️ _handleDeviceLost 获取文本失败: $e');
+      }
+    }
+
+    // 2. 计算录音时长
+    final durationMs = _recordingStartTime != null
+        ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
+        : 0;
+
+    // 3. 发送设备丢失事件 (AC13: 保存已识别文本)
+    final event = EndpointEvent(
+      finalText: preservedText,
+      isVadTriggered: false,
+      durationMs: durationMs,
+      latencyStats: latencyStats,
+      isDeviceLost: true,
+    );
+    _endpointController.add(event);
+
+    if (enableDebugLog) {
+      // ignore: avoid_print
+      print('[Pipeline] 🔌 设备丢失，已保存文本: "$preservedText"');
     }
   }
 

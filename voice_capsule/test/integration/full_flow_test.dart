@@ -99,11 +99,11 @@ void main() {
 
         // Socket 错误
         stateController
-            .add(CapsuleStateData.error(CapsuleErrorType.socketDisconnected));
+            .add(CapsuleStateData.error(CapsuleErrorType.socketError));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
-        expect(find.text('Fcitx5 未连接'), findsOneWidget);
+        expect(find.text('Fcitx5 连接错误'), findsOneWidget);
       });
 
       testWidgets('AC11: 错误状态 3 秒后应能恢复到 idle (模拟自动隐藏)',
@@ -116,10 +116,10 @@ void main() {
 
         // 进入错误状态
         stateController
-            .add(CapsuleStateData.error(CapsuleErrorType.socketDisconnected));
+            .add(CapsuleStateData.error(CapsuleErrorType.socketError));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('Fcitx5 未连接'), findsOneWidget);
+        expect(find.text('Fcitx5 连接错误'), findsOneWidget);
 
         // 模拟 3 秒后 HotkeyController 发送 idle 状态
         // 实际场景中这由 HotkeyController 的 Future.delayed(3s) 触发
@@ -128,7 +128,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 100));
 
         // 错误消息应该消失
-        expect(find.text('Fcitx5 未连接'), findsNothing);
+        expect(find.text('Fcitx5 连接错误'), findsNothing);
       });
 
       testWidgets('音频设备错误显示正确消息', (tester) async {
@@ -136,11 +136,11 @@ void main() {
         await tester.pump();
 
         stateController
-            .add(CapsuleStateData.error(CapsuleErrorType.audioDeviceError));
+            .add(CapsuleStateData.error(CapsuleErrorType.audioInitFailed));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
-        expect(find.text('音频设备异常'), findsOneWidget);
+        expect(find.text('音频设备初始化失败'), findsOneWidget);
       });
 
       testWidgets('模型错误显示正确消息', (tester) async {
@@ -148,11 +148,11 @@ void main() {
         await tester.pump();
 
         stateController
-            .add(CapsuleStateData.error(CapsuleErrorType.modelError));
+            .add(CapsuleStateData.error(CapsuleErrorType.modelLoadFailed));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
 
-        expect(find.text('模型损坏，请重启'), findsOneWidget);
+        expect(find.text('模型加载失败'), findsOneWidget);
       });
 
       testWidgets('错误状态后可恢复到 idle', (tester) async {
@@ -161,16 +161,16 @@ void main() {
 
         // 先进入错误状态
         stateController
-            .add(CapsuleStateData.error(CapsuleErrorType.socketDisconnected));
+            .add(CapsuleStateData.error(CapsuleErrorType.socketError));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('Fcitx5 未连接'), findsOneWidget);
+        expect(find.text('Fcitx5 连接错误'), findsOneWidget);
 
         // 恢复到 idle
         stateController.add(CapsuleStateData.idle());
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('Fcitx5 未连接'), findsNothing);
+        expect(find.text('Fcitx5 连接错误'), findsNothing);
       });
     });
 
@@ -255,16 +255,16 @@ void main() {
 
         // 2. 遇到错误 (如 Socket 断开)
         stateController
-            .add(CapsuleStateData.error(CapsuleErrorType.socketDisconnected));
+            .add(CapsuleStateData.error(CapsuleErrorType.socketError));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('Fcitx5 未连接'), findsOneWidget);
+        expect(find.text('Fcitx5 连接错误'), findsOneWidget);
 
         // 3. 错误超时后恢复
         stateController.add(CapsuleStateData.idle());
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('Fcitx5 未连接'), findsNothing);
+        expect(find.text('Fcitx5 连接错误'), findsNothing);
       });
     });
   });

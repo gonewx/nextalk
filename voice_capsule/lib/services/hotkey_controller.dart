@@ -44,11 +44,50 @@ class HotkeyController {
   StreamSubscription<String>? _resultSubscription;
   bool _isInitialized = false;
 
+  /// Story 3-7: 保存提交失败的文本 (AC15: 文本保护)
+  String? _lastRecognizedText;
+
   /// 当前状态
   HotkeyState get state => _state;
 
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
+
+  /// Story 3-7: 获取保存的文本 (用于复制/重试)
+  String? get preservedText => _lastRecognizedText;
+
+  /// Story 3-7: 重试提交保存的文本 (AC15)
+  Future<void> retrySubmit() async {
+    if (_lastRecognizedText == null || _lastRecognizedText!.isEmpty) return;
+
+    _state = HotkeyState.submitting;
+    _updateState(CapsuleStateData.processing());
+
+    await _submitText(_lastRecognizedText!);
+
+    // 如果提交成功，隐藏窗口
+    if (_lastRecognizedText == null) {
+      await WindowService.instance.hide();
+      _state = HotkeyState.idle;
+      _updateState(CapsuleStateData.idle());
+    }
+  }
+
+  /// Story 3-7: 放弃保存的文本并隐藏窗口
+  Future<void> discardPreservedText() async {
+    _lastRecognizedText = null;
+    await WindowService.instance.hide();
+    _state = HotkeyState.idle;
+    _updateState(CapsuleStateData.idle());
+  }
+
+  /// Story 3-7: 清除错误状态并隐藏窗口
+  Future<void> dismissError() async {
+    _lastRecognizedText = null;
+    await WindowService.instance.hide();
+    _state = HotkeyState.idle;
+    _updateState(CapsuleStateData.idle());
+  }
 
   /// 初始化控制器
   ///
@@ -159,31 +198,74 @@ class HotkeyController {
   }
 
   /// 提交文本到 Fcitx5
+  /// Story 3-7: 增强错误处理，保护提交失败的文本 (AC15)
   Future<void> _submitText(String text) async {
     if (text.isEmpty) return;
 
     try {
       await _fcitxClient!.sendText(text);
+      _lastRecognizedText = null; // 成功后清空
       // ignore: avoid_print
       print('[HotkeyController] ✅ 文本已提交');
+    } on FcitxError catch (e) {
+      // Story 3-7: 保存文本，使用 FcitxError 细化消息
+      _lastRecognizedText = text;
+      // ignore: avoid_print
+      print('[HotkeyController] ❌ 文本提交失败 (FcitxError): $e');
+      _updateState(CapsuleStateData.error(
+        CapsuleErrorType.socketError,
+        fcitxError: e,
+        preservedText: text,
+      ));
+      // 不自动隐藏，等待用户操作 (AC15)
+      _state = HotkeyState.idle; // 允许用户重新触发
     } catch (e) {
+      // 其他异常
+      _lastRecognizedText = text;
       // ignore: avoid_print
       print('[HotkeyController] ❌ 文本提交失败: $e');
-      _updateState(CapsuleStateData.error(CapsuleErrorType.socketDisconnected));
-      await Future.delayed(const Duration(seconds: 2));
+      _updateState(CapsuleStateData.error(
+        CapsuleErrorType.socketError,
+        preservedText: text,
+      ));
+      _state = HotkeyState.idle;
     }
   }
 
   /// VAD 端点事件处理 (自动提交)
+  /// Story 3-7: 增强设备丢失处理 (AC13)
   void _onEndpoint(EndpointEvent event) {
     // ignore: avoid_print
     print('[HotkeyController] 🔔 VAD 端点: isVad=${event.isVadTriggered}, '
-        'text="${event.finalText}", duration=${event.durationMs}ms');
+        'text="${event.finalText}", duration=${event.durationMs}ms, '
+        'deviceLost=${event.isDeviceLost}');
+
+    // Story 3-7 AC13: 设备断开时保存文本并显示警告
+    if (event.isDeviceLost) {
+      _handleDeviceLost(event.finalText);
+      return;
+    }
 
     if (event.isVadTriggered && _state == HotkeyState.recording) {
       // VAD 自动触发，执行提交流程
       _submitFromVad(event.finalText);
     }
+  }
+
+  /// Story 3-7: 处理设备丢失 (AC13)
+  /// 保存已识别文本并显示警告，不自动隐藏窗口
+  void _handleDeviceLost(String preservedText) {
+    _lastRecognizedText = preservedText;
+    _state = HotkeyState.idle; // 允许用户重新触发
+
+    // 更新 UI 显示设备丢失错误
+    _updateState(CapsuleStateData.error(
+      CapsuleErrorType.audioDeviceLost,
+      preservedText: preservedText.isNotEmpty ? preservedText : null,
+    ));
+
+    // ignore: avoid_print
+    print('[HotkeyController] 🔌 设备丢失，已保存文本: "$preservedText"');
   }
 
   /// VAD 触发的提交 (无需再次 stop)
@@ -214,10 +296,10 @@ class HotkeyController {
   /// 错误处理
   void _handleError(PipelineError error) {
     final errorType = switch (error) {
-      PipelineError.audioInitFailed => CapsuleErrorType.audioDeviceError,
-      PipelineError.deviceUnavailable => CapsuleErrorType.audioDeviceError,
-      PipelineError.modelNotReady => CapsuleErrorType.modelError,
-      PipelineError.recognizerFailed => CapsuleErrorType.modelError,
+      PipelineError.audioInitFailed => CapsuleErrorType.audioInitFailed,
+      PipelineError.deviceUnavailable => CapsuleErrorType.audioNoDevice,
+      PipelineError.modelNotReady => CapsuleErrorType.modelLoadFailed,
+      PipelineError.recognizerFailed => CapsuleErrorType.modelLoadFailed,
       PipelineError.none => null,
     };
 

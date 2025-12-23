@@ -67,30 +67,30 @@ void main() {
       expect(find.text('你好世界'), findsOneWidget);
     });
 
-    testWidgets('error 状态 (socketDisconnected) 应该显示错误消息',
+    testWidgets('error 状态 (socketError) 应该显示错误消息',
         (tester) async {
       await tester.pumpWidget(NextalkApp(stateController: stateController));
       await tester.pump();
 
       stateController
-          .add(CapsuleStateData.error(CapsuleErrorType.socketDisconnected));
+          .add(CapsuleStateData.error(CapsuleErrorType.socketError));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('Fcitx5 未连接'), findsOneWidget);
+      expect(find.text('Fcitx5 连接错误'), findsOneWidget);
     });
 
-    testWidgets('error 状态 (audioDeviceError) 应该显示错误消息',
+    testWidgets('error 状态 (audioInitFailed) 应该显示错误消息',
         (tester) async {
       await tester.pumpWidget(NextalkApp(stateController: stateController));
       await tester.pump();
 
       stateController
-          .add(CapsuleStateData.error(CapsuleErrorType.audioDeviceError));
+          .add(CapsuleStateData.error(CapsuleErrorType.audioInitFailed));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      expect(find.text('音频设备异常'), findsOneWidget);
+      expect(find.text('音频设备初始化失败'), findsOneWidget);
     });
 
     testWidgets('状态流转: idle -> listening -> processing -> idle',

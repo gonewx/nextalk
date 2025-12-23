@@ -69,11 +69,12 @@ development_status:
   # 用户获得无缝、美观的语音输入体验
   # FRs: FR1, FR5, FR6
   # ============================================
-  epic-3: done
+  epic-3: in-progress
   3-1-transparent-capsule-window: done
   3-2-capsule-ui-component: done
   3-3-state-machine-animations: done
   3-4-system-tray-integration: done
   3-5-global-hotkey-listener: done
   3-6-full-business-flow: done
+  3-7-init-wizard-error-handling: done
   epic-3-retrospective: optional

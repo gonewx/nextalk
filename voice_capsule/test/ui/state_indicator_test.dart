@@ -45,10 +45,10 @@ void main() {
       expect(find.byType(SizedBox), findsWidgets);
     });
 
-    testWidgets('renders gray dot for audioDeviceError', (tester) async {
+    testWidgets('renders gray dot for audioNoDevice', (tester) async {
       await tester.pumpWidget(buildTestWidget(
         StateIndicator(
-          stateData: CapsuleStateData.error(CapsuleErrorType.audioDeviceError),
+          stateData: CapsuleStateData.error(CapsuleErrorType.audioNoDevice),
         ),
       ));
 
@@ -73,10 +73,10 @@ void main() {
       expect(decoration.color, CapsuleColors.disabled);
     });
 
-    testWidgets('renders yellow dot for socketDisconnected', (tester) async {
+    testWidgets('renders yellow dot for socketError', (tester) async {
       await tester.pumpWidget(buildTestWidget(
         StateIndicator(
-          stateData: CapsuleStateData.error(CapsuleErrorType.socketDisconnected),
+          stateData: CapsuleStateData.error(CapsuleErrorType.socketError),
         ),
       ));
 
@@ -99,10 +99,10 @@ void main() {
       expect(decoration.color, CapsuleColors.warning);
     });
 
-    testWidgets('renders yellow dot for modelError', (tester) async {
+    testWidgets('renders yellow dot for modelLoadFailed', (tester) async {
       await tester.pumpWidget(buildTestWidget(
         StateIndicator(
-          stateData: CapsuleStateData.error(CapsuleErrorType.modelError),
+          stateData: CapsuleStateData.error(CapsuleErrorType.modelLoadFailed),
         ),
       ));
 
@@ -195,16 +195,17 @@ void main() {
     });
 
     test('error state returns default error message', () {
-      final state = CapsuleStateData.error(CapsuleErrorType.audioDeviceError);
-      expect(state.displayMessage, '音频设备异常');
+      final state = CapsuleStateData.error(CapsuleErrorType.audioInitFailed);
+      expect(state.displayMessage, '音频设备初始化失败');
     });
 
     test('error state with custom message uses it', () {
       final state = CapsuleStateData.error(
         CapsuleErrorType.unknown,
-        '自定义错误',
+        message: '自定义错误',
       );
       expect(state.displayMessage, '自定义错误');
     });
   });
 }
+

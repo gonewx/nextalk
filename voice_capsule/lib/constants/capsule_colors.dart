@@ -8,8 +8,14 @@ class CapsuleColors {
   /// 胶囊主背景 - 深灰微透 [Source: docs/front-end-spec.md#2.1]
   static const Color background = Color.fromRGBO(25, 25, 25, 0.95);
 
+  /// Story 3-7: 深色背景 (用于对话框)
+  static const Color backgroundDark = Color(0xFF1A1A1A);
+
   /// 核心状态色 - 录音中/呼吸灯 [用于 Story 3-3]
   static const Color accentRed = Color(0xFFFF4757);
+
+  /// Story 3-7: 录音红 (与 accentRed 相同，兼容别名)
+  static const Color recordingRed = accentRed;
 
   /// 主文字颜色
   static const Color textWhite = Color(0xFFFFFFFF);
@@ -61,3 +67,4 @@ class CapsuleTextStyles {
     height: 1.0,
   );
 }
+

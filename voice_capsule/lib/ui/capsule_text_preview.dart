@@ -49,3 +49,4 @@ class CapsuleTextPreview extends StatelessWidget {
     );
   }
 }
+

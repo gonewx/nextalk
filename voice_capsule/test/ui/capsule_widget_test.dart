@@ -328,11 +328,11 @@ void main() {
     testWidgets('shows error message in error state', (tester) async {
       await tester.pumpWidget(buildTestWidget(
         CapsuleWidget(
-          stateData: CapsuleStateData.error(CapsuleErrorType.audioDeviceError),
+          stateData: CapsuleStateData.error(CapsuleErrorType.audioInitFailed),
         ),
       ));
 
-      expect(find.text('音频设备异常'), findsOneWidget);
+      expect(find.text('音频设备初始化失败'), findsOneWidget);
     });
 
     testWidgets('uses processing style in processing state', (tester) async {
@@ -388,3 +388,4 @@ void main() {
     });
   });
 }
+

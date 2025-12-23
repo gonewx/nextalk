@@ -10,6 +10,19 @@ import 'window_service.dart';
 /// 退出回调类型 - 用于注入 Pipeline 释放逻辑
 typedef ExitCallback = Future<void> Function();
 
+/// Story 3-7: 托盘状态枚举 (用于图标切换, AC19)
+/// system_tray 不支持角标，使用不同图标文件模拟
+enum TrayStatus {
+  /// 正常状态
+  normal,
+
+  /// 警告状态 (如连接断开)
+  warning,
+
+  /// 错误状态 (如严重错误)
+  error,
+}
+
 /// 系统托盘服务 - Story 3-4
 ///
 /// 功能:
@@ -33,11 +46,41 @@ class TrayService {
   /// 退出前回调 (由 main.dart 或 Story 3-6 注入 Pipeline 释放逻辑)
   ExitCallback? onBeforeExit;
 
+  /// Story 3-7: 重新连接 Fcitx5 回调 (AC16)
+  Future<void> Function()? onReconnectFcitx;
+
+  /// Story 3-7: 当前托盘状态
+  TrayStatus _currentStatus = TrayStatus.normal;
+
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
 
   /// 初始化是否失败 (用于诊断)
   bool get initializationFailed => _initializationFailed;
+
+  /// Story 3-7: 当前托盘状态
+  TrayStatus get currentStatus => _currentStatus;
+
+  /// Story 3-7: 更新托盘状态 (切换图标, AC19)
+  /// system_tray 不支持角标，使用不同图标文件模拟
+  Future<void> updateStatus(TrayStatus status) async {
+    if (!_isInitialized || _currentStatus == status) return;
+    _currentStatus = status;
+
+    final iconName = switch (status) {
+      TrayStatus.normal => TrayConstants.iconPath,
+      TrayStatus.warning => TrayConstants.iconWarningPath,
+      TrayStatus.error => TrayConstants.iconErrorPath,
+    };
+
+    try {
+      final executableDir = File(Platform.resolvedExecutable).parent;
+      final iconPath = '${executableDir.path}/data/flutter_assets/$iconName';
+      await _systemTray.setImage(iconPath);
+    } catch (e) {
+      debugPrint('TrayService: 更新图标失败: $e');
+    }
+  }
 
   /// 初始化托盘服务 (必须在 WindowService 之后调用)
   ///
@@ -75,6 +118,7 @@ class TrayService {
   }
 
   /// 构建托盘右键菜单
+  /// Story 3-7: 新增"重新连接 Fcitx5"菜单项 (AC16)
   Future<void> _buildMenu() async {
     final menu = Menu();
     await menu.buildFrom([
@@ -84,6 +128,10 @@ class TrayService {
         label: TrayConstants.menuShowHide,
         onClicked: (_) => _toggleWindow(),
       ),
+      MenuItemLabel(
+        label: TrayConstants.menuReconnectFcitx,  // AC16: 新增
+        onClicked: (_) => _reconnectFcitx(),
+      ),
       MenuItemLabel(label: TrayConstants.menuSettings, enabled: false),
       MenuSeparator(),
       MenuItemLabel(
@@ -92,6 +140,22 @@ class TrayService {
       ),
     ]);
     await _systemTray.setContextMenu(menu);
+  }
+
+  /// Story 3-7: 重新连接 Fcitx5 (AC16)
+  Future<void> _reconnectFcitx() async {
+    if (onReconnectFcitx != null) {
+      try {
+        await onReconnectFcitx!();
+        await updateStatus(TrayStatus.normal);
+        debugPrint('TrayService: Fcitx5 重连成功');
+      } catch (e) {
+        debugPrint('TrayService: Fcitx5 重连失败: $e');
+        await updateStatus(TrayStatus.warning);
+      }
+    } else {
+      debugPrint('TrayService: onReconnectFcitx 回调未设置');
+    }
   }
 
   /// 处理托盘图标事件
@@ -143,3 +207,4 @@ class TrayService {
     _isInitialized = false;
   }
 }
+
