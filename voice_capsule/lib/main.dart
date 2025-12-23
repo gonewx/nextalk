@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'app/nextalk_app.dart';
+import 'services/animation_ticker_service.dart';
 import 'services/audio_capture.dart';
 import 'services/audio_inference_pipeline.dart';
 import 'services/fcitx_client.dart';
@@ -32,6 +33,9 @@ Future<void> main() async {
   // Story 3-7: 使用 runZonedGuarded 捕获未处理异常 (AC17)
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // 启动动画预热服务 (确保呼吸灯无延迟显示)
+    AnimationTickerService.instance.start();
 
     // Story 3-7: 初始化诊断日志系统
     await DiagnosticLogger.instance.initialize();
@@ -95,6 +99,9 @@ Future<void> main() async {
     // 10. 设置托盘回调 (AC12: 释放所有资源, AC16: 重连 Fcitx5)
     TrayService.instance.onBeforeExit = () async {
       DiagnosticLogger.instance.info('main', '开始清理资源...');
+
+      // 停止动画预热服务
+      AnimationTickerService.instance.stop();
 
       // 释放控制器
       await HotkeyController.instance.dispose();

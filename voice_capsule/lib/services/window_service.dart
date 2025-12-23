@@ -58,42 +58,24 @@ class WindowService with WindowListener {
     const windowOptions = WindowOptions(
       size: Size(WindowConstants.windowWidth, WindowConstants.windowHeight),
       center: true,
-      backgroundColor: Color(0x00000000), // 完全透明
-      skipTaskbar: true, // 不在任务栏显示 - AC7
-      titleBarStyle: TitleBarStyle.hidden, // 无标题栏 - AC1
-      alwaysOnTop: true, // 始终在最前 - AC7
+      skipTaskbar: true, // 不在任务栏显示
+      titleBarStyle: TitleBarStyle.hidden, // 无标题栏
+      alwaysOnTop: true, // 始终在最前
     );
 
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      // 配置窗口属性
-      await windowManager.setAsFrameless(); // 无边框
-      await windowManager.setResizable(false); // 不可调整大小 - AC3
-
-      // 以下方法在 Linux 上可能不支持，用 try-catch 包装
-      try {
-        await windowManager.setMovable(true); // 可拖拽 - AC9
-      } catch (_) {
-        // Linux 上通过 GestureDetector + startDragging 实现拖拽
-      }
-      try {
-        await windowManager.setMinimizable(false); // 不可最小化
-        await windowManager.setMaximizable(false); // 不可最大化
-      } catch (_) {
-        // Linux 上可能不支持
-      }
-
-      // 尝试恢复上次保存的位置
+      // 与参考项目保持一致：只做最基本的设置
+      await windowManager.setAsFrameless();
       await _restorePosition();
+      await windowManager.show();
+      await windowManager.focus();
 
-      // Story 3-4: 根据参数决定是否显示窗口
-      if (showOnStartup) {
-        await windowManager.show();
-        await windowManager.focus();
-        _isVisible = true;
-      } else {
-        // 默认隐藏，托盘驻留
+      // 根据参数决定是否保持显示
+      if (!showOnStartup) {
         await windowManager.hide();
         _isVisible = false;
+      } else {
+        _isVisible = true;
       }
     });
 
@@ -109,10 +91,16 @@ class WindowService with WindowListener {
 
     if (_isVisible) return;
 
-    await _restorePosition();
     await windowManager.show();
+    // 关键：在 show 之后立即设置 skipTaskbar，确保窗口管理器应用此设置
+    await windowManager.setSkipTaskbar(true);
     await windowManager.focus();
     _isVisible = true;
+
+    // 关键修复：在窗口可见后再设置位置
+    // GTK/Wayland 在窗口隐藏时 setPosition() 可能被忽略
+    await Future.delayed(const Duration(milliseconds: 50));
+    await _restorePosition();
   }
 
   /// 隐藏窗口

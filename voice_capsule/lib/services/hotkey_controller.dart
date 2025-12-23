@@ -161,11 +161,11 @@ class HotkeyController {
   Future<void> _startRecording() async {
     _state = HotkeyState.recording;
 
-    // 1. 显示窗口 (AC1: 瞬间出现)
-    await WindowService.instance.show();
-
-    // 2. 更新 UI 状态为聆听中
+    // 1. 先更新 UI 状态为聆听中 (确保呼吸灯渲染就绪)
     _updateState(CapsuleStateData.listening());
+
+    // 2. 显示窗口 (AC1: 瞬间出现)
+    await WindowService.instance.show();
 
     // 3. 启动录音流水线 (AC2)
     final error = await _pipeline!.start();

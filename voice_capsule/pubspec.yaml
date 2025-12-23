@@ -20,7 +20,7 @@ dependencies:
   dio: ^5.4.0  # HTTP 下载 (支持代理、重试、进度)
   archive: ^3.6.0  # tar.bz2 解压
   crypto: ^3.0.3  # SHA256 校验
-  window_manager: ^0.3.9  # 窗口管理 (size, position, alwaysOnTop)
+  window_manager: ^0.5.1  # 窗口管理 (size, position, alwaysOnTop, skipTaskbar)
   shared_preferences: ^2.2.2  # 位置持久化存储
   system_tray: ^2.0.3  # 系统托盘支持 (Story 3-4)
   hotkey_manager: ^0.2.3  # 全局快捷键支持 (Story 3-5)
