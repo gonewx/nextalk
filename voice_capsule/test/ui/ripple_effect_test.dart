@@ -61,13 +61,13 @@ void main() {
         (tester) async {
       await tester.pumpWidget(buildTestWidget(const RippleEffect()));
 
-      // Should have 2 AnimatedBuilder widgets within RippleEffect
-      final animatedBuilders = find.descendant(
+      // Should have 2 Transform widgets within RippleEffect (one per ripple)
+      final transforms = find.descendant(
         of: find.byType(RippleEffect),
-        matching: find.byType(AnimatedBuilder),
+        matching: find.byType(Transform),
       );
 
-      expect(animatedBuilders, findsNWidgets(2));
+      expect(transforms, findsNWidgets(2));
     });
 
     testWidgets('renders custom number of ripples', (tester) async {
@@ -75,12 +75,12 @@ void main() {
         const RippleEffect(rippleCount: 3),
       ));
 
-      final animatedBuilders = find.descendant(
+      final transforms = find.descendant(
         of: find.byType(RippleEffect),
-        matching: find.byType(AnimatedBuilder),
+        matching: find.byType(Transform),
       );
 
-      expect(animatedBuilders, findsNWidgets(3));
+      expect(transforms, findsNWidgets(3));
     });
 
     testWidgets('uses RepaintBoundary for performance', (tester) async {

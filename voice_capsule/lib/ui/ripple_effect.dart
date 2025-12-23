@@ -36,6 +36,7 @@ class RippleEffect extends StatefulWidget {
 class _RippleEffectState extends State<RippleEffect>
     with SingleTickerProviderStateMixin {
   Ticker? _ticker;
+  bool _tickerCreated = false;
 
   @override
   void initState() {
@@ -46,16 +47,21 @@ class _RippleEffectState extends State<RippleEffect>
   }
 
   void _startTicker() {
+    if (_tickerCreated) {
+      // Ticker 已创建，只需重新启动
+      _ticker?.start();
+      return;
+    }
     _ticker = createTicker((_) {
       if (mounted) setState(() {});
     });
+    _tickerCreated = true;
     _ticker!.start();
   }
 
   void _stopTicker() {
     _ticker?.stop();
-    _ticker?.dispose();
-    _ticker = null;
+    // 不 dispose ticker，保留以便重用
   }
 
   @override
@@ -72,7 +78,9 @@ class _RippleEffectState extends State<RippleEffect>
 
   @override
   void dispose() {
-    _stopTicker();
+    _ticker?.stop();
+    _ticker?.dispose();
+    _ticker = null;
     super.dispose();
   }
 

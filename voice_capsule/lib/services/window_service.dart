@@ -68,7 +68,7 @@ class WindowService with WindowListener {
       await windowManager.setAsFrameless();
       await _restorePosition();
       await windowManager.show();
-      await windowManager.focus();
+      // 不调用 focus()，避免抢夺焦点
 
       // 根据参数决定是否保持显示
       if (!showOnStartup) {
@@ -94,7 +94,8 @@ class WindowService with WindowListener {
     await windowManager.show();
     // 关键：在 show 之后立即设置 skipTaskbar，确保窗口管理器应用此设置
     await windowManager.setSkipTaskbar(true);
-    await windowManager.focus();
+    // 注意：不调用 focus()，避免抢夺目标应用的焦点
+    // 这样 Fcitx5 的 InputContext 焦点会保持在用户正在输入的应用中
     _isVisible = true;
 
     // 关键修复：在窗口可见后再设置位置

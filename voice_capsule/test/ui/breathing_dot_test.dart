@@ -83,14 +83,15 @@ void main() {
       expect(decoration.shape, BoxShape.circle);
     });
 
-    testWidgets('uses AnimatedBuilder for animation', (tester) async {
+    testWidgets('uses Ticker for animation (via global AnimationTickerService)',
+        (tester) async {
       await tester.pumpWidget(buildTestWidget(const BreathingDot()));
 
-      // BreathingDot should have its own AnimatedBuilder as a descendant
+      // BreathingDot should use Transform.scale driven by Ticker
       expect(
         find.descendant(
           of: find.byType(BreathingDot),
-          matching: find.byType(AnimatedBuilder),
+          matching: find.byType(Transform),
         ),
         findsOneWidget,
       );
