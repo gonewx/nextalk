@@ -67,8 +67,3 @@ class CapsuleTextStyles {
     height: 1.0,
   );
 }
-
-
-
-
-

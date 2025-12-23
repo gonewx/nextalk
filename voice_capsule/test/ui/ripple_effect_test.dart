@@ -44,10 +44,12 @@ void main() {
       ));
 
       final sizedBox = tester.widget<SizedBox>(
-        find.descendant(
-          of: find.byType(RippleEffect),
-          matching: find.byType(SizedBox),
-        ).first,
+        find
+            .descendant(
+              of: find.byType(RippleEffect),
+              matching: find.byType(SizedBox),
+            )
+            .first,
       );
 
       // SizedBox should be same as size (ripple overflows via Clip.none)
@@ -55,7 +57,8 @@ void main() {
       expect(sizedBox.height, 30.0);
     });
 
-    testWidgets('renders correct number of ripples (default 2)', (tester) async {
+    testWidgets('renders correct number of ripples (default 2)',
+        (tester) async {
       await tester.pumpWidget(buildTestWidget(const RippleEffect()));
 
       // Should have 2 AnimatedBuilder widgets within RippleEffect
@@ -92,7 +95,8 @@ void main() {
       );
     });
 
-    testWidgets('uses Stack with Clip.none for layering ripples', (tester) async {
+    testWidgets('uses Stack with Clip.none for layering ripples',
+        (tester) async {
       await tester.pumpWidget(buildTestWidget(const RippleEffect()));
 
       final stack = tester.widget<Stack>(
@@ -163,7 +167,8 @@ void main() {
       expect(find.byType(RippleEffect), findsNothing);
     });
 
-    testWidgets('ripple containers use color with alpha for fade', (tester) async {
+    testWidgets('ripple containers use color with alpha for fade',
+        (tester) async {
       await tester.pumpWidget(buildTestWidget(const RippleEffect()));
 
       // Should have Container widgets with color (one per ripple)
@@ -193,8 +198,3 @@ void main() {
     });
   });
 }
-
-
-
-
-

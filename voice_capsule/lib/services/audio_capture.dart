@@ -23,11 +23,11 @@ enum AudioCaptureError {
 /// 音频设备状态枚举 (Story 3-7: AC11-12)
 /// 用于在录音前预检测设备可用性
 enum AudioDeviceStatus {
-  available,        // 设备可用
-  noDevice,         // 无设备
-  deviceBusy,       // 设备被占用
+  available, // 设备可用
+  noDevice, // 无设备
+  deviceBusy, // 设备被占用
   permissionDenied, // 权限不足
-  unknown,          // 未知状态
+  unknown, // 未知状态
 }
 
 /// 音频采集服务
@@ -42,7 +42,7 @@ class AudioCapture {
   Pointer<PaStreamParameters>? _inputParams;
   bool _isInitialized = false;
   bool _isCapturing = false;
-  AudioCaptureError _lastReadError = AudioCaptureError.none;  // M2 修复: 记录最近的读取错误
+  AudioCaptureError _lastReadError = AudioCaptureError.none; // M2 修复: 记录最近的读取错误
 
   AudioCapture() : _bindings = PortAudioBindings();
 
@@ -85,7 +85,8 @@ class AudioCapture {
         inputParams.ref.device = deviceIndex;
         inputParams.ref.channelCount = AudioConfig.channels;
         inputParams.ref.sampleFormat = paFloat32;
-        inputParams.ref.suggestedLatency = deviceInfo.ref.defaultLowInputLatency;
+        inputParams.ref.suggestedLatency =
+            deviceInfo.ref.defaultLowInputLatency;
         inputParams.ref.hostApiSpecificStreamInfo = nullptr;
 
         final openResult = bindings.openStream(
@@ -195,7 +196,7 @@ class AudioCapture {
     );
 
     if (openResult != paNoError) {
-      _bindings.terminate();  // C1 修复: 必须调用 terminate 释放 PortAudio
+      _bindings.terminate(); // C1 修复: 必须调用 terminate 释放 PortAudio
       _isInitialized = false;
       _cleanup();
       return AudioCaptureError.streamOpenFailed;
@@ -207,7 +208,7 @@ class AudioCapture {
     final startResult = _bindings.startStream(_stream!);
     if (startResult != paNoError) {
       _bindings.closeStream(_stream!);
-      _bindings.terminate();  // C1 修复: 必须调用 terminate 释放 PortAudio
+      _bindings.terminate(); // C1 修复: 必须调用 terminate 释放 PortAudio
       _isInitialized = false;
       _cleanup();
       return AudioCaptureError.streamStartFailed;

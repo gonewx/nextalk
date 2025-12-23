@@ -171,7 +171,8 @@ void main() {
 
       await testManager.verifyChecksum(
         testFile.path,
-        onProgress: (progress, status, {int downloaded = 0, int total = 0}) => progressCalls.add(progress),
+        onProgress: (progress, status, {int downloaded = 0, int total = 0}) =>
+            progressCalls.add(progress),
       );
 
       expect(progressCalls, contains(0.0));
@@ -240,7 +241,8 @@ void main() {
 
       String? lastStatus;
       await tempManager.ensureModelReady(
-        onProgress: (progress, status, {int downloaded = 0, int total = 0}) => lastStatus = status,
+        onProgress: (progress, status, {int downloaded = 0, int total = 0}) =>
+            lastStatus = status,
       );
 
       expect(lastStatus, '模型已就绪');

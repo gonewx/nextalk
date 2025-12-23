@@ -222,7 +222,3 @@ class CapsuleStateData {
   String toString() =>
       'CapsuleStateData(state: $state, errorType: $errorType, text: $recognizedText)';
 }
-
-
-
-

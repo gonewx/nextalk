@@ -124,10 +124,8 @@ class PortAudioBindings {
     terminate = _lib.lookupFunction<PaTerminateC, PaTerminateDart>(
       'Pa_Terminate',
     );
-    getDefaultInputDevice = _lib.lookupFunction<
-      PaGetDefaultInputDeviceC,
-      PaGetDefaultInputDeviceDart
-    >('Pa_GetDefaultInputDevice');
+    getDefaultInputDevice = _lib.lookupFunction<PaGetDefaultInputDeviceC,
+        PaGetDefaultInputDeviceDart>('Pa_GetDefaultInputDevice');
     getDeviceInfo = _lib.lookupFunction<PaGetDeviceInfoC, PaGetDeviceInfoDart>(
       'Pa_GetDeviceInfo',
     );

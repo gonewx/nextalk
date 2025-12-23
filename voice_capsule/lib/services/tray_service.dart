@@ -134,7 +134,7 @@ class TrayService {
         onClicked: (_) => _toggleWindow(),
       ),
       MenuItemLabel(
-        label: TrayConstants.menuReconnectFcitx,  // AC16: 新增
+        label: TrayConstants.menuReconnectFcitx, // AC16: 新增
         onClicked: (_) => _reconnectFcitx(),
       ),
       MenuSeparator(),
@@ -244,8 +244,3 @@ class TrayService {
     _isInitialized = false;
   }
 }
-
-
-
-
-

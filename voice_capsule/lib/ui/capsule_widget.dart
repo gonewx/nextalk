@@ -66,8 +66,7 @@ class CapsuleWidget extends StatelessWidget {
             // AC3: 背景色
             color: CapsuleColors.background,
             // AC2: 圆角
-            borderRadius:
-                BorderRadius.circular(WindowConstants.capsuleRadius),
+            borderRadius: BorderRadius.circular(WindowConstants.capsuleRadius),
             // AC4: 内发光描边
             border: Border.all(
               color: CapsuleColors.borderGlow,
@@ -122,8 +121,3 @@ class CapsuleWidget extends StatelessWidget {
     );
   }
 }
-
-
-
-
-

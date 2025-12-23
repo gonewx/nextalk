@@ -161,7 +161,8 @@ class SherpaService {
   /// [useInt8] 是否查找 int8 版本
   ///
   /// 返回找到的文件路径，未找到返回 null
-  String? _findModelFile(String modelDir, String prefix, {required bool useInt8}) {
+  String? _findModelFile(String modelDir, String prefix,
+      {required bool useInt8}) {
     final dir = Directory(modelDir);
     try {
       for (final entity in dir.listSync()) {
@@ -182,7 +183,8 @@ class SherpaService {
           final name = entity.path.split('/').last;
           if (name.startsWith(prefix) && name.endsWith('.onnx')) {
             // ignore: avoid_print
-            print('[SherpaService] ⚠️ 未找到 ${useInt8 ? "int8" : "标准"} 版本的 $prefix，使用: $name');
+            print(
+                '[SherpaService] ⚠️ 未找到 ${useInt8 ? "int8" : "标准"} 版本的 $prefix，使用: $name');
             return entity.path;
           }
         }
@@ -212,9 +214,12 @@ class SherpaService {
 
     // 2. 查找模型文件 (根据配置选择 int8 或标准版本)
     _useInt8Model = config.useInt8Model;
-    final encoderPath = _findModelFile(config.modelDir, 'encoder', useInt8: config.useInt8Model);
-    final decoderPath = _findModelFile(config.modelDir, 'decoder', useInt8: config.useInt8Model);
-    final joinerPath = _findModelFile(config.modelDir, 'joiner', useInt8: config.useInt8Model);
+    final encoderPath = _findModelFile(config.modelDir, 'encoder',
+        useInt8: config.useInt8Model);
+    final decoderPath = _findModelFile(config.modelDir, 'decoder',
+        useInt8: config.useInt8Model);
+    final joinerPath =
+        _findModelFile(config.modelDir, 'joiner', useInt8: config.useInt8Model);
     final tokensPath = '${config.modelDir}/tokens.txt';
 
     // ignore: avoid_print
@@ -385,7 +390,8 @@ class SherpaService {
   /// 调用者需确保指针在调用期间有效。
   void acceptWaveform(int sampleRate, Pointer<Float> samples, int n) {
     if (!_isInitialized || _stream == null) return;
-    SherpaOnnxBindings.onlineStreamAcceptWaveform(_stream!, sampleRate, samples, n);
+    SherpaOnnxBindings.onlineStreamAcceptWaveform(
+        _stream!, sampleRate, samples, n);
   }
 
   /// 执行解码
@@ -397,7 +403,8 @@ class SherpaService {
   /// 检查是否准备好解码
   bool isReady() {
     if (!_isInitialized || _recognizer == null || _stream == null) return false;
-    final result = SherpaOnnxBindings.isOnlineStreamReady(_recognizer!, _stream!);
+    final result =
+        SherpaOnnxBindings.isOnlineStreamReady(_recognizer!, _stream!);
     return result == 1;
   }
 
@@ -407,7 +414,8 @@ class SherpaService {
       return SherpaResult.empty();
     }
 
-    final jsonPtr = SherpaOnnxBindings.getOnlineStreamResultAsJson(_recognizer!, _stream!);
+    final jsonPtr =
+        SherpaOnnxBindings.getOnlineStreamResultAsJson(_recognizer!, _stream!);
 
     if (jsonPtr == nullptr) {
       return SherpaResult.empty();

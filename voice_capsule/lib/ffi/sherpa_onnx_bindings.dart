@@ -308,39 +308,43 @@ class SherpaOnnxBindings {
     _createOnlineRecognizer = lib.lookupFunction<CreateOnlineRecognizerNative,
         CreateOnlineRecognizerDart>('SherpaOnnxCreateOnlineRecognizer');
 
-    _destroyOnlineRecognizer = lib.lookupFunction<
-        DestroyOnlineRecognizerNative,
+    _destroyOnlineRecognizer = lib.lookupFunction<DestroyOnlineRecognizerNative,
         DestroyOnlineRecognizerDart>('SherpaOnnxDestroyOnlineRecognizer');
 
-    _createOnlineStream = lib.lookupFunction<CreateOnlineStreamNative,
-        CreateOnlineStreamDart>('SherpaOnnxCreateOnlineStream');
+    _createOnlineStream =
+        lib.lookupFunction<CreateOnlineStreamNative, CreateOnlineStreamDart>(
+            'SherpaOnnxCreateOnlineStream');
 
-    _destroyOnlineStream = lib.lookupFunction<DestroyOnlineStreamNative,
-        DestroyOnlineStreamDart>('SherpaOnnxDestroyOnlineStream');
+    _destroyOnlineStream =
+        lib.lookupFunction<DestroyOnlineStreamNative, DestroyOnlineStreamDart>(
+            'SherpaOnnxDestroyOnlineStream');
 
     _onlineStreamAcceptWaveform = lib.lookupFunction<
         OnlineStreamAcceptWaveformNative,
         OnlineStreamAcceptWaveformDart>('SherpaOnnxOnlineStreamAcceptWaveform');
 
-    _isOnlineStreamReady = lib.lookupFunction<IsOnlineStreamReadyNative,
-        IsOnlineStreamReadyDart>('SherpaOnnxIsOnlineStreamReady');
+    _isOnlineStreamReady =
+        lib.lookupFunction<IsOnlineStreamReadyNative, IsOnlineStreamReadyDart>(
+            'SherpaOnnxIsOnlineStreamReady');
 
-    _decodeOnlineStream = lib.lookupFunction<DecodeOnlineStreamNative,
-        DecodeOnlineStreamDart>('SherpaOnnxDecodeOnlineStream');
+    _decodeOnlineStream =
+        lib.lookupFunction<DecodeOnlineStreamNative, DecodeOnlineStreamDart>(
+            'SherpaOnnxDecodeOnlineStream');
 
     _getOnlineStreamResultAsJson = lib.lookupFunction<
-        GetOnlineStreamResultAsJsonNative,
-        GetOnlineStreamResultAsJsonDart>('SherpaOnnxGetOnlineStreamResultAsJson');
+            GetOnlineStreamResultAsJsonNative, GetOnlineStreamResultAsJsonDart>(
+        'SherpaOnnxGetOnlineStreamResultAsJson');
 
     _destroyOnlineStreamResultJson = lib.lookupFunction<
-        DestroyOnlineStreamResultJsonNative,
-        DestroyOnlineStreamResultJsonDart>('SherpaOnnxDestroyOnlineStreamResultJson');
+            DestroyOnlineStreamResultJsonNative,
+            DestroyOnlineStreamResultJsonDart>(
+        'SherpaOnnxDestroyOnlineStreamResultJson');
 
     _reset = lib.lookupFunction<ResetOnlineStreamNative, ResetOnlineStreamDart>(
         'SherpaOnnxOnlineStreamReset');
 
-    _isEndpoint =
-        lib.lookupFunction<IsEndpointNative, IsEndpointDart>('SherpaOnnxOnlineStreamIsEndpoint');
+    _isEndpoint = lib.lookupFunction<IsEndpointNative, IsEndpointDart>(
+        'SherpaOnnxOnlineStreamIsEndpoint');
 
     _onlineStreamInputFinished = lib.lookupFunction<
         OnlineStreamInputFinishedNative,

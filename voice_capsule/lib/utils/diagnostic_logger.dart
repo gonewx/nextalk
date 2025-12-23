@@ -115,7 +115,8 @@ class DiagnosticLogger {
 
     // 1. 系统信息
     buffer.writeln('=== 系统信息 ===');
-    buffer.writeln('平台: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
+    buffer.writeln(
+        '平台: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}');
     buffer.writeln('Dart 版本: ${Platform.version}');
     buffer.writeln('时间: ${DateTime.now().toIso8601String()}');
     buffer.writeln();

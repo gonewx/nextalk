@@ -89,13 +89,13 @@ void main() {
         expect(audioError.state, equals(CapsuleState.error));
         expect(audioError.errorType, equals(CapsuleErrorType.audioInitFailed));
 
-        final modelError = CapsuleStateData.error(CapsuleErrorType.modelLoadFailed);
+        final modelError =
+            CapsuleStateData.error(CapsuleErrorType.modelLoadFailed);
         expect(modelError.errorType, equals(CapsuleErrorType.modelLoadFailed));
 
         final socketError =
             CapsuleStateData.error(CapsuleErrorType.socketError);
-        expect(
-            socketError.errorType, equals(CapsuleErrorType.socketError));
+        expect(socketError.errorType, equals(CapsuleErrorType.socketError));
       });
     });
 

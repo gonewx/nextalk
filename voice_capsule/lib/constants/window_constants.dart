@@ -40,4 +40,3 @@ class WindowConstants {
         y < positionMaxY;
   }
 }
-

@@ -103,7 +103,8 @@ class WindowService with WindowListener {
   /// 显示窗口 (在记忆位置或屏幕中央)
   Future<void> show() async {
     if (!_isInitialized) {
-      throw StateError('WindowService not initialized. Call initialize() first.');
+      throw StateError(
+          'WindowService not initialized. Call initialize() first.');
     }
 
     if (_isVisible) return;
@@ -119,7 +120,8 @@ class WindowService with WindowListener {
   /// 抛出 [StateError] 如果服务未初始化。
   Future<void> hide() async {
     if (!_isInitialized) {
-      throw StateError('WindowService not initialized. Call initialize() first.');
+      throw StateError(
+          'WindowService not initialized. Call initialize() first.');
     }
     if (!_isVisible) return;
 
@@ -143,7 +145,8 @@ class WindowService with WindowListener {
 
   /// Story 3-7: 设置为初始化向导尺寸
   Future<void> setInitWizardSize() async {
-    await setSize(WindowConstants.initWizardWidth, WindowConstants.initWizardHeight);
+    await setSize(
+        WindowConstants.initWizardWidth, WindowConstants.initWizardHeight);
   }
 
   /// 保存当前位置
@@ -262,7 +265,3 @@ class WindowService with WindowListener {
   @override
   void onWindowUndocked() {}
 }
-
-
-
-

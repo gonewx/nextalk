@@ -161,10 +161,12 @@ void main() {
 
       // The outer SizedBox should be same as size (ripple overflows via Clip.none)
       final sizedBox = tester.widget<SizedBox>(
-        find.descendant(
-          of: find.byType(StateIndicator),
-          matching: find.byType(SizedBox),
-        ).first,
+        find
+            .descendant(
+              of: find.byType(StateIndicator),
+              matching: find.byType(SizedBox),
+            )
+            .first,
       );
 
       expect(sizedBox.width, 30.0);
@@ -208,8 +210,3 @@ void main() {
     });
   });
 }
-
-
-
-
-

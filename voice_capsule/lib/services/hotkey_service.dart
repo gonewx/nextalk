@@ -110,8 +110,7 @@ class HotkeyService {
                 .toList();
 
             // ignore: avoid_print
-            print(
-                '[HotkeyService] 从配置文件加载快捷键: $keyName + $modifierNames');
+            print('[HotkeyService] 从配置文件加载快捷键: $keyName + $modifierNames');
 
             return HotKey(
               key: key,
@@ -168,8 +167,7 @@ class HotkeyService {
       _registrationFailed = false;
 
       // ignore: avoid_print
-      print(
-          '[HotkeyService] ✅ 备用快捷键注册成功: ${_hotkeyToString(fallbackHotkey)}');
+      print('[HotkeyService] ✅ 备用快捷键注册成功: ${_hotkeyToString(fallbackHotkey)}');
     } catch (e) {
       // ignore: avoid_print
       print('[HotkeyService] ❌ 备用快捷键也注册失败: $e');

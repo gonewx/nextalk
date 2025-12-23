@@ -5,7 +5,6 @@ import 'dart:isolate';
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
-import 'package:dio/io.dart';
 
 import 'settings_service.dart';
 
@@ -31,7 +30,8 @@ enum ModelError {
 }
 
 /// 下载进度回调 (progress: 0-1, status: 状态文本, downloaded: 已下载字节, total: 总字节)
-typedef ProgressCallback = void Function(double progress, String status, {int downloaded, int total});
+typedef ProgressCallback = void Function(double progress, String status,
+    {int downloaded, int total});
 
 class ModelManager {
   static const String _modelName =
@@ -42,7 +42,7 @@ class ModelManager {
       'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
       '$_archiveName.tar.bz2';
   static const String _expectedSha256 =
-      'fb034d9c586c72c2b1e0c3c0cfcf68d0bfe7eec36f1e2073c7f2edbc1bc5b8e5';
+      '27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8';
 
   /// Story 3-7: 下载取消令牌
   CancelToken? _cancelToken;
@@ -83,6 +83,43 @@ class ModelManager {
 
   /// 临时下载文件路径
   String get _tempFilePath => '$_xdgDataHome/nextalk/temp_model.tar.bz2';
+
+  /// 公开临时文件路径（用于检查下载状态）
+  String get tempFilePath => _tempFilePath;
+
+  /// 检查临时文件状态（异步，需要请求服务器获取预期大小）
+  /// 返回 (是否存在, 已下载字节数, 预期总字节数)
+  Future<(bool exists, int downloaded, int expected)>
+      checkTempFileStatus() async {
+    final tempFile = File(_tempFilePath);
+    if (!tempFile.existsSync()) {
+      return (false, 0, 0);
+    }
+    final downloaded = tempFile.lengthSync();
+
+    // 通过 HEAD 请求获取服务器文件大小
+    int expected = 0;
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 10);
+      final uri = Uri.parse(downloadUrl);
+      final request = await client.headUrl(uri);
+      final response = await request.close();
+      expected = response.contentLength;
+      await response.drain<void>();
+      client.close(force: true);
+    } catch (e) {
+      print('[ModelManager] 获取服务器文件大小失败: $e');
+    }
+
+    return (true, downloaded, expected);
+  }
+
+  /// 检查是否有完整的临时文件等待解压（异步）
+  Future<bool> hasPendingExtraction() async {
+    final (exists, downloaded, expected) = await checkTempFileStatus();
+    return exists && expected > 0 && downloaded >= expected;
+  }
 
   /// 在目录中查找指定前缀的模型文件
   bool _hasModelFile(String prefix) {
@@ -154,7 +191,7 @@ models/$_modelName/
     _cancelToken = null;
   }
 
-  /// 下载模型 (支持代理、重试、进度回调、断点续传)
+  /// 下载模型 (使用 HttpClient，支持代理、重试、进度回调、断点续传)
   Future<String> downloadModel({
     ProgressCallback? onProgress,
     int maxRetries = 3,
@@ -165,78 +202,56 @@ models/$_modelName/
       baseDir.createSync(recursive: true);
     }
 
-    final dio = Dio(BaseOptions(
-      connectTimeout: const Duration(seconds: 30),
-      receiveTimeout: const Duration(minutes: 10),
-    ));
-
-    // 检查并配置代理环境变量
-    final httpProxy = Platform.environment['HTTP_PROXY'] ??
-        Platform.environment['http_proxy'] ??
-        Platform.environment['HTTPS_PROXY'] ??
-        Platform.environment['https_proxy'];
-    if (httpProxy != null && httpProxy.isNotEmpty) {
-      print('[ModelManager] 检测到代理: $httpProxy');
-      (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
-        final client = HttpClient();
-        client.findProxy = (uri) => 'PROXY $httpProxy';
-        client.badCertificateCallback = (cert, host, port) => true;
-        return client;
-      };
-    }
-
     final tempFile = File(_tempFilePath);
     Object lastException = Exception('下载失败');
 
     // Story 3-7: 创建新的取消令牌
     _cancelToken = CancelToken();
-
-    // 获取最终下载 URL (跟随重定向)
-    String finalUrl = downloadUrl;
-    try {
-      final redirectDio = Dio();
-      redirectDio.options.followRedirects = false;
-      redirectDio.options.validateStatus = (status) => status != null && status < 400;
-
-      var currentUrl = downloadUrl;
-      for (var i = 0; i < 5; i++) { // 最多跟随 5 次重定向
-        final response = await redirectDio.head(currentUrl, cancelToken: _cancelToken);
-        if (response.statusCode == 301 || response.statusCode == 302) {
-          final location = response.headers.value('location');
-          if (location != null) {
-            currentUrl = location;
-            print('[ModelManager] 重定向到: $currentUrl');
-            continue;
-          }
-        }
-        break;
-      }
-      finalUrl = currentUrl;
-      redirectDio.close();
-      print('[ModelManager] 最终下载 URL: ${finalUrl.substring(0, 80)}...');
-    } catch (e) {
-      print('[ModelManager] 获取最终 URL 失败: $e，使用原始 URL');
-    }
+    bool isCancelled = false;
+    _cancelToken!.whenCancel.then((_) => isCancelled = true);
 
     for (var attempt = 1; attempt <= maxRetries; attempt++) {
+      HttpClient? client;
       try {
-        // 检查已下载的大小（每次尝试时重新检查）
+        // 创建 HttpClient
+        client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 30);
+
+        // 检查并配置代理环境变量
+        final httpProxy = Platform.environment['HTTP_PROXY'] ??
+            Platform.environment['http_proxy'] ??
+            Platform.environment['HTTPS_PROXY'] ??
+            Platform.environment['https_proxy'];
+        if (httpProxy != null && httpProxy.isNotEmpty) {
+          print('[ModelManager] 检测到代理: $httpProxy');
+          client.findProxy = (uri) => 'PROXY $httpProxy';
+          client.badCertificateCallback = (cert, host, port) => true;
+        }
+
+        // 检查已下载的大小
         int downloadedBytes = 0;
         if (tempFile.existsSync()) {
           downloadedBytes = tempFile.lengthSync();
-          print('[ModelManager] 发现临时文件: ${(downloadedBytes / 1024 / 1024).toStringAsFixed(1)}MB');
+          print(
+              '[ModelManager] 发现临时文件: ${(downloadedBytes / 1024 / 1024).toStringAsFixed(1)}MB');
         } else {
           print('[ModelManager] 临时文件不存在: ${tempFile.path}');
         }
 
-        // 获取文件总大小 (使用最终 URL)
+        // 获取文件总大小 (使用独立的 HttpClient)
+        final uri = Uri.parse(downloadUrl);
         int totalBytes = 0;
         try {
-          final headResponse = await dio.head(finalUrl, cancelToken: _cancelToken);
-          totalBytes = int.tryParse(
-            headResponse.headers.value('content-length') ?? '0',
-          ) ?? 0;
-          print('[ModelManager] 文件总大小: ${(totalBytes / 1024 / 1024).toStringAsFixed(1)}MB');
+          final headClient = HttpClient();
+          headClient.connectionTimeout = const Duration(seconds: 10);
+          final headRequest = await headClient.headUrl(uri);
+          final headResponse = await headRequest.close();
+          totalBytes = headResponse.contentLength;
+          // 完全消费响应体并关闭
+          await headResponse.drain<void>();
+          headClient.close(force: true);
+          print(
+              '[ModelManager] 文件总大小: ${(totalBytes / 1024 / 1024).toStringAsFixed(1)}MB');
         } catch (e) {
           print('[ModelManager] HEAD 请求失败: $e');
         }
@@ -245,42 +260,34 @@ models/$_modelName/
         if (totalBytes > 0 && downloadedBytes >= totalBytes) {
           print('[ModelManager] 文件已完整下载');
           onProgress?.call(1.0, '下载完成');
-          dio.close();
+          client.close();
           return _tempFilePath;
         }
 
-        // 准备断点续传 (即使不知道总大小也尝试续传)
-        Map<String, dynamic>? headers;
+        // 发起 GET 请求
+        onProgress?.call(0.0, '下载中 (尝试 $attempt/$maxRetries)...',
+            downloaded: downloadedBytes, total: totalBytes);
+        print('[ModelManager] 开始下载: $downloadUrl');
+
+        final request = await client.getUrl(uri);
+        print('[ModelManager] GET 请求已创建');
+
+        // 断点续传
         if (downloadedBytes > 0) {
-          headers = {'Range': 'bytes=$downloadedBytes-'};
-          print('[ModelManager] 断点续传: 从 ${(downloadedBytes / 1024 / 1024).toStringAsFixed(1)}MB 处继续');
-          if (totalBytes > 0) {
-            onProgress?.call(downloadedBytes / totalBytes, '续传中...', downloaded: downloadedBytes, total: totalBytes);
-          } else {
-            onProgress?.call(0.0, '续传中...', downloaded: downloadedBytes, total: 0);
-          }
-        } else {
-          onProgress?.call(0.0, '下载中 (尝试 $attempt/$maxRetries)...', downloaded: 0, total: totalBytes);
+          request.headers.set('Range', 'bytes=$downloadedBytes-');
+          print(
+              '[ModelManager] 断点续传: 从 ${(downloadedBytes / 1024 / 1024).toStringAsFixed(1)}MB 处继续');
         }
 
-        // 使用流式下载 (使用最终 URL，避免重定向丢失 Range header)
-        final response = await dio.get<ResponseBody>(
-          finalUrl,
-          options: Options(
-            responseType: ResponseType.stream,
-            headers: headers,
-            followRedirects: false, // 已经是最终 URL，不需要重定向
-          ),
-          cancelToken: _cancelToken,
-        );
-
-        // 检查服务器是否支持断点续传
-        final statusCode = response.statusCode ?? 200;
+        print('[ModelManager] 等待服务器响应...');
+        final response = await request.close();
+        print('[ModelManager] 服务器已响应');
+        final statusCode = response.statusCode;
         final isResuming = statusCode == 206;
-        print('[ModelManager] 服务器响应: $statusCode (${isResuming ? "断点续传" : "完整下载"})');
+        print(
+            '[ModelManager] 服务器响应: $statusCode (${isResuming ? "断点续传" : "完整下载"})');
 
         if (downloadedBytes > 0 && !isResuming) {
-          // 服务器不支持断点续传，删除已有文件重新下载
           print('[ModelManager] 服务器不支持断点续传，重新下载');
           if (tempFile.existsSync()) {
             tempFile.deleteSync();
@@ -288,23 +295,23 @@ models/$_modelName/
           downloadedBytes = 0;
         }
 
-        // 获取本次下载的内容长度
-        final contentLength = int.tryParse(
-          response.headers.value('content-length') ?? '0',
-        ) ?? 0;
-
         // 计算总大小
+        final contentLength = response.contentLength;
         final expectedTotal = isResuming
             ? downloadedBytes + contentLength
             : (totalBytes > 0 ? totalBytes : contentLength);
 
-        // 打开文件（续传用追加模式，否则用写入模式）
+        // 打开文件
         print('[ModelManager] 打开文件: ${isResuming ? "追加模式" : "写入模式"}');
-        final raf = tempFile.openSync(mode: isResuming ? FileMode.append : FileMode.write);
+        final raf = tempFile.openSync(
+            mode: isResuming ? FileMode.append : FileMode.write);
         int received = isResuming ? downloadedBytes : 0;
 
         try {
-          await for (final chunk in response.data!.stream) {
+          await for (final chunk in response) {
+            if (isCancelled) {
+              throw Exception('用户取消下载');
+            }
             raf.writeFromSync(chunk);
             received += chunk.length;
 
@@ -320,41 +327,32 @@ models/$_modelName/
           }
         } finally {
           raf.closeSync();
-          print('[ModelManager] 文件已关闭，已写入: ${(received / 1024 / 1024).toStringAsFixed(1)}MB');
+          print(
+              '[ModelManager] 文件已关闭，已写入: ${(received / 1024 / 1024).toStringAsFixed(1)}MB');
         }
 
-        print('[ModelManager] 下载完成，文件大小: ${(received / 1024 / 1024).toStringAsFixed(1)}MB');
-        onProgress?.call(1.0, '下载完成', downloaded: received, total: expectedTotal);
-        dio.close();
+        print(
+            '[ModelManager] 下载完成，文件大小: ${(received / 1024 / 1024).toStringAsFixed(1)}MB');
+        onProgress?.call(1.0, '下载完成',
+            downloaded: received, total: expectedTotal);
+        client.close();
         return _tempFilePath;
-      } on DioException catch (e) {
-        lastException = e;
-        // 取消不重试
-        if (e.type == DioExceptionType.cancel) {
-          print('[ModelManager] 下载被取消，保留临时文件');
-          dio.close();
-          throw e;
-        }
-        print('[ModelManager] 下载失败 (DioException): ${e.message}');
-        // 检查临时文件状态
-        if (tempFile.existsSync()) {
-          print('[ModelManager] 临时文件保留: ${(tempFile.lengthSync() / 1024 / 1024).toStringAsFixed(1)}MB');
-        } else {
-          print('[ModelManager] 警告：临时文件丢失！');
-        }
-        if (attempt < maxRetries) {
-          onProgress?.call(0.0, '下载失败，3秒后重试...', downloaded: 0, total: 0);
-          await Future.delayed(const Duration(seconds: 3));
-        }
       } catch (e) {
-        // 捕获所有其他异常（如 SocketException）
+        client?.close();
         lastException = e is Exception ? e : Exception(e.toString());
         print('[ModelManager] 下载失败 (${e.runtimeType}): $e');
-        // 检查临时文件状态
+
+        if (isCancelled) {
+          print('[ModelManager] 下载被取消，保留临时文件');
+          throw DioException(
+            requestOptions: RequestOptions(path: downloadUrl),
+            type: DioExceptionType.cancel,
+          );
+        }
+
         if (tempFile.existsSync()) {
-          print('[ModelManager] 临时文件保留: ${(tempFile.lengthSync() / 1024 / 1024).toStringAsFixed(1)}MB');
-        } else {
-          print('[ModelManager] 警告：临时文件丢失！');
+          print(
+              '[ModelManager] 临时文件保留: ${(tempFile.lengthSync() / 1024 / 1024).toStringAsFixed(1)}MB');
         }
         if (attempt < maxRetries) {
           onProgress?.call(0.0, '下载失败，3秒后重试...', downloaded: 0, total: 0);
@@ -363,8 +361,6 @@ models/$_modelName/
       }
     }
 
-    dio.close();
-    // 断点续传：失败时不删除临时文件，以便下次续传
     throw lastException;
   }
 
@@ -407,10 +403,14 @@ models/$_modelName/
       {ProgressCallback? onProgress}) async {
     onProgress?.call(0.0, '解压中 (后台处理)...', downloaded: 0, total: 0);
 
+    // 提取值为局部变量，避免捕获 this（包含不可发送的 CancelToken）
+    final targetPath = modelPath;
+    final archiveTopDir = _archiveName;
+
     await Isolate.run(() => _extractInIsolate(
           archivePath,
-          modelPath,
-          _archiveName,
+          targetPath,
+          archiveTopDir,
         ));
 
     onProgress?.call(1.0, '解压完成', downloaded: 0, total: 0);
@@ -479,6 +479,7 @@ models/$_modelName/
       downloadCompleted = true; // 下载完成
 
       // 3. 校验 (60% - 70%)
+      print('[ModelManager] 开始校验...');
       onProgress?.call(0.6, '校验中...', downloaded: 0, total: 0);
       final valid = await verifyChecksum(
         _tempFilePath,
@@ -486,11 +487,14 @@ models/$_modelName/
             onProgress?.call(0.6 + p * 0.1, s, downloaded: 0, total: 0),
       );
       if (!valid) {
+        print('[ModelManager] 校验失败，删除临时文件');
         tempFile.deleteSync();
         return ModelError.checksumMismatch;
       }
+      print('[ModelManager] 校验通过');
 
       // 4. 解压 (70% - 100%)
+      print('[ModelManager] 开始解压...');
       onProgress?.call(0.7, '解压中...', downloaded: 0, total: 0);
       await extractModel(
         _tempFilePath,

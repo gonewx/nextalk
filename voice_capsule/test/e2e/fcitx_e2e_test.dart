@@ -28,7 +28,8 @@ Future<void> main() async {
     print('[ERROR] Socket not found: $socketPath');
     print('Make sure:');
     print('  1. Fcitx5 is running');
-    print('  2. Nextalk addon is installed (run: scripts/install_addon.sh --user)');
+    print(
+        '  2. Nextalk addon is installed (run: scripts/install_addon.sh --user)');
     print('  3. Restart Fcitx5 (fcitx5 -r)');
     exit(1);
   }

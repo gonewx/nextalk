@@ -40,7 +40,8 @@ class MockFcitxServer {
   void _processBuffer() {
     while (_buffer.length >= 4) {
       // 读取消息长度
-      final byteData = ByteData.sublistView(Uint8List.fromList(_buffer.sublist(0, 4)));
+      final byteData =
+          ByteData.sublistView(Uint8List.fromList(_buffer.sublist(0, 4)));
       final length = byteData.getUint32(0, Endian.little);
 
       // 检查是否有完整消息

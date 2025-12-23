@@ -46,11 +46,29 @@ class _NextalkAppState extends State<NextalkApp> {
 
   /// 初始化向导完成回调
   void _onInitCompleted() {
-    // 重置窗口尺寸为正常胶囊尺寸
+    // 重置窗口尺寸为正常胶囊尺寸并隐藏
     WindowService.instance.resetToNormalSize();
+    WindowService.instance.hide();
+
     setState(() {
       _needsInit = false;
     });
+
+    // ignore: avoid_print
+    print('[NextalkApp] 初始化完成，窗口已隐藏，等待快捷键唤醒');
+  }
+
+  /// 重新显示初始化向导（用于模型缺失时重新下载）
+  void _showInitWizard() {
+    setState(() {
+      _needsInit = true;
+    });
+    // 设置初始化向导窗口大小并显示
+    WindowService.instance.setInitWizardSize();
+    WindowService.instance.show();
+
+    // ignore: avoid_print
+    print('[NextalkApp] 重新显示初始化向导');
   }
 
   @override
@@ -64,9 +82,7 @@ class _NextalkAppState extends State<NextalkApp> {
       home: Scaffold(
         backgroundColor: Colors.transparent,
         // Story 3-7: 根据初始化状态路由 UI
-        body: _needsInit
-            ? _buildInitWizard()
-            : _buildCapsuleUI(),
+        body: _needsInit ? _buildInitWizard() : _buildCapsuleUI(),
       ),
     );
   }
@@ -161,7 +177,8 @@ class _NextalkAppState extends State<NextalkApp> {
 
   /// 根据错误类型获取操作按钮列表
   /// Story 3-7: AC8-AC10 模型错误操作按钮
-  List<ErrorAction> _getActionsForError(BuildContext context, CapsuleStateData state) {
+  List<ErrorAction> _getActionsForError(
+      BuildContext context, CapsuleStateData state) {
     final errorType = state.errorType;
     if (errorType == null) return [];
 
@@ -185,7 +202,8 @@ class _NextalkAppState extends State<NextalkApp> {
           if (hasPreservedText)
             ErrorAction(
               label: '复制文本',
-              onPressed: () => _copyPreservedText(context, state.preservedText!),
+              onPressed: () =>
+                  _copyPreservedText(context, state.preservedText!),
             ),
           ErrorAction(
             label: '关闭',
@@ -201,7 +219,8 @@ class _NextalkAppState extends State<NextalkApp> {
           if (hasPreservedText) ...[
             ErrorAction(
               label: '复制文本',
-              onPressed: () => _copyPreservedText(context, state.preservedText!),
+              onPressed: () =>
+                  _copyPreservedText(context, state.preservedText!),
             ),
             ErrorAction(
               label: '重试提交',
@@ -227,8 +246,9 @@ class _NextalkAppState extends State<NextalkApp> {
           ErrorAction(
             label: '重新下载',
             onPressed: () {
-              // TODO: 触发初始化向导
               HotkeyController.instance.dismissError();
+              // 重新显示初始化向导
+              _showInitWizard();
             },
             isPrimary: true,
           ),
@@ -246,7 +266,8 @@ class _NextalkAppState extends State<NextalkApp> {
             onPressed: () async {
               await widget.modelManager.deleteModel();
               HotkeyController.instance.dismissError();
-              // TODO: 触发初始化向导
+              // 重新显示初始化向导
+              _showInitWizard();
             },
             isPrimary: true,
           ),

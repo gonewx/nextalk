@@ -28,6 +28,14 @@ class DownloadProgress extends StatelessWidget {
 
   bool get _isError => state.phase == InitPhase.error;
   bool get _isExtracting => state.phase == InitPhase.extracting;
+  bool get _isVerifying => state.phase == InitPhase.verifying;
+
+  String get _title {
+    if (_isError) return '❌ 下载失败';
+    if (_isExtracting) return '📦 解压模型...';
+    if (_isVerifying) return '🔍 校验文件...';
+    return '⬇️ 正在下载模型...';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -51,11 +59,7 @@ class DownloadProgress extends StatelessWidget {
         children: [
           // 标题/状态
           Text(
-            _isError
-                ? '❌ 下载失败'
-                : _isExtracting
-                    ? '解压模型...'
-                    : '正在下载模型...',
+            _title,
             style: const TextStyle(
               color: CapsuleColors.textWhite,
               fontSize: 16,
@@ -90,7 +94,8 @@ class DownloadProgress extends StatelessWidget {
             LinearProgressIndicator(
               value: state.progress,
               backgroundColor: CapsuleColors.borderGlow,
-              valueColor: AlwaysStoppedAnimation<Color>(CapsuleColors.accentRed),
+              valueColor:
+                  AlwaysStoppedAnimation<Color>(CapsuleColors.accentRed),
               borderRadius: BorderRadius.circular(4),
               minHeight: 8,
             ),

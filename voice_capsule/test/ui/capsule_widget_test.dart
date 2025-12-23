@@ -309,7 +309,8 @@ void main() {
       expect(find.byType(StateIndicator), findsOneWidget);
     });
 
-    testWidgets('shows CursorBlink in default (listening) state', (tester) async {
+    testWidgets('shows CursorBlink in default (listening) state',
+        (tester) async {
       await tester.pumpWidget(buildTestWidget(const CapsuleWidget()));
 
       expect(find.byType(CursorBlink), findsOneWidget);
@@ -360,7 +361,8 @@ void main() {
   });
 
   group('CapsuleTextPreview Processing Style Tests (Story 3-3)', () {
-    testWidgets('uses processing style when isProcessing is true', (tester) async {
+    testWidgets('uses processing style when isProcessing is true',
+        (tester) async {
       await tester.pumpWidget(buildTestWidget(
         const CapsuleTextPreview(
           text: '处理中',
@@ -388,8 +390,3 @@ void main() {
     });
   });
 }
-
-
-
-
-

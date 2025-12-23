@@ -23,15 +23,22 @@ void main() {
       expect(CapsuleErrorType.values.length, 11);
       // 音频相关 (细化)
       expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioNoDevice));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioDeviceBusy));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioPermissionDenied));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioDeviceLost));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioInitFailed));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.audioDeviceBusy));
+      expect(CapsuleErrorType.values,
+          contains(CapsuleErrorType.audioPermissionDenied));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.audioDeviceLost));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.audioInitFailed));
       // 模型相关 (细化)
       expect(CapsuleErrorType.values, contains(CapsuleErrorType.modelNotFound));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.modelIncomplete));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.modelCorrupted));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.modelLoadFailed));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.modelIncomplete));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.modelCorrupted));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.modelLoadFailed));
       // 连接相关
       expect(CapsuleErrorType.values, contains(CapsuleErrorType.socketError));
       // 其他
@@ -40,7 +47,8 @@ void main() {
 
     test('backward compatibility: old error types still exist', () {
       // 保持向后兼容 (旧类型重命名)
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioInitFailed));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.audioInitFailed));
     });
   });
 
@@ -170,7 +178,8 @@ void main() {
     });
 
     test('error() creates correct state with custom message', () {
-      final state = CapsuleStateData.error(CapsuleErrorType.unknown, message: '自定义错误');
+      final state =
+          CapsuleStateData.error(CapsuleErrorType.unknown, message: '自定义错误');
       expect(state.state, CapsuleState.error);
       expect(state.errorMessage, '自定义错误');
       expect(state.displayMessage, '自定义错误');
@@ -198,7 +207,8 @@ void main() {
       expect(state.displayMessage, '模型加载失败');
     });
 
-    test('returns default error message for socketError without fcitxError', () {
+    test('returns default error message for socketError without fcitxError',
+        () {
       final state = CapsuleStateData.error(CapsuleErrorType.socketError);
       expect(state.displayMessage, 'Fcitx5 连接错误');
     });
@@ -286,8 +296,3 @@ void main() {
     });
   });
 }
-
-
-
-
-

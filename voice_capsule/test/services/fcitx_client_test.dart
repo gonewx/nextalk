@@ -50,7 +50,8 @@ void main() {
     group('Socket 不存在场景', () {
       test('连接不存在的 Socket 应该抛出 connectionFailed', () async {
         // Arrange
-        final badClient = FcitxClient(socketPath: '/tmp/nonexistent-socket.sock');
+        final badClient =
+            FcitxClient(socketPath: '/tmp/nonexistent-socket.sock');
 
         // Act & Assert
         FcitxError? caughtError;

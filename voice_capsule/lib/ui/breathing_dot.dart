@@ -71,7 +71,8 @@ class _BreathingDotState extends State<BreathingDot>
       builder: (context, child) {
         // 呼吸公式: 1.0 + 0.1 * (1 + sin(t * 2π)) / 2 = 范围 [1.0, 1.1]
         // 符合 AC2 规范: Scale 1.0 -> 1.1 -> 1.0
-        final normalizedSin = (1 + math.sin(_controller.value * 2 * math.pi)) / 2;
+        final normalizedSin =
+            (1 + math.sin(_controller.value * 2 * math.pi)) / 2;
         final scale = AnimationConstants.breathingBaseScale +
             AnimationConstants.breathingAmplitude * normalizedSin;
 
@@ -98,8 +99,3 @@ class _BreathingDotState extends State<BreathingDot>
     );
   }
 }
-
-
-
-
-

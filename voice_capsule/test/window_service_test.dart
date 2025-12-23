@@ -76,12 +76,12 @@ void main() {
       expect(WindowConstants.isValidPosition(0, 0), true);
       expect(WindowConstants.isValidPosition(100, 200), true);
       expect(
-          WindowConstants.isValidPosition(
-              WindowConstants.positionMinX + 1, WindowConstants.positionMinY + 1),
+          WindowConstants.isValidPosition(WindowConstants.positionMinX + 1,
+              WindowConstants.positionMinY + 1),
           true);
       expect(
-          WindowConstants.isValidPosition(
-              WindowConstants.positionMaxX - 1, WindowConstants.positionMaxY - 1),
+          WindowConstants.isValidPosition(WindowConstants.positionMaxX - 1,
+              WindowConstants.positionMaxY - 1),
           true);
 
       // 无效位置 (屏幕外)
@@ -100,8 +100,3 @@ void main() {
     });
   });
 }
-
-
-
-
-

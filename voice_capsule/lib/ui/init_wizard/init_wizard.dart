@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../constants/capsule_colors.dart';
 import '../../services/model_manager.dart';
 import '../../services/window_service.dart';
 import '../../state/init_state.dart';
@@ -30,7 +31,7 @@ class InitWizard extends StatefulWidget {
 }
 
 class _InitWizardState extends State<InitWizard> {
-  InitStateData _state = InitStateData.selectMode();
+  InitStateData _state = InitStateData.checking();
   StreamSubscription<DownloadProgress>? _downloadSubscription;
   bool _windowSizeSet = false;
 
@@ -39,12 +40,101 @@ class _InitWizardState extends State<InitWizard> {
     super.initState();
     // 首次渲染前设置足够大的窗口
     _ensureWindowSize();
+    // 检查是否有待恢复的下载/解压
+    _checkPendingDownload();
   }
 
   @override
   void dispose() {
     _downloadSubscription?.cancel();
     super.dispose();
+  }
+
+  /// 检查是否有待恢复的下载
+  Future<void> _checkPendingDownload() async {
+    final (exists, downloaded, expected) =
+        await widget.modelManager.checkTempFileStatus();
+
+    if (!mounted) return;
+
+    if (exists && expected > 0) {
+      if (downloaded >= expected) {
+        // 文件已完整下载，直接开始校验和解压
+        setState(() {
+          _state = InitStateData(
+            phase: InitPhase.verifying,
+            progress: 0.6,
+            statusMessage: '检测到已下载文件，准备校验...',
+          );
+        });
+        // 自动继续校验和解压流程
+        _resumeFromVerification();
+      } else {
+        // 文件部分下载，显示断点续传进度
+        final progress = downloaded / expected;
+        setState(() {
+          _state = InitStateData.downloading(
+            progress: progress * 0.6, // 下载占 60%
+            downloaded: downloaded,
+            total: expected,
+          );
+        });
+        // 3秒后自动继续下载（给用户看到进度的时间）
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) {
+          _startAutoDownload();
+        }
+      }
+    } else {
+      // 没有临时文件，显示选择界面
+      setState(() {
+        _state = InitStateData.selectMode();
+      });
+    }
+  }
+
+  /// 从校验阶段恢复（临时文件已完整）
+  Future<void> _resumeFromVerification() async {
+    try {
+      final error = await widget.modelManager.ensureModelReady(
+        onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
+          if (!mounted) return;
+          setState(() {
+            if (progress >= 0.7 || status.contains('解压')) {
+              _state = InitStateData.extracting(progress);
+            } else {
+              _state = InitStateData(
+                phase: InitPhase.verifying,
+                progress: progress,
+                statusMessage: status,
+              );
+            }
+          });
+        },
+      );
+
+      if (!mounted) return;
+
+      if (error == ModelError.none) {
+        setState(() {
+          _state = InitStateData.completed();
+        });
+        // 不立即调用 onCompleted，让用户看到完成界面后点击"开始使用"
+      } else {
+        setState(() {
+          _state = InitStateData.error(error);
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _state = InitStateData.error(
+            ModelError.networkError,
+            message: e.toString(),
+          );
+        });
+      }
+    }
   }
 
   /// 确保窗口足够大以容纳内容
@@ -71,22 +161,32 @@ class _InitWizardState extends State<InitWizard> {
       final error = await widget.modelManager.ensureModelReady(
         onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
           setState(() {
-            _state = InitStateData.downloading(
-              progress: progress,
-              downloaded: downloaded,
-              total: total,
-            );
+            // 根据进度和状态判断当前阶段
+            if (progress >= 0.7 || status.contains('解压')) {
+              _state = InitStateData.extracting(progress);
+            } else if (progress >= 0.6 || status.contains('校验')) {
+              _state = InitStateData(
+                phase: InitPhase.verifying,
+                progress: progress,
+                statusMessage: status,
+              );
+            } else {
+              _state = InitStateData.downloading(
+                progress: progress,
+                downloaded: downloaded,
+                total: total,
+              );
+            }
           });
         },
       );
 
       if (error == ModelError.none) {
-        // 下载完成
+        // 下载完成，显示完成界面
         setState(() {
           _state = InitStateData.completed();
         });
-        // 通知父组件
-        widget.onCompleted();
+        // 不立即调用 onCompleted，让用户看到完成界面后点击"开始使用"
       } else {
         // 下载失败
         setState(() {
@@ -158,7 +258,7 @@ class _InitWizardState extends State<InitWizard> {
       setState(() {
         _state = InitStateData.completed();
       });
-      widget.onCompleted();
+      // 不立即调用 onCompleted，让用户看到完成界面后点击"开始使用"
     } else {
       setState(() {
         _state = InitStateData.error(
@@ -193,7 +293,8 @@ class _InitWizardState extends State<InitWizard> {
                 right: 8,
                 child: IconButton(
                   onPressed: _onClose,
-                  icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                  icon:
+                      const Icon(Icons.close, color: Colors.white54, size: 20),
                   tooltip: '退出',
                 ),
               ),
@@ -220,6 +321,7 @@ class _InitWizardState extends State<InitWizard> {
 
       case InitPhase.downloading:
       case InitPhase.extracting:
+      case InitPhase.verifying:
       case InitPhase.error:
         return DownloadProgress(
           state: _state,
@@ -238,12 +340,80 @@ class _InitWizardState extends State<InitWizard> {
           targetPath: ModelManager.modelDirectory,
         );
 
-      case InitPhase.verifying:
-        return const CircularProgressIndicator();
-
       case InitPhase.checkingModel:
+        return const Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                '检查下载状态...',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ],
+          ),
+        );
+
       case InitPhase.completed:
-        return const SizedBox.shrink();
+        return _buildCompletedUI();
     }
+  }
+
+  /// 构建完成提示界面
+  Widget _buildCompletedUI() {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 400),
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: CapsuleColors.background,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: CapsuleColors.borderGlow),
+        boxShadow: [
+          BoxShadow(
+            color: CapsuleColors.shadow,
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.check_circle,
+            color: Colors.green,
+            size: 64,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            '🎉 初始化完成！',
+            style: TextStyle(
+              color: CapsuleColors.textWhite,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '按下 Right Alt 键开始语音输入',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: widget.onCompleted,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: CapsuleColors.accentRed,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+            ),
+            child: const Text('开始使用'),
+          ),
+        ],
+      ),
+    );
   }
 }

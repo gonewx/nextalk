@@ -134,7 +134,7 @@ class AudioInferencePipeline {
   static const double kDefaultRule2Silence = 1.2;
   // === 依赖注入 (通过构造函数传入，便于测试) ===
   final AudioCapture _audioCapture;
-  SherpaService _sherpaService;  // 改为非 final 以支持热切换
+  SherpaService _sherpaService; // 改为非 final 以支持热切换
   final ModelManager _modelManager;
 
   // === 配置选项 ===
@@ -316,10 +316,11 @@ class AudioInferencePipeline {
     }
 
     // 2. 初始化 SherpaService (使用 VadConfig 中的静音阈值和 SettingsService 中的模型类型)
-    final silenceThreshold = _vadConfig.silenceThresholdSec ?? kDefaultRule2Silence;
+    final silenceThreshold =
+        _vadConfig.silenceThresholdSec ?? kDefaultRule2Silence;
     final useInt8 = SettingsService.instance.isInitialized
         ? SettingsService.instance.modelType == ModelType.int8
-        : true;  // 默认使用 int8
+        : true; // 默认使用 int8
     final config = SherpaConfig(
       modelDir: _modelManager.modelPath,
       useInt8Model: useInt8,
@@ -501,8 +502,10 @@ class AudioInferencePipeline {
     const checkIntervalMs = 10;
     var remainingMs = totalMs;
 
-    while (remainingMs > 0 && !_stopRequested && _state == PipelineState.running) {
-      final delayMs = remainingMs > checkIntervalMs ? checkIntervalMs : remainingMs;
+    while (
+        remainingMs > 0 && !_stopRequested && _state == PipelineState.running) {
+      final delayMs =
+          remainingMs > checkIntervalMs ? checkIntervalMs : remainingMs;
       await Future.delayed(Duration(milliseconds: delayMs));
       remainingMs -= delayMs;
     }
@@ -547,14 +550,16 @@ class AudioInferencePipeline {
       // 去重: 只在文本变化时发送事件
       if (result.text.isNotEmpty && result.text != _lastEmittedText) {
         // AC5 延迟测量: 计算端到端延迟 (音频采集到结果输出)
-        final latencyMs = DateTime.now().difference(chunkStartTime).inMilliseconds.toDouble();
+        final latencyMs =
+            DateTime.now().difference(chunkStartTime).inMilliseconds.toDouble();
         _latencySamples.add(latencyMs);
         if (latencyMs > _maxLatencyMs) {
           _maxLatencyMs = latencyMs;
         }
         if (enableDebugLog && latencyMs > _latencyThresholdMs) {
           // ignore: avoid_print
-          print('[Pipeline] ⚠️ 延迟超标: ${latencyMs.toStringAsFixed(1)}ms > ${_latencyThresholdMs}ms');
+          print(
+              '[Pipeline] ⚠️ 延迟超标: ${latencyMs.toStringAsFixed(1)}ms > ${_latencyThresholdMs}ms');
         }
 
         _lastEmittedText = result.text;

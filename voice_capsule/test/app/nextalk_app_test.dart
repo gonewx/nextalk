@@ -96,24 +96,21 @@ void main() {
       expect(find.text('你好世界'), findsOneWidget);
     });
 
-    testWidgets('error 状态 (socketError) 应该显示错误消息',
-        (tester) async {
+    testWidgets('error 状态 (socketError) 应该显示错误消息', (tester) async {
       await tester.pumpWidget(NextalkApp(
         stateController: stateController,
         modelManager: testModelManager,
       ));
       await tester.pump();
 
-      stateController
-          .add(CapsuleStateData.error(CapsuleErrorType.socketError));
+      stateController.add(CapsuleStateData.error(CapsuleErrorType.socketError));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
       expect(find.text('Fcitx5 连接错误'), findsOneWidget);
     });
 
-    testWidgets('error 状态 (audioInitFailed) 应该显示错误消息',
-        (tester) async {
+    testWidgets('error 状态 (audioInitFailed) 应该显示错误消息', (tester) async {
       await tester.pumpWidget(NextalkApp(
         stateController: stateController,
         modelManager: testModelManager,

@@ -14,7 +14,8 @@ void main() {
       expect(state.displayMessage, contains('未找到'));
     });
 
-    test('CapsuleStateData.error creates correct state for incomplete model', () {
+    test('CapsuleStateData.error creates correct state for incomplete model',
+        () {
       final state = CapsuleStateData.error(CapsuleErrorType.modelIncomplete);
       expect(state.state, CapsuleState.error);
       expect(state.errorType, CapsuleErrorType.modelIncomplete);
@@ -41,7 +42,9 @@ void main() {
       expect(state.errorType, CapsuleErrorType.audioDeviceBusy);
     });
 
-    test('CapsuleStateData.error creates correct state for device lost with preserved text', () {
+    test(
+        'CapsuleStateData.error creates correct state for device lost with preserved text',
+        () {
       final state = CapsuleStateData.error(
         CapsuleErrorType.audioDeviceLost,
         preservedText: '这是用户说的话',
@@ -98,12 +101,17 @@ void main() {
   group('Global Error Boundary (AC17-AC18)', () {
     test('CapsuleErrorType has all expected error types', () {
       expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioNoDevice));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioDeviceBusy));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioDeviceLost));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.audioInitFailed));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.audioDeviceBusy));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.audioDeviceLost));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.audioInitFailed));
       expect(CapsuleErrorType.values, contains(CapsuleErrorType.modelNotFound));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.modelIncomplete));
-      expect(CapsuleErrorType.values, contains(CapsuleErrorType.modelLoadFailed));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.modelIncomplete));
+      expect(
+          CapsuleErrorType.values, contains(CapsuleErrorType.modelLoadFailed));
       expect(CapsuleErrorType.values, contains(CapsuleErrorType.socketError));
       expect(CapsuleErrorType.values, contains(CapsuleErrorType.unknown));
     });

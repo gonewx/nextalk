@@ -39,9 +39,8 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
   bool _showCopied = false;
 
   Future<void> _copyToClipboard() async {
-    final textToCopy = widget.text.isEmpty && widget.showHint
-        ? widget.hintText
-        : widget.text;
+    final textToCopy =
+        widget.text.isEmpty && widget.showHint ? widget.hintText : widget.text;
 
     await Clipboard.setData(ClipboardData(text: textToCopy));
 
@@ -57,9 +56,8 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
 
   @override
   Widget build(BuildContext context) {
-    final displayText = widget.text.isEmpty && widget.showHint
-        ? widget.hintText
-        : widget.text;
+    final displayText =
+        widget.text.isEmpty && widget.showHint ? widget.hintText : widget.text;
     final isHint = widget.text.isEmpty && widget.showHint;
 
     // 确定文字样式: 处理中 > 提示 > 主文字
@@ -74,9 +72,8 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
 
     // Story 3-7: 错误状态下显示复制提示或原文本
     final finalText = _showCopied ? '已复制到剪贴板' : displayText;
-    final finalStyle = _showCopied
-        ? style.copyWith(color: Colors.green.shade300)
-        : style;
+    final finalStyle =
+        _showCopied ? style.copyWith(color: Colors.green.shade300) : style;
 
     // Story 3-7: 错误状态下可点击复制
     if (widget.isError) {
@@ -119,8 +116,3 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
     );
   }
 }
-
-
-
-
-

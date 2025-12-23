@@ -103,7 +103,8 @@ void main() {
         final service = SherpaService();
 
         // 所有方法应安全返回，不抛异常
-        expect(() => service.acceptWaveform(16000, nullptr, 0), returnsNormally);
+        expect(
+            () => service.acceptWaveform(16000, nullptr, 0), returnsNormally);
         expect(() => service.decode(), returnsNormally);
         expect(() => service.reset(), returnsNormally);
         expect(() => service.inputFinished(), returnsNormally);

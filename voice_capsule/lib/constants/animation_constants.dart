@@ -49,8 +49,3 @@ class AnimationConstants {
   /// 脉冲最大缩放值
   static const double pulseMaxScale = 1.2;
 }
-
-
-
-
-

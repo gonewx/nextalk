@@ -59,8 +59,8 @@ void main() {
       // 使用归一化 sin 公式: 1.0 + amplitude * (1 + sin(t)) / 2
       // 范围 [1.0, 1.1] 符合 AC2 规范
       final minScale = AnimationConstants.breathingBaseScale;
-      final maxScale =
-          AnimationConstants.breathingBaseScale + AnimationConstants.breathingAmplitude;
+      final maxScale = AnimationConstants.breathingBaseScale +
+          AnimationConstants.breathingAmplitude;
       expect(minScale, 1.0);
       expect(maxScale, 1.1);
     });
@@ -79,8 +79,3 @@ void main() {
     });
   });
 }
-
-
-
-
-
