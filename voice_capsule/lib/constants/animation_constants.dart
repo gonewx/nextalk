@@ -50,3 +50,5 @@ class AnimationConstants {
   static const double pulseMaxScale = 1.2;
 }
 
+
+

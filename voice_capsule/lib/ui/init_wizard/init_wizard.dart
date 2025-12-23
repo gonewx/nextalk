@@ -69,15 +69,12 @@ class _InitWizardState extends State<InitWizard> {
 
     try {
       final error = await widget.modelManager.ensureModelReady(
-        onProgress: (progress, status) {
+        onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
           setState(() {
-            // 从进度计算下载字节数 (假设总大小约 150MB)
-            const estimatedTotal = 150 * 1024 * 1024;
-            final downloaded = (progress * estimatedTotal).toInt();
             _state = InitStateData.downloading(
               progress: progress,
               downloaded: downloaded,
-              total: estimatedTotal,
+              total: total,
             );
           });
         },
