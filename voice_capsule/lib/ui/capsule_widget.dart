@@ -46,10 +46,9 @@ class CapsuleWidget extends StatelessWidget {
     // 默认使用 listening 状态以保持向后兼容
     final effectiveState = stateData ?? CapsuleStateData.listening(text: text);
     final isProcessing = effectiveState.state == CapsuleState.processing;
+    final isError = effectiveState.state == CapsuleState.error;
     final showCursor = effectiveState.state == CapsuleState.listening;
-    final displayText = effectiveState.state == CapsuleState.error
-        ? effectiveState.displayMessage
-        : text;
+    final displayText = isError ? effectiveState.displayMessage : text;
 
     return GestureDetector(
       // 拖拽移动支持 - 继承自 Story 3-1
@@ -105,6 +104,7 @@ class CapsuleWidget extends StatelessWidget {
                   showHint: showHint,
                   hintText: hintText,
                   isProcessing: isProcessing,
+                  isError: isError,
                 ),
               ),
 

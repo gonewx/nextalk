@@ -211,7 +211,11 @@ class SherpaService {
     try {
       _lib = loadSherpaLibrary();
       SherpaOnnxBindings.init(_lib!);
+      // ignore: avoid_print
+      print('[SherpaService] ✅ 动态库加载并初始化成功');
     } catch (e) {
+      // ignore: avoid_print
+      print('[SherpaService] ❌ 动态库加载失败: $e');
       _lastError = SherpaError.libraryLoadFailed;
       return _lastError;
     }

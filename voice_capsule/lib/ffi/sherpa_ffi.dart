@@ -5,6 +5,8 @@ library sherpa_ffi;
 import 'dart:ffi';
 import 'dart:io';
 
+import 'package:path/path.dart' as path;
+
 export 'sherpa_onnx_bindings.dart';
 
 /// Sherpa 库加载异常
@@ -22,9 +24,10 @@ DynamicLibrary? _cachedLibrary;
 /// 加载 Sherpa 动态库 (Linux 专用)
 ///
 /// 搜索顺序:
-/// 1. libsherpa-onnx-c-api.so (RPATH, $ORIGIN/lib)
-/// 2. ./lib/libsherpa-onnx-c-api.so (相对路径)
-/// 3. /usr/local/lib/libsherpa-onnx-c-api.so (系统路径)
+/// 1. 基于可执行文件路径的 lib 目录 (推荐)
+/// 2. libsherpa-onnx-c-api.so (RPATH, $ORIGIN/lib)
+/// 3. ./lib/libsherpa-onnx-c-api.so (相对路径)
+/// 4. /usr/local/lib/libsherpa-onnx-c-api.so (系统路径)
 ///
 /// 注意: 库实例会被缓存，多次调用返回同一实例。
 ///
@@ -39,15 +42,22 @@ DynamicLibrary loadSherpaLibrary() {
     throw SherpaLibraryException('仅支持 Linux 平台');
   }
 
+  // 基于可执行文件路径构建 lib 目录
+  final exeDir = path.dirname(Platform.resolvedExecutable);
+  final bundleLibPath = path.join(exeDir, 'lib', 'libsherpa-onnx-c-api.so');
+
   final searchPaths = [
+    bundleLibPath, // 基于可执行文件路径 (最可靠)
     'libsherpa-onnx-c-api.so', // RPATH ($ORIGIN/lib)
     './lib/libsherpa-onnx-c-api.so', // 相对路径
     '/usr/local/lib/libsherpa-onnx-c-api.so', // 系统路径
   ];
 
-  for (final path in searchPaths) {
+  for (final libPath in searchPaths) {
     try {
-      _cachedLibrary = DynamicLibrary.open(path);
+      _cachedLibrary = DynamicLibrary.open(libPath);
+      // ignore: avoid_print
+      print('[SherpaFFI] ✅ 库加载成功: $libPath');
       return _cachedLibrary!;
     } catch (e) {
       // 继续尝试下一个路径

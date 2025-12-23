@@ -132,16 +132,42 @@ void NextalkAddon::socketListenerLoop() {
 }
 
 void NextalkAddon::handleClient(int clientFd) {
+    // 设置 recv 超时 (30秒)，防止客户端异常断开时永久阻塞
+    struct timeval timeout;
+    timeout.tv_sec = 30;
+    timeout.tv_usec = 0;
+    if (setsockopt(clientFd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+        NEXTALK_WARN() << "Failed to set socket timeout: " << strerror(errno);
+    }
+
     // 协议：4字节长度（小端）+ UTF-8文本
     while (running_) {
-        // 读取长度 (with EINTR retry)
+        // 读取长度 (with EINTR retry and timeout handling)
         uint32_t len = 0;
         ssize_t n;
         do {
             n = recv(clientFd, &len, sizeof(len), MSG_WAITALL);
         } while (n < 0 && errno == EINTR);
-        
+
+        // 处理超时：检查连接是否还活着
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            // 超时但连接可能还在，发送空检测
+            char probe = 0;
+            ssize_t probeResult = send(clientFd, &probe, 0, MSG_NOSIGNAL);
+            if (probeResult < 0 && errno != EAGAIN) {
+                NEXTALK_DEBUG() << "Client connection lost (timeout probe failed)";
+                break;
+            }
+            // 连接还在，继续等待
+            continue;
+        }
+
         if (n <= 0) {
+            if (n == 0) {
+                NEXTALK_DEBUG() << "Client closed connection gracefully";
+            } else {
+                NEXTALK_DEBUG() << "Client connection error: " << strerror(errno);
+            }
             break;
         }
 

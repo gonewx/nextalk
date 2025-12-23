@@ -127,15 +127,22 @@ class _NextalkAppState extends State<NextalkApp> {
   }
 
   /// 判断是否应该显示错误操作按钮
+  /// Story 3-7 AC10: 错误状态下提供可操作的恢复按钮
   bool _shouldShowErrorActions(CapsuleErrorType? errorType) {
     if (errorType == null) return false;
     return switch (errorType) {
+      // 音频相关
       CapsuleErrorType.audioNoDevice => true,
       CapsuleErrorType.audioDeviceBusy => true,
       CapsuleErrorType.audioDeviceLost => true,
-      CapsuleErrorType.socketError => true,
+      CapsuleErrorType.audioInitFailed => true,
+      // 模型相关 (AC8-AC10)
       CapsuleErrorType.modelNotFound => true,
       CapsuleErrorType.modelIncomplete => true,
+      CapsuleErrorType.modelCorrupted => true,
+      CapsuleErrorType.modelLoadFailed => true,
+      // Socket 相关
+      CapsuleErrorType.socketError => true,
       _ => false,
     };
   }
@@ -153,6 +160,7 @@ class _NextalkAppState extends State<NextalkApp> {
   }
 
   /// 根据错误类型获取操作按钮列表
+  /// Story 3-7: AC8-AC10 模型错误操作按钮
   List<ErrorAction> _getActionsForError(BuildContext context, CapsuleStateData state) {
     final errorType = state.errorType;
     if (errorType == null) return [];
@@ -161,10 +169,11 @@ class _NextalkAppState extends State<NextalkApp> {
       // 音频设备错误
       case CapsuleErrorType.audioNoDevice:
       case CapsuleErrorType.audioDeviceBusy:
+      case CapsuleErrorType.audioInitFailed:
         return [
           ErrorAction(
             label: '刷新检测',
-            onPressed: () => HotkeyController.instance.dismissError(),
+            onPressed: () => HotkeyController.instance.retryRecording(),
             isPrimary: true,
           ),
         ];
@@ -211,14 +220,53 @@ class _NextalkAppState extends State<NextalkApp> {
             ),
         ];
 
-      // 模型错误
+      // 模型错误 (AC8-AC10)
       case CapsuleErrorType.modelNotFound:
       case CapsuleErrorType.modelIncomplete:
         return [
           ErrorAction(
+            label: '重新下载',
+            onPressed: () {
+              // TODO: 触发初始化向导
+              HotkeyController.instance.dismissError();
+            },
+            isPrimary: true,
+          ),
+          ErrorAction(
             label: '关闭',
             onPressed: () => HotkeyController.instance.dismissError(),
+          ),
+        ];
+
+      // 模型损坏 (AC8: 删除并重新下载)
+      case CapsuleErrorType.modelCorrupted:
+        return [
+          ErrorAction(
+            label: '删除并重新下载',
+            onPressed: () async {
+              await widget.modelManager.deleteModel();
+              HotkeyController.instance.dismissError();
+              // TODO: 触发初始化向导
+            },
             isPrimary: true,
+          ),
+          ErrorAction(
+            label: '关闭',
+            onPressed: () => HotkeyController.instance.dismissError(),
+          ),
+        ];
+
+      // 模型加载失败 (AC9: 显示具体原因)
+      case CapsuleErrorType.modelLoadFailed:
+        return [
+          ErrorAction(
+            label: '重试',
+            onPressed: () => HotkeyController.instance.retryRecording(),
+            isPrimary: true,
+          ),
+          ErrorAction(
+            label: '关闭',
+            onPressed: () => HotkeyController.instance.dismissError(),
           ),
         ];
 

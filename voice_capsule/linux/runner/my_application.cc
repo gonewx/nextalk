@@ -35,6 +35,10 @@ static void my_application_activate(GApplication* application) {
   // 2. 设置窗口类型提示 (确保跳过任务栏，在所有桌面环境生效) - AC7
   gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_UTILITY);
 
+  // 3. 禁止接受焦点 - 防止抢占其他应用的输入焦点
+  gtk_window_set_accept_focus(window, FALSE);
+  gtk_window_set_focus_on_map(window, FALSE);
+
   // 3. 设置窗口可绘制透明 - AC2
   gtk_widget_set_app_paintable(GTK_WIDGET(window), TRUE);
 
@@ -83,10 +87,8 @@ static void my_application_activate(GApplication* application) {
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
 
-  // 显示窗口
+  // 显示窗口 (不抢占焦点)
   gtk_widget_show_all(GTK_WIDGET(window));
-
-  gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
 // Implements GApplication::local_command_line.

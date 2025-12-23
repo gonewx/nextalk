@@ -198,6 +198,9 @@ class AudioInferencePipeline {
   /// 最近一次错误
   PipelineError get lastError => _lastError;
 
+  /// Story 3-7: 获取更详细的 Sherpa 错误 (AC9: 显示具体原因)
+  SherpaError get lastSherpaError => _sherpaService.lastError;
+
   /// Story 2-6: 当前 VAD 配置
   VadConfig get vadConfig => _vadConfig;
 

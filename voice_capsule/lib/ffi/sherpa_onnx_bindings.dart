@@ -337,10 +337,10 @@ class SherpaOnnxBindings {
         DestroyOnlineStreamResultJsonDart>('SherpaOnnxDestroyOnlineStreamResultJson');
 
     _reset = lib.lookupFunction<ResetOnlineStreamNative, ResetOnlineStreamDart>(
-        'SherpaOnnxOnlineRecognizerReset');
+        'SherpaOnnxOnlineStreamReset');
 
     _isEndpoint =
-        lib.lookupFunction<IsEndpointNative, IsEndpointDart>('SherpaOnnxOnlineRecognizerIsEndpoint');
+        lib.lookupFunction<IsEndpointNative, IsEndpointDart>('SherpaOnnxOnlineStreamIsEndpoint');
 
     _onlineStreamInputFinished = lib.lookupFunction<
         OnlineStreamInputFinishedNative,

@@ -67,10 +67,20 @@ class WindowService with WindowListener {
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       // 配置窗口属性
       await windowManager.setAsFrameless(); // 无边框
-      await windowManager.setMovable(true); // 可拖拽 - AC9
       await windowManager.setResizable(false); // 不可调整大小 - AC3
-      await windowManager.setMinimizable(false); // 不可最小化
-      await windowManager.setMaximizable(false); // 不可最大化
+
+      // 以下方法在 Linux 上可能不支持，用 try-catch 包装
+      try {
+        await windowManager.setMovable(true); // 可拖拽 - AC9
+      } catch (_) {
+        // Linux 上通过 GestureDetector + startDragging 实现拖拽
+      }
+      try {
+        await windowManager.setMinimizable(false); // 不可最小化
+        await windowManager.setMaximizable(false); // 不可最大化
+      } catch (_) {
+        // Linux 上可能不支持
+      }
 
       // 尝试恢复上次保存的位置
       await _restorePosition();

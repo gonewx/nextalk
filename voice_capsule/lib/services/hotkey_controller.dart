@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'audio_inference_pipeline.dart';
+import 'sherpa_service.dart';
 import 'window_service.dart';
 import 'fcitx_client.dart';
 import 'hotkey_service.dart';
@@ -87,6 +88,16 @@ class HotkeyController {
     await WindowService.instance.hide();
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
+  }
+
+  /// Story 3-7: 重试录音 (AC10: 错误状态下的恢复操作)
+  /// 保持窗口显示，重新尝试开始录音
+  Future<void> retryRecording() async {
+    _lastRecognizedText = null;
+    _state = HotkeyState.idle;
+
+    // 重新开始录音流程
+    await _startRecording();
   }
 
   /// 初始化控制器
@@ -294,33 +305,83 @@ class HotkeyController {
   }
 
   /// 错误处理
+  /// Story 3-7 AC9/AC10: 显示具体错误原因，提供可操作的恢复按钮
   void _handleError(PipelineError error) {
-    final errorType = switch (error) {
-      PipelineError.audioInitFailed => CapsuleErrorType.audioInitFailed,
-      PipelineError.deviceUnavailable => CapsuleErrorType.audioNoDevice,
-      PipelineError.modelNotReady => CapsuleErrorType.modelLoadFailed,
-      PipelineError.recognizerFailed => CapsuleErrorType.modelLoadFailed,
-      PipelineError.none => null,
+    final (errorType, errorMessage) = switch (error) {
+      PipelineError.audioInitFailed => (
+          CapsuleErrorType.audioInitFailed,
+          '音频设备初始化失败，请检查麦克风连接',
+        ),
+      PipelineError.deviceUnavailable => (
+          CapsuleErrorType.audioNoDevice,
+          '未检测到麦克风设备',
+        ),
+      PipelineError.modelNotReady => (
+          CapsuleErrorType.modelNotFound,
+          '模型文件未找到，请下载语音模型',
+        ),
+      PipelineError.recognizerFailed => _getDetailedSherpaError(),
+      PipelineError.none => (null, null),
     };
 
     if (errorType != null) {
-      // 先设置为错误状态，显示错误信息
-      _state = HotkeyState.submitting; // 使用 submitting 防止重复触发
-      _updateState(CapsuleStateData.error(errorType));
-
-      // 3 秒后自动隐藏并重置状态
-      Future.delayed(const Duration(seconds: 3), () {
-        // 仅在仍处于 submitting 状态时执行清理 (防止用户已手动操作)
-        if (_state == HotkeyState.submitting) {
-          WindowService.instance.hide();
-          _state = HotkeyState.idle;
-          _updateState(CapsuleStateData.idle());
-        }
-      });
+      // Story 3-7 AC10: 错误状态保持显示，等待用户操作
+      // 设置为 idle 状态允许用户重新触发快捷键或点击操作按钮
+      _state = HotkeyState.idle;
+      _updateState(CapsuleStateData.error(errorType, message: errorMessage));
+      // 不自动隐藏，由用户通过 dismissError() 或操作按钮关闭
     } else {
       // 无错误类型时直接重置
       _state = HotkeyState.idle;
     }
+  }
+
+  /// Story 3-7: 获取详细的 Sherpa 错误信息 (AC9)
+  (CapsuleErrorType, String) _getDetailedSherpaError() {
+    final sherpaError = _pipeline?.lastSherpaError ?? SherpaError.none;
+
+    return switch (sherpaError) {
+      SherpaError.libraryLoadFailed => (
+          CapsuleErrorType.modelLoadFailed,
+          '动态库加载失败，请检查 libsherpa-onnx-c-api.so',
+        ),
+      SherpaError.modelNotFound => (
+          CapsuleErrorType.modelNotFound,
+          '模型目录不存在',
+        ),
+      SherpaError.tokensNotFound => (
+          CapsuleErrorType.modelIncomplete,
+          '缺少 tokens.txt 文件',
+        ),
+      SherpaError.encoderNotFound => (
+          CapsuleErrorType.modelIncomplete,
+          '缺少 encoder 模型文件',
+        ),
+      SherpaError.decoderNotFound => (
+          CapsuleErrorType.modelIncomplete,
+          '缺少 decoder 模型文件',
+        ),
+      SherpaError.joinerNotFound => (
+          CapsuleErrorType.modelIncomplete,
+          '缺少 joiner 模型文件',
+        ),
+      SherpaError.recognizerCreateFailed => (
+          CapsuleErrorType.modelLoadFailed,
+          '识别器创建失败，可能内存不足或模型损坏',
+        ),
+      SherpaError.streamCreateFailed => (
+          CapsuleErrorType.modelLoadFailed,
+          '音频流创建失败',
+        ),
+      SherpaError.notInitialized => (
+          CapsuleErrorType.modelLoadFailed,
+          '服务未初始化',
+        ),
+      SherpaError.none => (
+          CapsuleErrorType.modelLoadFailed,
+          '未知模型错误',
+        ),
+    };
   }
 
   /// 更新 UI 状态
