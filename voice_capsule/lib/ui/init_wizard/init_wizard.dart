@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../services/model_manager.dart';
+import '../../services/window_service.dart';
 import '../../state/init_state.dart';
 import 'download_progress.dart';
 import 'init_mode_selector.dart';
@@ -31,11 +32,29 @@ class InitWizard extends StatefulWidget {
 class _InitWizardState extends State<InitWizard> {
   InitStateData _state = InitStateData.selectMode();
   StreamSubscription<DownloadProgress>? _downloadSubscription;
+  bool _windowSizeSet = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 首次渲染前设置足够大的窗口
+    _ensureWindowSize();
+  }
 
   @override
   void dispose() {
     _downloadSubscription?.cancel();
     super.dispose();
+  }
+
+  /// 确保窗口足够大以容纳内容
+  void _ensureWindowSize() {
+    if (!_windowSizeSet) {
+      _windowSizeSet = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WindowService.instance.setInitWizardSize();
+      });
+    }
   }
 
   /// 开始自动下载
@@ -163,9 +182,35 @@ class _InitWizardState extends State<InitWizard> {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: _buildContent(),
+    return GestureDetector(
+      // 支持拖动窗口
+      onPanStart: (_) => WindowService.instance.startDragging(),
+      child: Center(
+        child: SingleChildScrollView(
+          child: Stack(
+            children: [
+              _buildContent(),
+              // 关闭按钮
+              Positioned(
+                top: 8,
+                right: 8,
+                child: IconButton(
+                  onPressed: _onClose,
+                  icon: const Icon(Icons.close, color: Colors.white54, size: 20),
+                  tooltip: '退出',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
+  }
+
+  /// 关闭/退出应用
+  void _onClose() {
+    // 退出应用
+    SystemNavigator.pop();
   }
 
   Widget _buildContent() {

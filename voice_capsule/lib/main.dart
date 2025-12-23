@@ -119,7 +119,11 @@ Future<void> main() async {
     };
 
     // 10. 启动应用
-    runApp(NextalkApp(stateController: _stateController));
+    // Story 3-7: 传递 modelManager 以便 NextalkApp 根据模型状态路由 UI
+    runApp(NextalkApp(
+      stateController: _stateController,
+      modelManager: modelManager,
+    ));
 
     DiagnosticLogger.instance.info('main', '应用初始化完成');
   }, (error, stackTrace) {

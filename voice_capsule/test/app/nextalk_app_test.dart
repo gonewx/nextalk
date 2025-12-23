@@ -2,15 +2,29 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:voice_capsule/app/nextalk_app.dart';
+import 'package:voice_capsule/services/model_manager.dart';
 import 'package:voice_capsule/state/capsule_state.dart';
 import 'package:voice_capsule/ui/capsule_widget.dart';
+
+/// 测试用 ModelManager，模拟模型已就绪状态
+class TestModelManager extends ModelManager {
+  final bool _modelReady;
+
+  TestModelManager({bool modelReady = true}) : _modelReady = modelReady;
+
+  @override
+  bool get isModelReady => _modelReady;
+}
 
 void main() {
   group('NextalkApp', () {
     late StreamController<CapsuleStateData> stateController;
+    late TestModelManager testModelManager;
 
     setUp(() {
       stateController = StreamController<CapsuleStateData>.broadcast();
+      // 默认模拟模型已就绪，显示正常胶囊 UI
+      testModelManager = TestModelManager(modelReady: true);
     });
 
     tearDown(() async {
@@ -18,7 +32,10 @@ void main() {
     });
 
     testWidgets('应该正确渲染 CapsuleWidget', (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -26,7 +43,10 @@ void main() {
     });
 
     testWidgets('初始状态应该是 listening (便于开发调试)', (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
@@ -35,7 +55,10 @@ void main() {
     });
 
     testWidgets('listening 状态 (无文本) 应该显示 hint', (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump(); // 首帧
 
       stateController.add(CapsuleStateData.listening());
@@ -46,7 +69,10 @@ void main() {
     });
 
     testWidgets('listening 状态 (有文本) 应该显示识别文本', (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump();
 
       stateController.add(CapsuleStateData.listening(text: '你好'));
@@ -57,7 +83,10 @@ void main() {
     });
 
     testWidgets('processing 状态应该继续显示文本', (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump();
 
       stateController.add(CapsuleStateData.processing(text: '你好世界'));
@@ -69,7 +98,10 @@ void main() {
 
     testWidgets('error 状态 (socketError) 应该显示错误消息',
         (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump();
 
       stateController
@@ -82,7 +114,10 @@ void main() {
 
     testWidgets('error 状态 (audioInitFailed) 应该显示错误消息',
         (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump();
 
       stateController
@@ -95,7 +130,10 @@ void main() {
 
     testWidgets('状态流转: idle -> listening -> processing -> idle',
         (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump();
 
       // idle -> listening (无文本)
@@ -125,7 +163,10 @@ void main() {
     });
 
     testWidgets('StreamBuilder 应该自动管理订阅生命周期', (tester) async {
-      await tester.pumpWidget(NextalkApp(stateController: stateController));
+      await tester.pumpWidget(NextalkApp(
+        stateController: stateController,
+        modelManager: testModelManager,
+      ));
       await tester.pump();
 
       // 发送多个状态更新，确保 StreamBuilder 正常工作

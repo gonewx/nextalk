@@ -120,6 +120,22 @@ class WindowService with WindowListener {
     _isVisible = false;
   }
 
+  /// Story 3-7: 设置窗口尺寸 (用于初始化向导)
+  Future<void> setSize(double width, double height) async {
+    if (!_isInitialized) return;
+    await windowManager.setSize(Size(width, height));
+  }
+
+  /// Story 3-7: 重置为正常胶囊尺寸
+  Future<void> resetToNormalSize() async {
+    await setSize(WindowConstants.windowWidth, WindowConstants.windowHeight);
+  }
+
+  /// Story 3-7: 设置为初始化向导尺寸
+  Future<void> setInitWizardSize() async {
+    await setSize(WindowConstants.initWizardWidth, WindowConstants.initWizardHeight);
+  }
+
   /// 保存当前位置
   Future<void> savePosition() async {
     if (!_isInitialized || _prefs == null) return;

@@ -140,7 +140,7 @@ models/$_modelName/
     _cancelToken = null;
   }
 
-  /// 下载模型 (支持代理、重试、进度回调)
+  /// 下载模型 (支持代理、重试、进度回调、断点续传)
   Future<String> downloadModel({
     ProgressCallback? onProgress,
     int maxRetries = 3,
@@ -162,8 +162,7 @@ models/$_modelName/
         Platform.environment['HTTPS_PROXY'] ??
         Platform.environment['https_proxy'];
     if (httpProxy != null && httpProxy.isNotEmpty) {
-      print('检测到代理: $httpProxy');
-      // 实际配置 Dio 使用代理
+      print('[ModelManager] 检测到代理: $httpProxy');
       (dio.httpClientAdapter as IOHttpClientAdapter).createHttpClient = () {
         final client = HttpClient();
         client.findProxy = (uri) => 'PROXY $httpProxy';
@@ -180,26 +179,108 @@ models/$_modelName/
 
     for (var attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        onProgress?.call(0.0, '下载中 (尝试 $attempt/$maxRetries)...');
+        // 检查已下载的大小（每次尝试时重新检查）
+        int downloadedBytes = 0;
+        if (tempFile.existsSync()) {
+          downloadedBytes = tempFile.lengthSync();
+        }
 
-        await dio.download(
+        // 获取文件总大小
+        int totalBytes = 0;
+        try {
+          final headResponse = await dio.head(_downloadUrl, cancelToken: _cancelToken);
+          totalBytes = int.tryParse(
+            headResponse.headers.value('content-length') ?? '0',
+          ) ?? 0;
+          print('[ModelManager] 文件总大小: ${(totalBytes / 1024 / 1024).toStringAsFixed(1)}MB');
+        } catch (e) {
+          print('[ModelManager] HEAD 请求失败: $e');
+        }
+
+        // 如果已经下载完成
+        if (totalBytes > 0 && downloadedBytes >= totalBytes) {
+          print('[ModelManager] 文件已完整下载');
+          onProgress?.call(1.0, '下载完成');
+          dio.close();
+          return _tempFilePath;
+        }
+
+        // 准备断点续传
+        Map<String, dynamic>? headers;
+        if (downloadedBytes > 0 && totalBytes > 0) {
+          headers = {'Range': 'bytes=$downloadedBytes-'};
+          print('[ModelManager] 断点续传: 从 ${(downloadedBytes / 1024 / 1024).toStringAsFixed(1)}MB 处继续');
+          onProgress?.call(downloadedBytes / totalBytes, '续传中...');
+        } else {
+          onProgress?.call(0.0, '下载中 (尝试 $attempt/$maxRetries)...');
+        }
+
+        // 使用流式下载
+        final response = await dio.get<ResponseBody>(
           _downloadUrl,
-          _tempFilePath,
+          options: Options(
+            responseType: ResponseType.stream,
+            headers: headers,
+          ),
           cancelToken: _cancelToken,
-          onReceiveProgress: (received, total) {
-            if (total > 0) {
-              final progress = received / total;
-              onProgress?.call(
-                  progress, '下载中: ${(progress * 100).toStringAsFixed(1)}%');
-            }
-          },
         );
 
+        // 检查服务器是否支持断点续传
+        final statusCode = response.statusCode ?? 200;
+        final isResuming = statusCode == 206;
+
+        if (downloadedBytes > 0 && !isResuming) {
+          // 服务器不支持断点续传，删除已有文件重新下载
+          print('[ModelManager] 服务器不支持断点续传，重新下载');
+          if (tempFile.existsSync()) {
+            tempFile.deleteSync();
+          }
+          downloadedBytes = 0;
+        }
+
+        // 获取本次下载的内容长度
+        final contentLength = int.tryParse(
+          response.headers.value('content-length') ?? '0',
+        ) ?? 0;
+
+        // 计算总大小
+        final expectedTotal = isResuming
+            ? downloadedBytes + contentLength
+            : (totalBytes > 0 ? totalBytes : contentLength);
+
+        // 打开文件（续传用追加模式，否则用写入模式）
+        final raf = tempFile.openSync(mode: isResuming ? FileMode.append : FileMode.write);
+        int received = isResuming ? downloadedBytes : 0;
+
+        try {
+          await for (final chunk in response.data!.stream) {
+            raf.writeFromSync(chunk);
+            received += chunk.length;
+
+            if (expectedTotal > 0) {
+              final progress = received / expectedTotal;
+              onProgress?.call(
+                progress,
+                '下载中: ${(progress * 100).toStringAsFixed(1)}%',
+              );
+            }
+          }
+        } finally {
+          raf.closeSync();
+        }
+
+        print('[ModelManager] 下载完成，文件大小: ${(received / 1024 / 1024).toStringAsFixed(1)}MB');
         onProgress?.call(1.0, '下载完成');
         dio.close();
         return _tempFilePath;
       } on DioException catch (e) {
         lastException = e;
+        // 取消不重试
+        if (e.type == DioExceptionType.cancel) {
+          dio.close();
+          throw e;
+        }
+        print('[ModelManager] 下载失败: ${e.message}');
         if (attempt < maxRetries) {
           onProgress?.call(0.0, '下载失败，3秒后重试...');
           await Future.delayed(const Duration(seconds: 3));
@@ -208,9 +289,7 @@ models/$_modelName/
     }
 
     dio.close();
-    if (tempFile.existsSync()) {
-      tempFile.deleteSync();
-    }
+    // 断点续传：失败时不删除临时文件，以便下次续传
     throw lastException;
   }
 

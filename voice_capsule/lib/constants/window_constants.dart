@@ -8,6 +8,11 @@ class WindowConstants {
   static const double windowWidth = 400.0;
   static const double windowHeight = 120.0;
 
+  /// 初始化向导窗口尺寸 (Story 3-7)
+  /// 足够容纳最大的手动安装界面
+  static const double initWizardWidth = 540.0;
+  static const double initWizardHeight = 540.0;
+
   /// 胶囊内容区尺寸 (Story 3-2 使用)
   static const double capsuleWidth = 380.0; // Max
   static const double capsuleMinWidth = 280.0; // Min

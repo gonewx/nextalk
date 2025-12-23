@@ -103,10 +103,18 @@ class ManualInstallGuide extends StatelessWidget {
           _buildStep(
             number: '2',
             title: '解压并放置到:',
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
+                // 完整显示路径，支持选择复制
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: SelectableText(
                     targetPath,
                     style: TextStyle(
                       color: CapsuleColors.textHint,
@@ -115,7 +123,7 @@ class ManualInstallGuide extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(height: 8),
                 TextButton.icon(
                   onPressed: onOpenDirectory,
                   icon: const Icon(Icons.folder_open, size: 16),
@@ -134,23 +142,27 @@ class ManualInstallGuide extends StatelessWidget {
           _buildStep(
             number: '3',
             title: '目录结构应为:',
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.black26,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                'models/sherpa-onnx-streaming-zipformer.../\n'
-                '  ├── encoder-*.onnx\n'
-                '  ├── decoder-*.onnx\n'
-                '  ├── joiner-*.onnx\n'
-                '  └── tokens.txt',
-                style: TextStyle(
-                  color: CapsuleColors.textHint,
-                  fontSize: 11,
-                  fontFamily: 'monospace',
-                  height: 1.5,
+            child: Tooltip(
+              message: 'sherpa-onnx-streaming-zipformer-bilingual-zh-en/',
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: SelectableText(
+                  'sherpa-onnx-streaming-zipformer-bilingual-zh-en/\n'
+                  '  ├── encoder-*.onnx\n'
+                  '  ├── decoder-*.onnx\n'
+                  '  ├── joiner-*.onnx\n'
+                  '  └── tokens.txt',
+                  style: TextStyle(
+                    color: CapsuleColors.textHint,
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                    height: 1.5,
+                  ),
                 ),
               ),
             ),
