@@ -90,6 +90,12 @@ cd addons/fcitx5 && mkdir -p build && cd build && cmake .. && make
 - 下一步: 创建 Epics & Stories (`/bmad:bmm:workflows:create-epics-and-stories`)
 - 状态跟踪: `_bmad-output/bmm-workflow-status.yaml`
 
+## 禁止行为
+
+- 不要自作主张添加空行或进行"代码格式化"
+- 不要创建 "chore: 添加空行" 类型的提交
+- 只修改任务明确要求的内容
+
 ## 用户手工维护区域
 
 <!--
