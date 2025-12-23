@@ -122,7 +122,36 @@ class SettingsService {
     final typeStr = type == ModelType.standard ? 'standard' : 'int8';
     await _prefs!.setString(SettingsConstants.keyModelType, typeStr);
 
+    // 同步更新 YAML 配置文件
+    await _updateYamlModelType(typeStr);
+
     debugPrint('SettingsService: 模型类型已设置为 $typeStr');
+  }
+
+  /// 更新 YAML 文件中的模型类型
+  Future<void> _updateYamlModelType(String typeStr) async {
+    try {
+      final settingsFile = File(SettingsConstants.settingsFilePath);
+      if (!settingsFile.existsSync()) return;
+
+      final content = settingsFile.readAsStringSync();
+      // 匹配 "type: xxx" 行 (保留缩进和注释)
+      final updatedContent = content.replaceFirstMapped(
+        RegExp(r'^(\s*type:\s*)\S+', multiLine: true),
+        (match) => '${match.group(1)}$typeStr',
+      );
+
+      if (content != updatedContent) {
+        settingsFile.writeAsStringSync(updatedContent);
+        // 更新内存缓存
+        if (_yamlConfig != null && _yamlConfig!['model'] != null) {
+          (_yamlConfig!['model'] as Map<String, dynamic>)['type'] = typeStr;
+        }
+        debugPrint('SettingsService: YAML 配置文件已更新');
+      }
+    } catch (e) {
+      debugPrint('SettingsService: 更新 YAML 配置文件失败: $e');
+    }
   }
 
   /// 切换模型类型并触发回调

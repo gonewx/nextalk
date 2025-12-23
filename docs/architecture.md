@@ -60,9 +60,14 @@ nextalk/
         ├── ffi/              # 原生绑定层 ("大脑"的神经连接)
         │   ├── sherpa_ffi.dart
         │   └── portaudio_ffi.dart
+        ├── constants/        # 常量定义
+        │   ├── settings_constants.dart  # 设置服务常量与模型类型枚举
+        │   └── tray_constants.dart      # 系统托盘菜单常量
         ├── services/         # 业务逻辑
         │   ├── sherpa_service.dart
-        │   ├── model_manager.dart # 模型下载与管理
+        │   ├── model_manager.dart   # 模型下载与管理
+        │   ├── settings_service.dart # 配置管理服务
+        │   ├── tray_service.dart    # 系统托盘服务
         │   └── fcitx_client.dart
         └── ui/               # Widget 组件定义
 ```
@@ -137,6 +142,63 @@ class SherpaService {
     *   **缺失**: 跳转至 `DownloadPage`，下载并解压模型包。
     *   **存在**: 初始化 Sherpa 引擎 -> 进入主界面。
 3.  **模型源**: 托管于 HuggingFace 或 GitHub Releases 的 `zipformer` 压缩包。
+4.  **自定义 URL**: 支持通过配置文件指定自定义模型下载地址。
+
+### 4.5 配置服务 (Settings Service)
+
+配置服务提供模型版本选择和高级配置管理功能。
+
+**架构设计**:
+*   **双层存储**: 运行时配置使用 `SharedPreferences`，高级配置使用 YAML 文件。
+*   **热切换**: 支持运行时切换模型版本，无需重启应用。
+*   **XDG 规范**: 配置文件路径遵循 XDG Base Directory 规范。
+
+**配置文件结构**:
+
+```yaml
+# ~/.config/nextalk/settings.yaml
+model:
+  # 自定义模型下载地址 (留空使用默认地址)
+  custom_url: ""
+
+  # 模型版本: int8 | standard
+  # int8: 量化版本，速度快，内存占用小
+  # standard: 标准版本，精度高
+  type: int8
+```
+
+**模型版本**:
+
+| 版本 | 特点 | 适用场景 |
+| :--- | :--- | :--- |
+| `int8` | 量化模型，体积小，推理快 | 日常使用，低配置设备 |
+| `standard` | 标准模型，精度高 | 需要高识别准确率的场景 |
+
+**热切换流程**:
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant Tray as 系统托盘
+    participant Settings as SettingsService
+    participant Pipeline as AudioInferencePipeline
+    participant Sherpa as SherpaService
+
+    User->>Tray: 选择模型版本
+    Tray->>Settings: switchModelType(newType)
+    Settings->>Pipeline: onModelSwitch(newType)
+    Pipeline->>Pipeline: stop() (如正在运行)
+    Pipeline->>Sherpa: dispose()
+    Pipeline->>Sherpa: 创建新实例
+    Pipeline->>Pipeline: start() (如之前在运行)
+    Pipeline-->>Settings: 切换完成
+    Settings-->>Tray: 更新菜单状态
+```
+
+**系统托盘集成**:
+*   提供"模型设置"子菜单
+*   支持 int8/standard 版本切换 (复选框)
+*   提供"打开配置目录"快捷操作
 
 ## 5. 基础设施与构建系统
 

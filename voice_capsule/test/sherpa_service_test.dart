@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:voice_capsule/ffi/sherpa_ffi.dart';
 import 'package:voice_capsule/services/sherpa_service.dart';
 
 void main() {
@@ -159,14 +160,20 @@ void main() {
     group('初始化和清理流程 (需要真实模型)', () {
       late String modelDir;
       late bool modelExists;
+      late bool libraryAvailable;
 
       setUpAll(() {
         modelDir = Platform.environment['SHERPA_MODEL_DIR'] ??
             '${Platform.environment['HOME']}/.local/share/nextalk/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en';
         modelExists = Directory(modelDir).existsSync();
+        libraryAvailable = isSherpaLibraryAvailable();
       });
 
       test('使用真实模型初始化成功', () async {
+        if (!libraryAvailable) {
+          markTestSkipped('Sherpa 动态库不可用');
+          return;
+        }
         if (!modelExists) {
           markTestSkipped('模型目录不存在: $modelDir');
           return;
@@ -186,6 +193,10 @@ void main() {
       });
 
       test('重复初始化返回 none', () async {
+        if (!libraryAvailable) {
+          markTestSkipped('Sherpa 动态库不可用');
+          return;
+        }
         if (!modelExists) {
           markTestSkipped('模型目录不存在: $modelDir');
           return;

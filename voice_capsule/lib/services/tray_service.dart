@@ -137,27 +137,22 @@ class TrayService {
         label: TrayConstants.menuReconnectFcitx,  // AC16: 新增
         onClicked: (_) => _reconnectFcitx(),
       ),
-      SubMenu(
-        label: TrayConstants.menuModelSettings,
-        children: [
-          MenuItemCheckbox(
-            label: TrayConstants.menuModelInt8,
-            checked: currentType == ModelType.int8,
-            onClicked: (_) => _switchModel(ModelType.int8),
-          ),
-          MenuItemCheckbox(
-            label: TrayConstants.menuModelStandard,
-            checked: currentType == ModelType.standard,
-            onClicked: (_) => _switchModel(ModelType.standard),
-          ),
-          MenuSeparator(),
-          MenuItemLabel(
-            label: TrayConstants.menuOpenConfig,
-            onClicked: (_) => _openConfigDirectory(),
-          ),
-        ],
+      MenuSeparator(),
+      MenuItemCheckbox(
+        label: TrayConstants.menuModelInt8,
+        checked: currentType == ModelType.int8,
+        onClicked: (_) => _switchModel(ModelType.int8),
       ),
-      MenuItemLabel(label: TrayConstants.menuSettings, enabled: false),
+      MenuItemCheckbox(
+        label: TrayConstants.menuModelStandard,
+        checked: currentType == ModelType.standard,
+        onClicked: (_) => _switchModel(ModelType.standard),
+      ),
+      MenuSeparator(),
+      MenuItemLabel(
+        label: TrayConstants.menuSettings,
+        onClicked: (_) => _openConfigDirectory(),
+      ),
       MenuSeparator(),
       MenuItemLabel(
         label: TrayConstants.menuExit,

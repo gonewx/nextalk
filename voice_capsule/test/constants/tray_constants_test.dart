@@ -17,7 +17,7 @@ void main() {
     test('menu labels should be in Chinese', () {
       expect(TrayConstants.menuTitle, 'Nextalk');
       expect(TrayConstants.menuShowHide, '显示 / 隐藏');
-      expect(TrayConstants.menuSettings, '设置...');
+      expect(TrayConstants.menuSettings, '设置');
       expect(TrayConstants.menuExit, '退出');
     });
 

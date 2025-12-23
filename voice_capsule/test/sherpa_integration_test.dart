@@ -3,23 +3,30 @@ import 'dart:io';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:voice_capsule/ffi/sherpa_ffi.dart';
 import 'package:voice_capsule/services/audio_capture.dart';
 import 'package:voice_capsule/services/sherpa_service.dart';
 
 void main() {
   late String modelDir;
   late bool modelExists;
+  late bool libraryAvailable;
 
   setUpAll(() {
     modelDir = Platform.environment['SHERPA_MODEL_DIR'] ??
         '${Platform.environment['HOME']}/.local/share/nextalk/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en';
     modelExists = Directory(modelDir).existsSync();
+    libraryAvailable = isSherpaLibraryAvailable();
   });
 
   group('Sherpa Integration Tests', () {
     test(
       '零拷贝音频送入与识别',
       () async {
+        if (!libraryAvailable) {
+          markTestSkipped('Sherpa 动态库不可用');
+          return;
+        }
         if (!modelExists) {
           markTestSkipped('模型不存在: $modelDir');
           return;
@@ -107,6 +114,10 @@ void main() {
     test(
       '端点检测功能验证',
       () async {
+        if (!libraryAvailable) {
+          markTestSkipped('Sherpa 动态库不可用');
+          return;
+        }
         if (!modelExists) {
           markTestSkipped('模型不存在: $modelDir');
           return;
@@ -139,6 +150,10 @@ void main() {
     test(
       'reset 后可继续识别',
       () async {
+        if (!libraryAvailable) {
+          markTestSkipped('Sherpa 动态库不可用');
+          return;
+        }
         if (!modelExists) {
           markTestSkipped('模型不存在: $modelDir');
           return;
@@ -166,6 +181,10 @@ void main() {
     test(
       '性能基准: 处理 100ms 音频块耗时 < 10ms',
       () async {
+        if (!libraryAvailable) {
+          markTestSkipped('Sherpa 动态库不可用');
+          return;
+        }
         if (!modelExists) {
           markTestSkipped('模型不存在: $modelDir');
           return;
