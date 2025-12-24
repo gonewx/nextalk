@@ -46,7 +46,7 @@ class SettingsConstants {
 
   /// 默认配置文件内容
   static const String defaultSettingsYaml = '''# Nextalk 设置文件
-# 修改后重启应用或通过托盘菜单切换模型生效
+# 修改后重启应用生效
 
 model:
   # 自定义模型下载地址 (留空使用默认地址)
@@ -57,5 +57,23 @@ model:
   # int8: 量化版本，速度快，内存占用小
   # standard: 标准版本，精度高
   type: int8
+
+hotkey:
+  # 触发语音输入的快捷键
+  #
+  # 支持的主键:
+  #   修饰键: altRight, altLeft, ctrlRight, ctrlLeft, shiftRight, shiftLeft, metaRight, metaLeft
+  #   功能键: f1-f12, space, escape/esc, tab, enter, backspace, capsLock
+  #   方向键: up/arrowUp, down/arrowDown, left/arrowLeft, right/arrowRight
+  #   编辑键: insert, delete, home, end, pageUp, pageDown
+  #   字母键: a-z
+  #   数字键: 0-9, numpad0-numpad9
+  #   小键盘: numpadEnter, numpadAdd, numpadSubtract, numpadMultiply, numpadDivide
+  #   符号键: minus, equal, bracketLeft, bracketRight, backslash, semicolon, quote, backquote, comma, period, slash
+  key: altRight
+
+  # 修饰键 (可选): ctrl, shift, alt, meta
+  # 示例: modifiers: [ctrl, shift]
+  modifiers: []
 ''';
 }
