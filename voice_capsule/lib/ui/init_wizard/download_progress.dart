@@ -45,7 +45,6 @@ class DownloadProgress extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     return Container(
-      constraints: const BoxConstraints(maxWidth: 400),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: CapsuleColors.background,

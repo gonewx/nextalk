@@ -24,7 +24,6 @@ class InitModeSelector extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
 
     return Container(
-      constraints: const BoxConstraints(maxWidth: 400),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: CapsuleColors.background,
@@ -63,73 +62,76 @@ class InitModeSelector extends StatelessWidget {
           const SizedBox(height: 24),
 
           // 按钮区域
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // 自动下载按钮 (推荐)
-              ElevatedButton(
-                onPressed: onAutoDownload,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: CapsuleColors.accentRed,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '📥 ${l10n?.wizardAutoDownload ?? '自动下载'}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // 自动下载按钮 (推荐)
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: onAutoDownload,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: CapsuleColors.accentRed,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      l10n?.wizardRecommended ?? '(推荐)',
-                      style: const TextStyle(fontSize: 12),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '📥 ${l10n?.wizardAutoDownload ?? '自动下载'}',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          l10n?.wizardRecommended ?? '(推荐)',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
+                const SizedBox(width: 16),
 
-              // 手动安装按钮
-              OutlinedButton(
-                onPressed: onManualInstall,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: CapsuleColors.textHint,
-                  side: BorderSide(color: CapsuleColors.borderGlow),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 16,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                // 手动安装按钮
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: onManualInstall,
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: CapsuleColors.textHint,
+                      side: BorderSide(color: CapsuleColors.borderGlow),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 16,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '📁 ${l10n?.wizardManualMode ?? '手动安装'}',
+                          style: const TextStyle(fontSize: 16),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      '📁 ${l10n?.wizardManualMode ?? '手动安装'}',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text(
-                      '',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),

@@ -310,21 +310,24 @@ class _InitWizardState extends State<InitWizard> {
       onPanStart: (_) => WindowService.instance.startDragging(),
       child: Center(
         child: SingleChildScrollView(
-          child: Stack(
-            children: [
-              _buildContent(),
-              // 关闭按钮
-              Positioned(
-                top: 8,
-                right: 8,
-                child: IconButton(
-                  onPressed: _onClose,
-                  icon:
-                      const Icon(Icons.close, color: Colors.white54, size: 20),
-                  tooltip: '退出',
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Stack(
+              children: [
+                _buildContent(),
+                // 关闭按钮
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    onPressed: _onClose,
+                    icon:
+                        const Icon(Icons.close, color: Colors.white54, size: 20),
+                    tooltip: '退出',
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -398,7 +401,6 @@ class _InitWizardState extends State<InitWizard> {
     final l10n = AppLocalizations.of(context);
 
     return Container(
-      constraints: const BoxConstraints(maxWidth: 400),
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
         color: CapsuleColors.background,
