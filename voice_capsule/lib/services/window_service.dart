@@ -138,6 +138,16 @@ class WindowService with WindowListener {
         WindowConstants.initWizardWidth, WindowConstants.initWizardHeight);
   }
 
+  /// 动态调整窗口高度以适应内容
+  /// [expanded] true 表示需要额外空间显示错误操作按钮
+  Future<void> setExpandedMode(bool expanded) async {
+    if (!_isInitialized) return;
+    final targetHeight = expanded
+        ? WindowConstants.windowHeightExpanded
+        : WindowConstants.windowHeight;
+    await windowManager.setSize(Size(WindowConstants.windowWidth, targetHeight));
+  }
+
   /// 保存当前位置
   Future<void> savePosition() async {
     if (!_isInitialized || _prefs == null) return;

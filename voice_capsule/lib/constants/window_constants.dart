@@ -5,8 +5,12 @@ class WindowConstants {
   WindowConstants._();
 
   /// 窗口总尺寸 (包含阴影区域的画布) - AC3
+  /// 基础高度用于正常胶囊状态，动态调整由 WindowService 处理
   static const double windowWidth = 400.0;
   static const double windowHeight = 120.0;
+
+  /// 错误状态下的扩展高度 (包含操作按钮)
+  static const double windowHeightExpanded = 180.0;
 
   /// 初始化向导窗口尺寸 (Story 3-7)
   /// 足够容纳最大的手动安装界面

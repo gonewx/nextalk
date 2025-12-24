@@ -71,7 +71,7 @@ echo "颜色容差: $FUZZ"
 convert "$INPUT_FILE" -fuzz "$FUZZ" -trim +repage "$OUTPUT_FILE"
 
 # 调整图片尺寸为 128x128
-# convert "$INPUT_FILE" -resize 128x128 "$OUTPUT_FILE"
+# convert -resize 128x128 "$INPUT_FILE" "$OUTPUT_FILE"
 
 # 获取处理后的尺寸
 AFTER_SIZE=$(identify -format "%wx%h" "$OUTPUT_FILE")

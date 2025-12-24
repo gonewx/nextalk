@@ -1,10 +1,9 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../constants/capsule_colors.dart';
 import '../../services/model_manager.dart';
+import '../../services/tray_service.dart';
 import '../../services/window_service.dart';
 import '../../state/init_state.dart';
 import 'download_progress.dart';
@@ -32,7 +31,6 @@ class InitWizard extends StatefulWidget {
 
 class _InitWizardState extends State<InitWizard> {
   InitStateData _state = InitStateData.checking();
-  StreamSubscription<DownloadProgress>? _downloadSubscription;
   bool _windowSizeSet = false;
 
   @override
@@ -46,7 +44,6 @@ class _InitWizardState extends State<InitWizard> {
 
   @override
   void dispose() {
-    _downloadSubscription?.cancel();
     super.dispose();
   }
 
@@ -119,11 +116,14 @@ class _InitWizardState extends State<InitWizard> {
         setState(() {
           _state = InitStateData.completed();
         });
-        // 不立即调用 onCompleted，让用户看到完成界面后点击"开始使用"
+        // 完成时确保托盘状态正常
+        TrayService.instance.updateStatus(TrayStatus.normal);
       } else {
         setState(() {
           _state = InitStateData.error(error);
         });
+        // 错误时更新托盘状态
+        TrayService.instance.updateStatus(TrayStatus.error);
       }
     } catch (e) {
       if (mounted) {
@@ -133,6 +133,8 @@ class _InitWizardState extends State<InitWizard> {
             message: e.toString(),
           );
         });
+        // 错误时更新托盘状态
+        TrayService.instance.updateStatus(TrayStatus.error);
       }
     }
   }
@@ -157,9 +159,15 @@ class _InitWizardState extends State<InitWizard> {
       );
     });
 
+    // 确保 UI 有机会更新，显示下载开始状态
+    await Future<void>.delayed(Duration.zero);
+
+    if (!mounted) return;
+
     try {
       final error = await widget.modelManager.ensureModelReady(
         onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
+          if (!mounted) return;
           setState(() {
             // 根据进度和状态判断当前阶段
             if (progress >= 0.7 || status.contains('解压')) {
@@ -181,19 +189,25 @@ class _InitWizardState extends State<InitWizard> {
         },
       );
 
+      if (!mounted) return;
+
       if (error == ModelError.none) {
         // 下载完成，显示完成界面
         setState(() {
           _state = InitStateData.completed();
         });
-        // 不立即调用 onCompleted，让用户看到完成界面后点击"开始使用"
+        // 完成时确保托盘状态正常
+        TrayService.instance.updateStatus(TrayStatus.normal);
       } else {
         // 下载失败
         setState(() {
           _state = InitStateData.error(error);
         });
+        // 错误时更新托盘状态
+        TrayService.instance.updateStatus(TrayStatus.error);
       }
     } on Exception catch (e) {
+      if (!mounted) return;
       // 下载失败
       setState(() {
         _state = InitStateData.error(
@@ -201,6 +215,8 @@ class _InitWizardState extends State<InitWizard> {
           message: e.toString(),
         );
       });
+      // 错误时更新托盘状态
+      TrayService.instance.updateStatus(TrayStatus.error);
     }
   }
 
@@ -224,6 +240,8 @@ class _InitWizardState extends State<InitWizard> {
     setState(() {
       _state = InitStateData.selectMode();
     });
+    // 取消下载后恢复托盘状态为正常
+    TrayService.instance.updateStatus(TrayStatus.normal);
   }
 
   /// 复制下载链接
@@ -258,7 +276,8 @@ class _InitWizardState extends State<InitWizard> {
       setState(() {
         _state = InitStateData.completed();
       });
-      // 不立即调用 onCompleted，让用户看到完成界面后点击"开始使用"
+      // 完成时确保托盘状态正常
+      TrayService.instance.updateStatus(TrayStatus.normal);
     } else {
       setState(() {
         _state = InitStateData.error(
@@ -266,6 +285,8 @@ class _InitWizardState extends State<InitWizard> {
           message: '未检测到有效模型，请确认文件已正确放置',
         );
       });
+      // 验证失败时更新托盘状态为警告
+      TrayService.instance.updateStatus(TrayStatus.warning);
 
       // 2秒后回到手动安装页面
       await Future.delayed(const Duration(seconds: 2));
@@ -307,7 +328,13 @@ class _InitWizardState extends State<InitWizard> {
 
   /// 关闭/退出应用
   void _onClose() {
-    // 退出应用
+    // 如果已经完成初始化，则标记完成并隐藏窗口
+    // 这样下次按快捷键时会直接显示主界面
+    if (_state.phase == InitPhase.completed) {
+      widget.onCompleted();
+      return;
+    }
+    // 其他状态下退出应用
     SystemNavigator.pop();
   }
 

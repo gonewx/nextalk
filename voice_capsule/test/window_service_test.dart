@@ -11,7 +11,7 @@ void main() {
   group('WindowConstants', () {
     test('should have correct window dimensions', () {
       expect(WindowConstants.windowWidth, 400.0);
-      expect(WindowConstants.windowHeight, 120.0);
+      expect(WindowConstants.windowHeight, 120.0); // 基础高度
     });
 
     test('should have correct capsule dimensions', () {

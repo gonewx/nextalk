@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'audio_inference_pipeline.dart';
 import 'sherpa_service.dart';
+import 'tray_service.dart';
 import 'window_service.dart';
 import 'fcitx_client.dart';
 import 'hotkey_service.dart';
@@ -71,6 +72,8 @@ class HotkeyController {
       await WindowService.instance.hide();
       _state = HotkeyState.idle;
       _updateState(CapsuleStateData.idle());
+      // 恢复托盘图标为正常状态
+      TrayService.instance.updateStatus(TrayStatus.normal);
     }
   }
 
@@ -80,6 +83,8 @@ class HotkeyController {
     await WindowService.instance.hide();
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
+    // 恢复托盘图标为正常状态
+    TrayService.instance.updateStatus(TrayStatus.normal);
   }
 
   /// Story 3-7: 清除错误状态并隐藏窗口
@@ -88,6 +93,8 @@ class HotkeyController {
     await WindowService.instance.hide();
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
+    // 恢复托盘图标为正常状态
+    TrayService.instance.updateStatus(TrayStatus.normal);
   }
 
   /// Story 3-7: 重试录音 (AC10: 错误状态下的恢复操作)
@@ -95,6 +102,8 @@ class HotkeyController {
   Future<void> retryRecording() async {
     _lastRecognizedText = null;
     _state = HotkeyState.idle;
+    // 恢复托盘图标为正常状态
+    TrayService.instance.updateStatus(TrayStatus.normal);
 
     // 重新开始录音流程
     await _startRecording();
@@ -228,6 +237,8 @@ class HotkeyController {
         fcitxError: e,
         preservedText: text,
       ));
+      // 更新托盘图标为警告状态
+      TrayService.instance.updateStatus(TrayStatus.warning);
       // 不自动隐藏，等待用户操作 (AC15)
       _state = HotkeyState.idle; // 允许用户重新触发
     } catch (e) {
@@ -239,6 +250,8 @@ class HotkeyController {
         CapsuleErrorType.socketError,
         preservedText: text,
       ));
+      // 更新托盘图标为警告状态
+      TrayService.instance.updateStatus(TrayStatus.warning);
       _state = HotkeyState.idle;
     }
   }
@@ -274,6 +287,9 @@ class HotkeyController {
       CapsuleErrorType.audioDeviceLost,
       preservedText: preservedText.isNotEmpty ? preservedText : null,
     ));
+
+    // 更新托盘图标为警告状态
+    TrayService.instance.updateStatus(TrayStatus.warning);
 
     // ignore: avoid_print
     print('[HotkeyController] 🔌 设备丢失，已保存文本: "$preservedText"');
@@ -329,6 +345,8 @@ class HotkeyController {
       // 设置为 idle 状态允许用户重新触发快捷键或点击操作按钮
       _state = HotkeyState.idle;
       _updateState(CapsuleStateData.error(errorType, message: errorMessage));
+      // 更新托盘图标为错误状态
+      TrayService.instance.updateStatus(TrayStatus.error);
       // 不自动隐藏，由用户通过 dismissError() 或操作按钮关闭
     } else {
       // 无错误类型时直接重置

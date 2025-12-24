@@ -32,7 +32,7 @@ void main() {
         (WidgetTester tester) async {
       // 验证常量值
       expect(WindowConstants.windowWidth, 400.0);
-      expect(WindowConstants.windowHeight, 120.0);
+      expect(WindowConstants.windowHeight, 120.0); // 基础高度，动态调整由 WindowService 处理
       expect(WindowConstants.capsuleWidth, 380.0);
       expect(WindowConstants.capsuleHeight, 60.0);
       expect(WindowConstants.capsuleRadius, 40.0);

@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../services/hotkey_controller.dart';
 import '../services/model_manager.dart';
+import '../services/tray_service.dart';
 import '../services/window_service.dart';
 import '../state/capsule_state.dart';
 import '../ui/capsule_widget.dart';
@@ -36,6 +37,9 @@ class NextalkApp extends StatefulWidget {
 class _NextalkAppState extends State<NextalkApp> {
   /// 是否需要显示初始化向导
   late bool _needsInit;
+
+  /// 当前是否处于扩展窗口模式
+  bool _isExpanded = false;
 
   @override
   void initState() {
@@ -119,27 +123,49 @@ class _NextalkAppState extends State<NextalkApp> {
         final isErrorWithActions = state.state == CapsuleState.error &&
             _shouldShowErrorActions(state.errorType);
 
-        return Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CapsuleWidget(
-              text: state.recognizedText,
-              showHint: showHint,
-              hintText: hintText,
-              // 传递完整状态，CapsuleWidget 内部处理显示逻辑
-              stateData: state,
-            ),
+        // 动态调整窗口大小：错误状态需要更多空间
+        _updateWindowSize(isErrorWithActions);
 
-            // Story 3-7: 错误操作按钮 (在胶囊下方显示)
-            if (isErrorWithActions)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: _buildErrorActions(context, state),
-              ),
-          ],
+        // 使用 LayoutBuilder 检测可用空间，避免在窗口扩展前渲染导致溢出警告
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            // 只有当窗口高度足够时才显示操作按钮 (阈值 > 基础高度)
+            final hasEnoughSpace = constraints.maxHeight > 140;
+            final showActions = isErrorWithActions && hasEnoughSpace;
+
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CapsuleWidget(
+                  text: state.recognizedText,
+                  showHint: showHint,
+                  hintText: hintText,
+                  stateData: state,
+                ),
+                // Story 3-7: 错误操作按钮 (只在空间足够时显示)
+                if (showActions)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 12),
+                    child: _buildErrorActions(context, state),
+                  ),
+              ],
+            );
+          },
         );
       },
     );
+  }
+
+  /// 根据是否需要扩展模式动态调整窗口大小
+  void _updateWindowSize(bool needsExpanded) {
+    if (needsExpanded != _isExpanded) {
+      _isExpanded = needsExpanded;
+      // 使用 post-frame callback 确保在布局完成后调整窗口
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        WindowService.instance.setExpandedMode(needsExpanded);
+      });
+    }
   }
 
   /// 判断是否应该显示错误操作按钮
@@ -246,8 +272,9 @@ class _NextalkAppState extends State<NextalkApp> {
           ErrorAction(
             label: '重新下载',
             onPressed: () {
-              HotkeyController.instance.dismissError();
-              // 重新显示初始化向导
+              // 直接显示初始化向导，不需要先隐藏窗口
+              // 恢复托盘状态
+              TrayService.instance.updateStatus(TrayStatus.normal);
               _showInitWizard();
             },
             isPrimary: true,
@@ -265,8 +292,8 @@ class _NextalkAppState extends State<NextalkApp> {
             label: '删除并重新下载',
             onPressed: () async {
               await widget.modelManager.deleteModel();
-              HotkeyController.instance.dismissError();
-              // 重新显示初始化向导
+              // 直接显示初始化向导
+              TrayService.instance.updateStatus(TrayStatus.normal);
               _showInitWizard();
             },
             isPrimary: true,

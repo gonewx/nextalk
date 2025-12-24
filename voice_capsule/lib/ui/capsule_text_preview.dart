@@ -95,10 +95,12 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
               ),
               if (!_showCopied) ...[
                 const SizedBox(width: 6),
-                Icon(
-                  Icons.copy_rounded,
-                  size: 14,
-                  color: style.color?.withOpacity(0.6),
+                Text(
+                  '复制',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: style.color?.withOpacity(0.6),
+                  ),
                 ),
               ],
             ],
