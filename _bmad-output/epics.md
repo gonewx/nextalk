@@ -573,35 +573,49 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 
 ## Epic 4: 打包发布 (Distribution)
 
-用户可以通过标准的 DEB 包安装 Nextalk，实现一键部署。
+用户可以通过标准的 DEB 或 RPM 包安装 Nextalk，覆盖主流 Linux 发行版，实现一键部署。
 
-### Story 4.1: DEB 包构建脚本
+### Story 4.1: 多格式打包脚本 (DEB & RPM)
 
 **As a** 开发者,
-**I want** 通过一键脚本构建完整的 DEB 安装包,
-**So that** 可以方便地分发和部署应用。
+**I want** 通过统一脚本构建 DEB 和 RPM 安装包,
+**So that** 可以方便地分发和部署应用到主流 Linux 发行版。
 
 **Acceptance Criteria:**
 
 **Given** 项目代码已就绪
-**When** 执行 `scripts/build-deb.sh`
+**When** 执行 `scripts/build-pkg.sh --deb`
 **Then** 自动执行 Flutter release 构建
 **And** 自动编译 Fcitx5 插件
 **And** 生成符合 Debian 规范的 DEB 包
 
-**Given** DEB 包结构
+**Given** 项目代码已就绪
+**When** 执行 `scripts/build-pkg.sh --rpm`
+**Then** 生成符合 RPM 规范的安装包
+**And** 包含与 DEB 包相同的文件结构
+
+**Given** 项目代码已就绪
+**When** 执行 `scripts/build-pkg.sh --all`
+**Then** 同时生成 DEB 和 RPM 两种格式
+**And** 输出目录为 `dist/`
+
+**Given** DEB/RPM 包结构
 **When** 检查包内容
 **Then** 主应用安装到 `/opt/nextalk/`
-**And** Fcitx5 插件安装到 `/usr/lib/x86_64-linux-gnu/fcitx5/`
+**And** Fcitx5 插件安装到 `/usr/lib/<arch>/fcitx5/`
 **And** 插件配置安装到 `/usr/share/fcitx5/addon/`
 **And** 桌面入口安装到 `/usr/share/applications/`
 **And** 图标安装到 `/usr/share/icons/hicolor/`
 
-**Given** DEB 包元数据
-**When** 查看 control 文件
-**Then** 包含正确的包名、版本、描述
-**And** 声明依赖：`fcitx5 (>= 5.0)`, `libgtk-3-0 (>= 3.24)`
-**And** 声明推荐：`pulseaudio | pipewire-pulse`
+**Given** 安装包执行安装/卸载
+**When** 系统语言为中文 (`LANG=zh_*`)
+**Then** postinst/prerm 脚本显示中文提示
+**When** 系统语言为其他语言
+**Then** 显示英文提示
+
+**Given** 安装或卸载完成
+**When** Fcitx5 正在运行
+**Then** 自动重启 Fcitx5 以加载/卸载插件
 
 ---
 

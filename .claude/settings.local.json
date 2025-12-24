@@ -9,7 +9,8 @@
       "Execute(/run/user/1000/nextalk.sock)",
       "Edit(/run/user/1000/nextalk.sock)",
       "Bash(flutter test:*)",
-      "Bash(flutter analyze:*)"
+      "Bash(flutter analyze:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "defaultMode": "bypassPermissions"

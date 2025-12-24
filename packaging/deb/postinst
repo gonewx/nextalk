@@ -1,0 +1,87 @@
+#!/bin/bash
+# postinst - Nextalk DEB package post-installation script
+# Purpose: Create symlink, automatically restart Fcitx5
+
+set -e
+
+# Detect language (Chinese if LANG starts with zh)
+is_chinese() {
+    [[ "${LANG:-}" == zh_* ]] || [[ "${LC_ALL:-}" == zh_* ]] || [[ "${LC_MESSAGES:-}" == zh_* ]]
+}
+
+# Restart Fcitx5 for all users who have it running
+restart_fcitx5() {
+    local restarted=false
+
+    # Find all users running fcitx5
+    for pid in $(pgrep -x fcitx5 2>/dev/null); do
+        local user
+        user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
+        if [[ -n "$user" ]]; then
+            # Get user's runtime directory
+            local uid
+            uid=$(id -u "$user" 2>/dev/null) || continue
+            local runtime_dir="/run/user/$uid"
+
+            # Restart fcitx5 as that user
+            if sudo -u "$user" XDG_RUNTIME_DIR="$runtime_dir" fcitx5 -r -d 2>/dev/null; then
+                restarted=true
+                if is_chinese; then
+                    echo "  已为用户 $user 重启 Fcitx5"
+                else
+                    echo "  Restarted Fcitx5 for user $user"
+                fi
+            fi
+        fi
+    done
+
+    if [[ "$restarted" == "false" ]]; then
+        # No fcitx5 process found, just inform user
+        if is_chinese; then
+            echo "  Fcitx5 未运行，下次启动时将自动加载插件"
+        else
+            echo "  Fcitx5 not running, plugin will load on next start"
+        fi
+    fi
+}
+
+case "$1" in
+    configure)
+        # Create /usr/bin/nextalk symlink
+        ln -sf /opt/nextalk/nextalk /usr/bin/nextalk
+
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        if is_chinese; then
+            echo "  Nextalk 安装完成！"
+            echo "═══════════════════════════════════════════════════════════"
+            echo ""
+            echo "正在重启 Fcitx5..."
+        else
+            echo "  Nextalk Installation Complete!"
+            echo "═══════════════════════════════════════════════════════════"
+            echo ""
+            echo "Restarting Fcitx5..."
+        fi
+
+        restart_fcitx5
+
+        echo ""
+        if is_chinese; then
+            echo "运行 'nextalk' 启动应用。"
+        else
+            echo "Run 'nextalk' to start the application."
+        fi
+        echo ""
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -31,3 +31,4 @@ Thumbs.db
 # Debug
 *.log
 core
+dist/

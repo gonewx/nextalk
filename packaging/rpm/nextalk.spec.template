@@ -1,0 +1,160 @@
+Name:           nextalk
+Version:        {{VERSION}}
+Release:        {{RELEASE}}%{?dist}
+Summary:        High-performance offline voice input for Linux
+Summary(zh_CN): Linux 高性能离线语音输入应用
+
+License:        Proprietary
+URL:            https://github.com/gonewx/nextalk
+
+# Disable automatic dependency detection (we bundle our own libs)
+AutoReqProv:    no
+
+Requires:       fcitx5 >= 5.0
+Requires:       gtk3 >= 3.24
+Requires:       glibc >= 2.31
+Recommends:     pulseaudio
+
+%description
+Nextalk is a high-performance offline voice-to-text application designed
+for Linux, featuring real-time speech recognition with minimal latency.
+
+Key Features:
+- Offline speech recognition (Sherpa-onnx streaming bilingual model)
+- Transparent borderless capsule floating window UI
+- Text input via Fcitx5 input method framework
+- End-to-end latency < 200ms
+
+Supports Chinese and English bilingual voice recognition.
+
+%description -l zh_CN
+Nextalk 是一款专为 Linux 设计的高性能离线语音输入应用，
+具有实时语音识别和极低延迟特性。
+
+主要特性：
+- 离线语音识别（基于 Sherpa-onnx 流式双语模型）
+- 真透明无边框胶囊悬浮窗 UI
+- 通过 Fcitx5 输入法框架实现文本上屏
+- 端到端延迟 < 200ms
+
+支持中英文双语语音识别。
+
+%install
+# Content is pre-assembled by build-pkg.sh, just copy
+cp -a %{_builddir}/staging/* %{buildroot}/
+
+%post
+# Create symlink
+ln -sf /opt/nextalk/nextalk /usr/bin/nextalk
+
+# Detect language (Chinese if LANG starts with zh)
+is_chinese() {
+    case "${LANG:-}" in zh_*) return 0;; esac
+    case "${LC_ALL:-}" in zh_*) return 0;; esac
+    case "${LC_MESSAGES:-}" in zh_*) return 0;; esac
+    return 1
+}
+
+# Restart Fcitx5 for all users
+restart_fcitx5() {
+    for pid in $(pgrep -x fcitx5 2>/dev/null); do
+        user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
+        if [ -n "$user" ]; then
+            uid=$(id -u "$user" 2>/dev/null) || continue
+            runtime_dir="/run/user/$uid"
+            if sudo -u "$user" XDG_RUNTIME_DIR="$runtime_dir" fcitx5 -r -d 2>/dev/null; then
+                if is_chinese; then
+                    echo "  已为用户 $user 重启 Fcitx5"
+                else
+                    echo "  Restarted Fcitx5 for user $user"
+                fi
+            fi
+        fi
+    done
+}
+
+echo ""
+echo "═══════════════════════════════════════════════════════════"
+if is_chinese; then
+    echo "  Nextalk 安装完成！"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "正在重启 Fcitx5..."
+    restart_fcitx5
+    echo ""
+    echo "运行 'nextalk' 启动应用。"
+else
+    echo "  Nextalk Installation Complete!"
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "Restarting Fcitx5..."
+    restart_fcitx5
+    echo ""
+    echo "Run 'nextalk' to start the application."
+fi
+echo ""
+
+%preun
+# Clean symlink
+rm -f /usr/bin/nextalk
+
+# Detect language (Chinese if LANG starts with zh)
+is_chinese() {
+    case "${LANG:-}" in zh_*) return 0;; esac
+    case "${LC_ALL:-}" in zh_*) return 0;; esac
+    case "${LC_MESSAGES:-}" in zh_*) return 0;; esac
+    return 1
+}
+
+echo ""
+echo "═══════════════════════════════════════════════════════════"
+if is_chinese; then
+    echo "  正在卸载 Nextalk..."
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "注意: 您的用户数据将被保留在以下位置："
+    echo "  ~/.local/share/nextalk/"
+    echo ""
+    echo "如需完全清理，请手动删除上述目录。"
+else
+    echo "  Uninstalling Nextalk..."
+    echo "═══════════════════════════════════════════════════════════"
+    echo ""
+    echo "Note: Your user data will be preserved at:"
+    echo "  ~/.local/share/nextalk/"
+    echo ""
+    echo "To completely remove all data, manually delete the above directory."
+fi
+echo ""
+
+# Restart Fcitx5 to unload plugin
+if pgrep -x "fcitx5" > /dev/null 2>&1; then
+    if is_chinese; then
+        echo "正在重启 Fcitx5 以卸载插件..."
+    else
+        echo "Restarting Fcitx5 to unload plugin..."
+    fi
+    for pid in $(pgrep -x fcitx5 2>/dev/null); do
+        user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
+        if [ -n "$user" ]; then
+            uid=$(id -u "$user" 2>/dev/null) || continue
+            runtime_dir="/run/user/$uid"
+            sudo -u "$user" XDG_RUNTIME_DIR="$runtime_dir" fcitx5 -r -d 2>/dev/null || true
+        fi
+    done
+    echo ""
+fi
+
+%files
+%dir /opt/nextalk
+/opt/nextalk/nextalk
+/opt/nextalk/lib/*
+/opt/nextalk/data/*
+%{_libdir}/fcitx5/nextalk.so
+%{_datadir}/fcitx5/addon/nextalk.conf
+%{_datadir}/applications/nextalk.desktop
+%{_datadir}/icons/hicolor/256x256/apps/nextalk.png
+
+%changelog
+* Tue Dec 24 2025 Nextalk Team <lgq502@gmail.com> - 0.1.0-1
+- Initial RPM package release

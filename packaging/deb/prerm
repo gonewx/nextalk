@@ -1,0 +1,88 @@
+#!/bin/bash
+# prerm - Nextalk DEB package pre-removal script
+# Purpose: Clean symlink, restart Fcitx5 to unload plugin
+
+set -e
+
+# Detect language (Chinese if LANG starts with zh)
+is_chinese() {
+    [[ "${LANG:-}" == zh_* ]] || [[ "${LC_ALL:-}" == zh_* ]] || [[ "${LC_MESSAGES:-}" == zh_* ]]
+}
+
+# Restart Fcitx5 for all users who have it running
+restart_fcitx5() {
+    local restarted=false
+
+    # Find all users running fcitx5
+    for pid in $(pgrep -x fcitx5 2>/dev/null); do
+        local user
+        user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
+        if [[ -n "$user" ]]; then
+            # Get user's runtime directory
+            local uid
+            uid=$(id -u "$user" 2>/dev/null) || continue
+            local runtime_dir="/run/user/$uid"
+
+            # Restart fcitx5 as that user
+            if sudo -u "$user" XDG_RUNTIME_DIR="$runtime_dir" fcitx5 -r -d 2>/dev/null; then
+                restarted=true
+                if is_chinese; then
+                    echo "  已为用户 $user 重启 Fcitx5"
+                else
+                    echo "  Restarted Fcitx5 for user $user"
+                fi
+            fi
+        fi
+    done
+
+    return 0
+}
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Clean symlink
+        rm -f /usr/bin/nextalk
+
+        echo ""
+        echo "═══════════════════════════════════════════════════════════"
+        if is_chinese; then
+            echo "  正在卸载 Nextalk..."
+            echo "═══════════════════════════════════════════════════════════"
+            echo ""
+            echo "注意: 您的用户数据将被保留在以下位置："
+            echo "  ~/.local/share/nextalk/"
+            echo ""
+            echo "如需完全清理，请手动删除上述目录。"
+        else
+            echo "  Uninstalling Nextalk..."
+            echo "═══════════════════════════════════════════════════════════"
+            echo ""
+            echo "Note: Your user data will be preserved at:"
+            echo "  ~/.local/share/nextalk/"
+            echo ""
+            echo "To completely remove all data, manually delete the above directory."
+        fi
+        echo ""
+
+        # Restart Fcitx5 to unload the plugin
+        if pgrep -x "fcitx5" > /dev/null 2>&1; then
+            if is_chinese; then
+                echo "正在重启 Fcitx5 以卸载插件..."
+            else
+                echo "Restarting Fcitx5 to unload plugin..."
+            fi
+            restart_fcitx5
+            echo ""
+        fi
+        ;;
+
+    failed-upgrade)
+        ;;
+
+    *)
+        echo "prerm called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,21 @@
+Package: nextalk
+Version: {{VERSION}}
+Section: utils
+Priority: optional
+Architecture: amd64
+Installed-Size: {{INSTALLED_SIZE}}
+Depends: fcitx5 (>= 5.0), libgtk-3-0 (>= 3.24), libc6 (>= 2.31)
+Recommends: pulseaudio | pipewire-pulse
+Maintainer: Nextalk Team <lgq502@gmail.com>
+Homepage: https://github.com/gonewx/nextalk
+Description: High-performance offline voice input for Linux
+ Nextalk is a high-performance offline voice-to-text application designed
+ for Linux, featuring real-time speech recognition with minimal latency.
+ .
+ Key Features:
+  - Offline speech recognition (Sherpa-onnx streaming bilingual model)
+  - Transparent borderless capsule floating window UI
+  - Text input via Fcitx5 input method framework
+  - End-to-end latency < 200ms
+ .
+ Supports Chinese and English bilingual voice recognition.

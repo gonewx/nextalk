@@ -14,9 +14,39 @@
 
 - Linux (支持 ALSA/PulseAudio)
 - Fcitx5 输入法框架
-- Flutter 3.x+
+- Flutter 3.x+ (仅开发时需要)
 
-## 快速开始
+## 安装
+
+### 从安装包安装 (推荐)
+
+**Ubuntu/Debian:**
+```bash
+sudo dpkg -i nextalk_0.1.0-1_amd64.deb
+```
+
+**Fedora/CentOS/RHEL:**
+```bash
+sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
+```
+
+安装完成后，Fcitx5 会自动重启以加载插件。
+
+### 卸载
+
+**Ubuntu/Debian:**
+```bash
+sudo dpkg -r nextalk
+```
+
+**Fedora/CentOS/RHEL:**
+```bash
+sudo rpm -e nextalk
+```
+
+> 用户数据保留在 `~/.local/share/nextalk/`，如需完全清理请手动删除。
+
+## 从源码构建
 
 ### 1. 构建 Flutter 客户端
 
@@ -42,6 +72,21 @@ flutter run -d linux
 ```
 
 首次运行时，应用会自动下载语音识别模型 (~200MB)。
+
+### 4. 构建安装包
+
+```bash
+# 构建 DEB 包 (Ubuntu/Debian)
+./scripts/build-pkg.sh --deb
+
+# 构建 RPM 包 (Fedora/CentOS)
+./scripts/build-pkg.sh --rpm
+
+# 构建全部格式
+./scripts/build-pkg.sh --all
+```
+
+输出文件位于 `dist/` 目录。
 
 ## 配置
 
@@ -75,7 +120,9 @@ model:
 nextalk/
 ├── voice_capsule/    # Flutter 客户端 (UI + 语音识别)
 ├── addons/fcitx5/    # Fcitx5 C++ 插件 (文本上屏)
+├── packaging/        # 打包资源 (DEB/RPM 模板)
 ├── libs/             # 预编译动态库
+├── scripts/          # 构建和安装脚本
 └── docs/             # 设计文档
 ```
 

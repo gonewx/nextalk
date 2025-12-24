@@ -85,7 +85,7 @@ development_status:
   # 用户可以通过标准 DEB 包安装 Nextalk
   # ============================================
   epic-4: in-progress
-  4-1-deb-build-script: ready-for-dev
+  4-1-deb-build-script: done
   4-2-install-uninstall-scripts: backlog
   4-3-desktop-integration: backlog
   epic-4-retrospective: optional
