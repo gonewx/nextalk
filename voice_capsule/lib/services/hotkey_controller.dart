@@ -322,19 +322,21 @@ class HotkeyController {
 
   /// 错误处理
   /// Story 3-7 AC9/AC10: 显示具体错误原因，提供可操作的恢复按钮
+  /// Story 3-7: 处理录音错误
+  /// Story 3-8: 移除硬编码错误消息，使用 CapsuleStateData.displayMessage 的国际化翻译
   void _handleError(PipelineError error) {
     final (errorType, errorMessage) = switch (error) {
       PipelineError.audioInitFailed => (
           CapsuleErrorType.audioInitFailed,
-          '音频设备初始化失败，请检查麦克风连接',
+          null, // 使用 LanguageService 国际化
         ),
       PipelineError.deviceUnavailable => (
           CapsuleErrorType.audioNoDevice,
-          '未检测到麦克风设备',
+          null, // 使用 LanguageService 国际化
         ),
       PipelineError.modelNotReady => (
           CapsuleErrorType.modelNotFound,
-          '模型文件未找到，请下载语音模型',
+          null, // 使用 LanguageService 国际化
         ),
       PipelineError.recognizerFailed => _getDetailedSherpaError(),
       PipelineError.none => (null, null),
@@ -355,49 +357,50 @@ class HotkeyController {
   }
 
   /// Story 3-7: 获取详细的 Sherpa 错误信息 (AC9)
-  (CapsuleErrorType, String) _getDetailedSherpaError() {
+  /// Story 3-8: 移除硬编码消息，使用 CapsuleStateData.displayMessage 的国际化翻译
+  (CapsuleErrorType, String?) _getDetailedSherpaError() {
     final sherpaError = _pipeline?.lastSherpaError ?? SherpaError.none;
 
     return switch (sherpaError) {
       SherpaError.libraryLoadFailed => (
           CapsuleErrorType.modelLoadFailed,
-          '动态库加载失败，请检查 libsherpa-onnx-c-api.so',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.modelNotFound => (
           CapsuleErrorType.modelNotFound,
-          '模型目录不存在',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.tokensNotFound => (
           CapsuleErrorType.modelIncomplete,
-          '缺少 tokens.txt 文件',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.encoderNotFound => (
           CapsuleErrorType.modelIncomplete,
-          '缺少 encoder 模型文件',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.decoderNotFound => (
           CapsuleErrorType.modelIncomplete,
-          '缺少 decoder 模型文件',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.joinerNotFound => (
           CapsuleErrorType.modelIncomplete,
-          '缺少 joiner 模型文件',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.recognizerCreateFailed => (
           CapsuleErrorType.modelLoadFailed,
-          '识别器创建失败，可能内存不足或模型损坏',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.streamCreateFailed => (
           CapsuleErrorType.modelLoadFailed,
-          '音频流创建失败',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.notInitialized => (
           CapsuleErrorType.modelLoadFailed,
-          '服务未初始化',
+          null, // 使用 LanguageService 国际化
         ),
       SherpaError.none => (
           CapsuleErrorType.modelLoadFailed,
-          '未知模型错误',
+          null, // 使用 LanguageService 国际化
         ),
     };
   }

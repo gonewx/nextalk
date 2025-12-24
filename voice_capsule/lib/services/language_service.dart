@@ -152,6 +152,7 @@ class LanguageService {
       // 通用
       'listening': '正在聆听...',
       'app_name': 'Nextalk',
+      'copy': '复制',
     },
     'en': {
       // 托盘菜单 (AC6)
@@ -195,6 +196,7 @@ class LanguageService {
       // 通用
       'listening': 'Listening...',
       'app_name': 'Nextalk',
+      'copy': 'Copy',
     },
   };
 }

@@ -169,10 +169,12 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
 - voice_capsule/lib/l10n/app_localizations_zh.dart (自动生成)
 - voice_capsule/lib/l10n/app_localizations_en.dart (自动生成)
 - voice_capsule/lib/services/language_service.dart (新增: 语言服务单例)
+- voice_capsule/lib/services/hotkey_controller.dart (修改: 移除硬编码错误消息，使用国际化)
 - voice_capsule/lib/main.dart (修改: 初始化 LanguageService)
 - voice_capsule/lib/app/nextalk_app.dart (修改: ValueListenableBuilder + 国际化按钮标签)
 - voice_capsule/lib/services/tray_service.dart (修改: rebuildMenu() + 语言子菜单 + 国际化)
 - voice_capsule/lib/state/capsule_state.dart (修改: displayMessage 使用 LanguageService)
+- voice_capsule/lib/ui/capsule_text_preview.dart (修改: 国际化复制按钮和提示)
 - voice_capsule/lib/ui/init_wizard/init_wizard.dart (修改: 国际化完成界面和 SnackBar)
 - voice_capsule/lib/ui/init_wizard/download_progress.dart (修改: 国际化进度和按钮文案)
 - voice_capsule/lib/ui/init_wizard/init_mode_selector.dart (修改: 国际化模式选择文案)
@@ -183,3 +185,4 @@ Claude Opus 4.5 (claude-opus-4-5-20251101)
 
 - 2025-12-24: Story 3-8 完成实现 - 中英双语国际化与托盘语言切换功能
 - 2025-12-24: 代码审查修复 - 补全初始化向导组件国际化 (download_progress, init_mode_selector, manual_install_guide)
+- 2025-12-24: 代码审查修复 - 修复 hotkey_controller 和 capsule_text_preview 硬编码消息

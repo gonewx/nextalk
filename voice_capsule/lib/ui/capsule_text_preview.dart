@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/capsule_colors.dart';
+import '../services/language_service.dart';
 
 /// 胶囊文本预览组件
 /// Story 3-2: 胶囊 UI 组件
@@ -71,7 +72,9 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
     }
 
     // Story 3-7: 错误状态下显示复制提示或原文本
-    final finalText = _showCopied ? '已复制到剪贴板' : displayText;
+    // Story 3-8: 使用国际化文本
+    final lang = LanguageService.instance;
+    final finalText = _showCopied ? lang.tr('notify_copied') : displayText;
     final finalStyle =
         _showCopied ? style.copyWith(color: Colors.green.shade300) : style;
 
@@ -96,7 +99,7 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
               if (!_showCopied) ...[
                 const SizedBox(width: 6),
                 Text(
-                  '复制',
+                  lang.tr('copy'),
                   style: TextStyle(
                     fontSize: 12,
                     color: style.color?.withOpacity(0.6),
