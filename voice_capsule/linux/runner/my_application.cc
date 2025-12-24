@@ -28,6 +28,11 @@ static void my_application_activate(GApplication* application) {
   // 设置无边框窗口
   gtk_window_set_decorated(window, FALSE);
 
+  // ⚠️ 关键：禁止接受焦点 - 防止抢占其他应用的输入焦点
+  // 这样 Fcitx5 的 InputContext 焦点会保持在用户正在输入的应用中
+  gtk_window_set_accept_focus(window, FALSE);
+  gtk_window_set_focus_on_map(window, FALSE);
+
   // 透明化设置
   GdkScreen* screen = gtk_window_get_screen(window);
   GdkVisual* visual = gdk_screen_get_rgba_visual(screen);
@@ -60,8 +65,6 @@ static void my_application_activate(GApplication* application) {
   // 显示然后隐藏，让 window_manager 插件控制显示
   gtk_widget_show_all(GTK_WIDGET(window));
   gtk_widget_hide(GTK_WIDGET(window));
-
-  gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
 // Implements GApplication::local_command_line.
