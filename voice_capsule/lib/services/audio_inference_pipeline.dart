@@ -223,50 +223,14 @@ class AudioInferencePipeline {
 
   /// 热切换模型版本
   ///
-  /// 停止当前采集（如果正在运行），释放旧的 SherpaService，
-  /// 使用新的模型类型重新创建 SherpaService。
+  /// 注意：由于 onnxruntime 的限制，运行时切换模型需要重启应用。
+  /// 此方法仅保存配置，不进行实际切换。
   ///
-  /// [useInt8] 是否使用 int8 量化模型
-  ///
-  /// 返回 true 表示切换成功，false 表示失败
+  /// 返回 true 表示配置已保存（需要重启生效），false 表示失败
   Future<bool> switchModelType(ModelType modelType) async {
-    final useInt8 = modelType == ModelType.int8;
-    final wasRunning = _state == PipelineState.running;
-
-    // ignore: avoid_print
-    print('[Pipeline] 开始切换模型: ${useInt8 ? "int8" : "标准"} (之前状态: $_state)');
-
-    try {
-      // 1. 如果正在运行，先停止
-      if (wasRunning) {
-        await stop();
-      }
-
-      // 2. 释放旧的 SherpaService
-      _sherpaService.dispose();
-
-      // 3. 创建新的 SherpaService
-      _sherpaService = SherpaService(enableDebugLog: enableDebugLog);
-
-      // ignore: avoid_print
-      print('[Pipeline] ✅ 模型切换成功: ${useInt8 ? "int8" : "标准"}');
-
-      // 4. 如果之前在运行，自动重新启动
-      if (wasRunning) {
-        final error = await start();
-        if (error != PipelineError.none) {
-          // ignore: avoid_print
-          print('[Pipeline] ⚠️ 重新启动失败: $error');
-          return false;
-        }
-      }
-
-      return true;
-    } catch (e) {
-      // ignore: avoid_print
-      print('[Pipeline] ❌ 模型切换失败: $e');
-      return false;
-    }
+    // 配置已在 SettingsService 中保存，这里只返回成功
+    // 实际切换会在下次应用启动时生效
+    return true;
   }
 
   /// 获取延迟统计信息 (AC5: 端到端延迟 < 200ms)

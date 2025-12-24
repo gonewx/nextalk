@@ -159,13 +159,13 @@ class SettingsService {
     if (modelType == newType) return true;
 
     try {
-      // 1. 调用切换回调
+      // 1. 先保存配置 (确保回调读取到新值)
+      await setModelType(newType);
+
+      // 2. 调用切换回调
       if (onModelSwitch != null) {
         await onModelSwitch!(newType);
       }
-
-      // 2. 保存配置
-      await setModelType(newType);
 
       debugPrint('SettingsService: 模型切换成功: $newType');
       return true;

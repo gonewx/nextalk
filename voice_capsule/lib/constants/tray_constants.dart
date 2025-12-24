@@ -35,6 +35,9 @@ class TrayConstants {
   /// 标准模型选项
   static const String menuModelStandard = '标准模型 (更准)';
 
+  /// 模型切换提示 (需要重启)
+  static const String modelSwitchNotice = '模型已切换，重启应用后生效';
+
   /// 设置 (打开配置目录)
   static const String menuSettings = '设置';
 

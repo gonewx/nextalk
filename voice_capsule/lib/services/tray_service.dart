@@ -163,12 +163,32 @@ class TrayService {
   }
 
   /// 切换模型版本
+  /// 注意：由于 onnxruntime 限制，模型切换需要重启应用生效
   Future<void> _switchModel(ModelType newType) async {
+    final currentType = SettingsService.instance.modelType;
+    if (currentType == newType) {
+      return; // 没有变化
+    }
+
     final success = await SettingsService.instance.switchModelType(newType);
     if (success) {
       // 重新构建菜单以更新选中状态
       await _buildMenu();
       debugPrint('TrayService: 模型切换成功: $newType');
+
+      // 使用 notify-send 发送桌面通知，提醒用户重启
+      try {
+        await Process.run('notify-send', [
+          '-a',
+          'Nextalk',
+          '-i',
+          'dialog-information',
+          'Nextalk',
+          TrayConstants.modelSwitchNotice,
+        ]);
+      } catch (e) {
+        debugPrint('TrayService: 发送通知失败: $e');
+      }
     } else {
       debugPrint('TrayService: 模型切换失败');
     }
