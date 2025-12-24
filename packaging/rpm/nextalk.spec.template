@@ -153,6 +153,8 @@ fi
 %{_libdir}/fcitx5/nextalk.so
 %{_datadir}/fcitx5/addon/nextalk.conf
 %{_datadir}/applications/nextalk.desktop
+%{_datadir}/icons/hicolor/48x48/apps/nextalk.png
+%{_datadir}/icons/hicolor/128x128/apps/nextalk.png
 %{_datadir}/icons/hicolor/256x256/apps/nextalk.png
 
 %changelog

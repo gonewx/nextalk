@@ -295,16 +295,25 @@ assemble_common() {
     cp "$addon_build_dir/nextalk.so" "$staging_dir/usr/lib/${lib_arch}/fcitx5/"
     cp "$addon_build_dir/nextalk.conf" "$staging_dir/usr/share/fcitx5/addon/"
 
-    # Copy desktop entry
+    # Copy desktop entry (ensure world-readable)
     info "  Installing desktop entry..."
     cp "$PACKAGING_DIR/deb/nextalk.desktop" "$staging_dir/usr/share/applications/"
+    chmod 644 "$staging_dir/usr/share/applications/nextalk.desktop"
 
-    # Process icon
-    info "  Processing icon..."
+    # Process icon (multi-size for better desktop integration)
+    info "  Processing icons..."
     local icon_src="$VOICE_CAPSULE_DIR/assets/icons/icon.png"
     if [[ -f "$icon_src" ]]; then
+        # Create directory structure for multiple icon sizes
+        mkdir -p "$staging_dir/usr/share/icons/hicolor/48x48/apps"
+        mkdir -p "$staging_dir/usr/share/icons/hicolor/128x128/apps"
+        mkdir -p "$staging_dir/usr/share/icons/hicolor/256x256/apps"
+
+        # Generate icons at standard freedesktop.org sizes
+        convert "$icon_src" -resize 48x48 "$staging_dir/usr/share/icons/hicolor/48x48/apps/nextalk.png"
+        convert "$icon_src" -resize 128x128 "$staging_dir/usr/share/icons/hicolor/128x128/apps/nextalk.png"
         convert "$icon_src" -resize 256x256 "$staging_dir/usr/share/icons/hicolor/256x256/apps/nextalk.png"
-        success "Icon processed (256x256)"
+        success "Icons processed (48x48, 128x128, 256x256)"
     else
         warn "Icon not found: $icon_src"
     fi

@@ -87,5 +87,5 @@ development_status:
   epic-4: in-progress
   4-1-deb-build-script: done
   4-2-install-uninstall-scripts: done
-  4-3-desktop-integration: backlog
+  4-3-desktop-integration: done
   epic-4-retrospective: optional
