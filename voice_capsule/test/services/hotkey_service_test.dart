@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:voice_capsule/services/hotkey_service.dart';
 import 'package:voice_capsule/constants/hotkey_constants.dart';
+import 'package:voice_capsule/constants/settings_constants.dart';
 
 /// Story 3-5: HotkeyService 测试
 ///
@@ -45,10 +46,9 @@ void main() {
       });
     });
 
-    group('配置文件路径', () {
-      test('应该使用正确的配置目录', () {
-        expect(HotkeyConstants.configDirName, equals('nextalk'));
-        expect(HotkeyConstants.configFileName, equals('config.yaml'));
+    group('配置文件路径 (统一使用 settings.yaml)', () {
+      test('应该使用 SettingsConstants 中的配置路径', () {
+        expect(SettingsConstants.settingsFilePath, contains('settings.yaml'));
       });
 
       test('HOME 环境变量应该存在', () {
@@ -58,11 +58,8 @@ void main() {
       });
 
       test('配置文件路径应该正确构造', () {
-        final home = Platform.environment['HOME'];
-        final expectedPath = '$home/.config/'
-            '${HotkeyConstants.configDirName}/'
-            '${HotkeyConstants.configFileName}';
-        expect(expectedPath, contains('.config/nextalk/config.yaml'));
+        final expectedPath = SettingsConstants.settingsFilePath;
+        expect(expectedPath, contains('.config/nextalk/settings.yaml'));
       });
     });
 

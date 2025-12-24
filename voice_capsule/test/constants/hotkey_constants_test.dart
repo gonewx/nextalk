@@ -40,13 +40,11 @@ void main() {
       });
     });
 
-    group('配置文件常量', () {
-      test('configDirName 应该是 nextalk', () {
-        expect(HotkeyConstants.configDirName, equals('nextalk'));
-      });
-
-      test('configFileName 应该是 config.yaml', () {
-        expect(HotkeyConstants.configFileName, equals('config.yaml'));
+    group('配置文件常量 (已迁移至 SettingsConstants)', () {
+      // 配置文件相关常量已统一至 SettingsConstants
+      // 现在使用 settings.yaml 作为统一配置文件
+      test('keyMap 应该包含必要的键位映射', () {
+        expect(HotkeyConstants.keyMap.isNotEmpty, isTrue);
       });
     });
 
