@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../constants/capsule_colors.dart';
+import '../../l10n/app_localizations.dart';
 
 /// 手动安装引导组件
 /// Story 3-7: 初始化向导 - AC5, AC6, AC7
+/// Story 3-8: 国际化 - AC9
 /// 提供下载链接、目标路径和检测按钮
 class ManualInstallGuide extends StatelessWidget {
   const ManualInstallGuide({
@@ -36,6 +38,8 @@ class ManualInstallGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return Container(
       constraints: const BoxConstraints(maxWidth: 480),
       padding: const EdgeInsets.all(24),
@@ -56,10 +60,10 @@ class ManualInstallGuide extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // 标题
-          const Center(
+          Center(
             child: Text(
-              '📁 手动安装模型',
-              style: TextStyle(
+              '📁 ${l10n?.wizardManualInstallTitle ?? '手动安装模型'}',
+              style: const TextStyle(
                 color: CapsuleColors.textWhite,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
@@ -70,8 +74,9 @@ class ManualInstallGuide extends StatelessWidget {
 
           // 步骤 1: 下载模型
           _buildStep(
+            context: context,
             number: '1',
-            title: '下载模型文件:',
+            title: l10n?.wizardStep1Download ?? '下载模型文件:',
             child: Row(
               children: [
                 Expanded(
@@ -88,7 +93,7 @@ class ManualInstallGuide extends StatelessWidget {
                 TextButton.icon(
                   onPressed: onCopyLink,
                   icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('复制链接'),
+                  label: Text(l10n?.wizardCopyLink ?? '复制链接'),
                   style: TextButton.styleFrom(
                     foregroundColor: CapsuleColors.accentRed,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -101,8 +106,9 @@ class ManualInstallGuide extends StatelessWidget {
 
           // 步骤 2: 解压并放置
           _buildStep(
+            context: context,
             number: '2',
-            title: '解压并放置到:',
+            title: l10n?.wizardStep2Extract ?? '解压并放置到:',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -127,7 +133,7 @@ class ManualInstallGuide extends StatelessWidget {
                 TextButton.icon(
                   onPressed: onOpenDirectory,
                   icon: const Icon(Icons.folder_open, size: 16),
-                  label: const Text('打开目录'),
+                  label: Text(l10n?.wizardOpenDir ?? '打开目录'),
                   style: TextButton.styleFrom(
                     foregroundColor: CapsuleColors.accentRed,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -140,8 +146,9 @@ class ManualInstallGuide extends StatelessWidget {
 
           // 步骤 3: 目录结构说明
           _buildStep(
+            context: context,
             number: '3',
-            title: '目录结构应为:',
+            title: l10n?.wizardStep3Structure ?? '目录结构应为:',
             child: Tooltip(
               message: 'sherpa-onnx-streaming-zipformer-bilingual-zh-en/',
               child: Container(
@@ -187,14 +194,14 @@ class ManualInstallGuide extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                child: const Text('检测模型'),
+                child: Text(l10n?.wizardVerify ?? '检测模型'),
               ),
 
               // 返回自动下载
               TextButton(
                 onPressed: onSwitchToAuto,
                 child: Text(
-                  '返回自动下载',
+                  l10n?.wizardBackToAuto ?? '返回自动下载',
                   style: TextStyle(
                     color: CapsuleColors.textHint,
                     fontSize: 14,
@@ -209,6 +216,7 @@ class ManualInstallGuide extends StatelessWidget {
   }
 
   Widget _buildStep({
+    required BuildContext context,
     required String number,
     required String title,
     required Widget child,

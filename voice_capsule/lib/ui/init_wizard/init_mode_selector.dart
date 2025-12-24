@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../constants/capsule_colors.dart';
+import '../../l10n/app_localizations.dart';
 
 /// 初始化模式选择器
 /// Story 3-7: 初始化向导 - AC2
+/// Story 3-8: 国际化 - AC9
 /// 提供"自动下载"和"手动安装"两种选项
 class InitModeSelector extends StatelessWidget {
   const InitModeSelector({
@@ -19,6 +21,8 @@ class InitModeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
     return Container(
       constraints: const BoxConstraints(maxWidth: 400),
       padding: const EdgeInsets.all(24),
@@ -38,9 +42,9 @@ class InitModeSelector extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           // 标题
-          const Text(
-            '🎤 Nextalk 首次启动',
-            style: TextStyle(
+          Text(
+            '🎤 ${l10n?.wizardFirstLaunch ?? 'Nextalk 首次启动'}',
+            style: const TextStyle(
               color: CapsuleColors.textWhite,
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -50,7 +54,7 @@ class InitModeSelector extends StatelessWidget {
 
           // 说明文字
           Text(
-            '需要下载语音识别模型 (~150MB)',
+            l10n?.wizardModelSizeHint ?? '需要下载语音识别模型 (~150MB)',
             style: TextStyle(
               color: CapsuleColors.textHint,
               fontSize: 14,
@@ -76,20 +80,20 @@ class InitModeSelector extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Column(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '📥 自动下载',
-                      style: TextStyle(
+                      '📥 ${l10n?.wizardAutoDownload ?? '自动下载'}',
+                      style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
-                      '(推荐)',
-                      style: TextStyle(fontSize: 12),
+                      l10n?.wizardRecommended ?? '(推荐)',
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ],
                 ),
@@ -110,15 +114,15 @@ class InitModeSelector extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
-                child: const Column(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      '📁 手动安装',
-                      style: TextStyle(fontSize: 16),
+                      '📁 ${l10n?.wizardManualMode ?? '手动安装'}',
+                      style: const TextStyle(fontSize: 16),
                     ),
-                    SizedBox(height: 4),
-                    Text(
+                    const SizedBox(height: 4),
+                    const Text(
                       '',
                       style: TextStyle(fontSize: 12),
                     ),

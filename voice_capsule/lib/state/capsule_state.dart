@@ -1,4 +1,5 @@
 import '../services/fcitx_client.dart';
+import '../services/language_service.dart';
 
 /// 胶囊状态枚举
 /// Story 3-3: 状态机与动画系统
@@ -102,19 +103,22 @@ class CapsuleStateData {
   final String? preservedText;
 
   /// 错误消息映射
+  /// Story 3-8: 使用 LanguageService 国际化
   String get displayMessage {
     if (state != CapsuleState.error) return recognizedText;
+
+    final lang = LanguageService.instance;
 
     // Socket 错误使用 FcitxError 细化消息
     if (errorType == CapsuleErrorType.socketError && fcitxError != null) {
       return switch (fcitxError!) {
-        FcitxError.socketNotFound => 'Fcitx5 未运行，请先启动输入法',
-        FcitxError.connectionFailed => 'Fcitx5 连接失败',
-        FcitxError.connectionTimeout => 'Fcitx5 连接超时',
-        FcitxError.sendFailed => '文本发送失败',
-        FcitxError.messageTooLarge => '消息过大',
-        FcitxError.reconnectFailed => 'Fcitx5 重连失败，请检查服务状态',
-        FcitxError.socketPermissionInsecure => 'Socket 权限不安全',
+        FcitxError.socketNotFound => lang.tr('error_fcitx_not_running'),
+        FcitxError.connectionFailed => lang.tr('error_fcitx_connect'),
+        FcitxError.connectionTimeout => lang.tr('error_fcitx_timeout'),
+        FcitxError.sendFailed => lang.tr('error_fcitx_send'),
+        FcitxError.messageTooLarge => lang.tr('error_fcitx_msg_large'),
+        FcitxError.reconnectFailed => lang.tr('error_fcitx_reconnect'),
+        FcitxError.socketPermissionInsecure => lang.tr('error_fcitx_perm'),
       };
     }
 
@@ -122,34 +126,36 @@ class CapsuleStateData {
   }
 
   String get _defaultErrorMessage {
+    final lang = LanguageService.instance;
+
     switch (errorType) {
       // 音频相关
       case CapsuleErrorType.audioNoDevice:
-        return '未检测到麦克风';
+        return lang.tr('error_mic_no_device');
       case CapsuleErrorType.audioDeviceBusy:
-        return '麦克风被其他应用占用';
+        return lang.tr('error_mic_busy');
       case CapsuleErrorType.audioPermissionDenied:
-        return '麦克风权限不足';
+        return lang.tr('error_mic_permission');
       case CapsuleErrorType.audioDeviceLost:
-        return '麦克风已断开';
+        return lang.tr('error_mic_lost');
       case CapsuleErrorType.audioInitFailed:
-        return '音频设备初始化失败';
+        return lang.tr('error_mic_init');
       // 模型相关
       case CapsuleErrorType.modelNotFound:
-        return '未找到语音模型';
+        return lang.tr('error_model_not_found');
       case CapsuleErrorType.modelIncomplete:
-        return '模型文件不完整';
+        return lang.tr('error_model_incomplete');
       case CapsuleErrorType.modelCorrupted:
-        return '模型文件损坏';
+        return lang.tr('error_model_corrupted');
       case CapsuleErrorType.modelLoadFailed:
-        return '模型加载失败';
+        return lang.tr('error_model_load');
       // Socket 相关
       case CapsuleErrorType.socketError:
-        return 'Fcitx5 连接错误';
+        return lang.tr('error_fcitx_general');
       // 其他
       case CapsuleErrorType.unknown:
       case null:
-        return '未知错误';
+        return lang.tr('error_unknown');
     }
   }
 

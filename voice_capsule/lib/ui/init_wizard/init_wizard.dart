@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../constants/capsule_colors.dart';
+import '../../l10n/app_localizations.dart';
 import '../../services/model_manager.dart';
 import '../../services/tray_service.dart';
 import '../../services/window_service.dart';
@@ -57,11 +58,12 @@ class _InitWizardState extends State<InitWizard> {
     if (exists && expected > 0) {
       if (downloaded >= expected) {
         // 文件已完整下载，直接开始校验和解压
+        final l10n = AppLocalizations.of(context);
         setState(() {
           _state = InitStateData(
             phase: InitPhase.verifying,
             progress: 0.6,
-            statusMessage: '检测到已下载文件，准备校验...',
+            statusMessage: l10n?.wizardResumingDownload ?? '检测到已下载文件，准备校验...',
           );
         });
         // 自动继续校验和解压流程
@@ -245,15 +247,17 @@ class _InitWizardState extends State<InitWizard> {
   }
 
   /// 复制下载链接
+  /// Story 3-8: 使用国际化文本
   Future<void> _copyLink() async {
     await Clipboard.setData(
       ClipboardData(text: ModelManager.downloadUrl),
     );
     if (mounted) {
+      final l10n = AppLocalizations.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('链接已复制到剪贴板'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(l10n?.notifyLinkCopied ?? '链接已复制到剪贴板'),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -279,10 +283,11 @@ class _InitWizardState extends State<InitWizard> {
       // 完成时确保托盘状态正常
       TrayService.instance.updateStatus(TrayStatus.normal);
     } else {
+      final l10n = AppLocalizations.of(context);
       setState(() {
         _state = InitStateData.error(
           ModelError.none,
-          message: '未检测到有效模型，请确认文件已正确放置',
+          message: l10n?.wizardModelVerifyFailed ?? '未检测到有效模型，请确认文件已正确放置',
         );
       });
       // 验证失败时更新托盘状态为警告
@@ -368,15 +373,15 @@ class _InitWizardState extends State<InitWizard> {
         );
 
       case InitPhase.checkingModel:
-        return const Center(
+        return Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
               Text(
-                '检查下载状态...',
-                style: TextStyle(color: Colors.white70),
+                AppLocalizations.of(context)?.wizardCheckingStatus ?? '检查下载状态...',
+                style: const TextStyle(color: Colors.white70),
               ),
             ],
           ),
@@ -388,7 +393,10 @@ class _InitWizardState extends State<InitWizard> {
   }
 
   /// 构建完成提示界面
+  /// Story 3-8: 使用国际化文本 (AC9)
   Widget _buildCompletedUI() {
+    final l10n = AppLocalizations.of(context);
+
     return Container(
       constraints: const BoxConstraints(maxWidth: 400),
       padding: const EdgeInsets.all(32),
@@ -414,7 +422,7 @@ class _InitWizardState extends State<InitWizard> {
           ),
           const SizedBox(height: 16),
           Text(
-            '🎉 初始化完成！',
+            '🎉 ${l10n?.wizardCompleted ?? '初始化完成！'}',
             style: TextStyle(
               color: CapsuleColors.textWhite,
               fontSize: 20,
@@ -422,9 +430,9 @@ class _InitWizardState extends State<InitWizard> {
             ),
           ),
           const SizedBox(height: 12),
-          const Text(
-            '按下 Right Alt 键开始语音输入',
-            style: TextStyle(
+          Text(
+            l10n?.wizardPressHotkeyHint ?? '按下 Right Alt 键开始语音输入',
+            style: const TextStyle(
               color: Colors.white70,
               fontSize: 14,
             ),
@@ -437,7 +445,7 @@ class _InitWizardState extends State<InitWizard> {
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
             ),
-            child: const Text('开始使用'),
+            child: Text(l10n?.wizardStartUsing ?? '开始使用'),
           ),
         ],
       ),

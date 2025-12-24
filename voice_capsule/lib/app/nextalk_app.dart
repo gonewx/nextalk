@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 import '../services/hotkey_controller.dart';
+import '../services/language_service.dart';
 import '../services/model_manager.dart';
 import '../services/tray_service.dart';
 import '../services/window_service.dart';
@@ -77,17 +79,27 @@ class _NextalkAppState extends State<NextalkApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Nextalk Voice Capsule',
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: Colors.transparent,
-      ),
-      home: Scaffold(
-        backgroundColor: Colors.transparent,
-        // Story 3-7: 根据初始化状态路由 UI
-        body: _needsInit ? _buildInitWizard() : _buildCapsuleUI(),
-      ),
+    // Story 3-8: 使用 ValueListenableBuilder 响应 Locale 变化 (Task 5.1)
+    return ValueListenableBuilder<Locale>(
+      valueListenable: LanguageService.instance.localeNotifier,
+      builder: (context, locale, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Nextalk Voice Capsule',
+          // Story 3-8: 国际化配置
+          locale: locale,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          theme: ThemeData.dark().copyWith(
+            scaffoldBackgroundColor: Colors.transparent,
+          ),
+          home: Scaffold(
+            backgroundColor: Colors.transparent,
+            // Story 3-7: 根据初始化状态路由 UI
+            body: _needsInit ? _buildInitWizard() : _buildCapsuleUI(),
+          ),
+        );
+      },
     );
   }
 
@@ -108,16 +120,17 @@ class _NextalkAppState extends State<NextalkApp> {
       initialData: CapsuleStateData.listening(),
       builder: (context, snapshot) {
         final state = snapshot.data ?? CapsuleStateData.listening();
+        final l10n = AppLocalizations.of(context);
 
         // 状态相关的显示逻辑由 CapsuleWidget 统一处理
         // NextalkApp 只负责传递状态和控制 showHint
         final showHint = state.state == CapsuleState.listening &&
             state.recognizedText.isEmpty;
 
-        // 错误状态的提示文字
+        // Story 3-8: 错误状态的提示文字 (国际化)
         final hintText = state.state == CapsuleState.error
             ? state.displayMessage
-            : '正在聆听...';
+            : (l10n?.listening ?? '正在聆听...');
 
         // Story 3-7: 错误状态时显示操作按钮
         final isErrorWithActions = state.state == CapsuleState.error &&
@@ -203,10 +216,12 @@ class _NextalkAppState extends State<NextalkApp> {
 
   /// 根据错误类型获取操作按钮列表
   /// Story 3-7: AC8-AC10 模型错误操作按钮
+  /// Story 3-8: 按钮标签国际化
   List<ErrorAction> _getActionsForError(
       BuildContext context, CapsuleStateData state) {
     final errorType = state.errorType;
     if (errorType == null) return [];
+    final l10n = AppLocalizations.of(context);
 
     switch (errorType) {
       // 音频设备错误
@@ -215,7 +230,7 @@ class _NextalkAppState extends State<NextalkApp> {
       case CapsuleErrorType.audioInitFailed:
         return [
           ErrorAction(
-            label: '刷新检测',
+            label: l10n?.actionRefresh ?? '刷新检测',
             onPressed: () => HotkeyController.instance.retryRecording(),
             isPrimary: true,
           ),
@@ -227,12 +242,12 @@ class _NextalkAppState extends State<NextalkApp> {
         return [
           if (hasPreservedText)
             ErrorAction(
-              label: '复制文本',
+              label: l10n?.actionCopyText ?? '复制文本',
               onPressed: () =>
                   _copyPreservedText(context, state.preservedText!),
             ),
           ErrorAction(
-            label: '关闭',
+            label: l10n?.actionClose ?? '关闭',
             onPressed: () => HotkeyController.instance.dismissError(),
             isPrimary: !hasPreservedText,
           ),
@@ -244,22 +259,22 @@ class _NextalkAppState extends State<NextalkApp> {
         return [
           if (hasPreservedText) ...[
             ErrorAction(
-              label: '复制文本',
+              label: l10n?.actionCopyText ?? '复制文本',
               onPressed: () =>
                   _copyPreservedText(context, state.preservedText!),
             ),
             ErrorAction(
-              label: '重试提交',
+              label: l10n?.actionRetrySubmit ?? '重试提交',
               onPressed: () => HotkeyController.instance.retrySubmit(),
               isPrimary: true,
             ),
             ErrorAction(
-              label: '放弃',
+              label: l10n?.actionDiscard ?? '放弃',
               onPressed: () => HotkeyController.instance.discardPreservedText(),
             ),
           ] else
             ErrorAction(
-              label: '关闭',
+              label: l10n?.actionClose ?? '关闭',
               onPressed: () => HotkeyController.instance.dismissError(),
               isPrimary: true,
             ),
@@ -270,7 +285,7 @@ class _NextalkAppState extends State<NextalkApp> {
       case CapsuleErrorType.modelIncomplete:
         return [
           ErrorAction(
-            label: '重新下载',
+            label: l10n?.actionRedownload ?? '重新下载',
             onPressed: () {
               // 直接显示初始化向导，不需要先隐藏窗口
               // 恢复托盘状态
@@ -280,7 +295,7 @@ class _NextalkAppState extends State<NextalkApp> {
             isPrimary: true,
           ),
           ErrorAction(
-            label: '关闭',
+            label: l10n?.actionClose ?? '关闭',
             onPressed: () => HotkeyController.instance.dismissError(),
           ),
         ];
@@ -289,7 +304,7 @@ class _NextalkAppState extends State<NextalkApp> {
       case CapsuleErrorType.modelCorrupted:
         return [
           ErrorAction(
-            label: '删除并重新下载',
+            label: l10n?.actionDeleteAndRedownload ?? '删除并重新下载',
             onPressed: () async {
               await widget.modelManager.deleteModel();
               // 直接显示初始化向导
@@ -299,7 +314,7 @@ class _NextalkAppState extends State<NextalkApp> {
             isPrimary: true,
           ),
           ErrorAction(
-            label: '关闭',
+            label: l10n?.actionClose ?? '关闭',
             onPressed: () => HotkeyController.instance.dismissError(),
           ),
         ];
@@ -308,12 +323,12 @@ class _NextalkAppState extends State<NextalkApp> {
       case CapsuleErrorType.modelLoadFailed:
         return [
           ErrorAction(
-            label: '重试',
+            label: l10n?.actionRetry ?? '重试',
             onPressed: () => HotkeyController.instance.retryRecording(),
             isPrimary: true,
           ),
           ErrorAction(
-            label: '关闭',
+            label: l10n?.actionClose ?? '关闭',
             onPressed: () => HotkeyController.instance.dismissError(),
           ),
         ];
@@ -321,7 +336,7 @@ class _NextalkAppState extends State<NextalkApp> {
       default:
         return [
           ErrorAction(
-            label: '关闭',
+            label: l10n?.actionClose ?? '关闭',
             onPressed: () => HotkeyController.instance.dismissError(),
             isPrimary: true,
           ),
@@ -330,13 +345,15 @@ class _NextalkAppState extends State<NextalkApp> {
   }
 
   /// 复制保护的文本到剪贴板
+  /// Story 3-8: 使用国际化的 SnackBar 提示
   Future<void> _copyPreservedText(BuildContext context, String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (context.mounted) {
+      final l10n = AppLocalizations.of(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('文本已复制到剪贴板'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(l10n?.notifyTextCopied ?? '文本已复制到剪贴板'),
+          duration: const Duration(seconds: 2),
         ),
       );
     }

@@ -16,6 +16,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  flutter_localizations:  # Story 3-8: 国际化支持
+    sdk: flutter
+  intl: ^0.20.2  # Story 3-8: 国际化工具 (version pinned by flutter_localizations)
   ffi: ^2.1.0  # 必需：提供 calloc, Utf8 等
   dio: ^5.4.0  # HTTP 下载 (支持代理、重试、进度)
   archive: ^3.6.0  # tar.bz2 解压
@@ -46,6 +49,8 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  # Story 3-8: 国际化代码生成
+  generate: true
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

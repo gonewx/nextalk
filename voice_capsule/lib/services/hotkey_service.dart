@@ -6,6 +6,7 @@ import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:yaml/yaml.dart';
 
 import '../constants/hotkey_constants.dart';
+import '../constants/settings_constants.dart';
 
 /// 快捷键按下回调类型
 typedef HotkeyPressedCallback = Future<void> Function();
@@ -92,7 +93,7 @@ class HotkeyService {
   Future<HotKey> _loadHotkeyConfig() async {
     try {
       final configFile = _getConfigFile();
-      if (configFile != null && await configFile.exists()) {
+      if (await configFile.exists()) {
         final content = await configFile.readAsString();
         final yaml = loadYaml(content);
 
@@ -133,14 +134,9 @@ class HotkeyService {
     );
   }
 
-  /// 获取配置文件
-  File? _getConfigFile() {
-    final homeDir = Platform.environment['HOME'];
-    if (homeDir == null) return null;
-
-    final configPath = '$homeDir/.config/${HotkeyConstants.configDirName}/'
-        '${HotkeyConstants.configFileName}';
-    return File(configPath);
+  /// 获取配置文件 (统一使用 settings.yaml)
+  File _getConfigFile() {
+    return File(SettingsConstants.settingsFilePath);
   }
 
   /// 尝试备用快捷键 (Ctrl+Shift+Space)

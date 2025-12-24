@@ -6,6 +6,7 @@ import 'package:system_tray/system_tray.dart';
 import '../constants/settings_constants.dart';
 import '../constants/tray_constants.dart';
 import 'hotkey_service.dart';
+import 'language_service.dart';
 import 'settings_service.dart';
 import 'window_service.dart';
 
@@ -113,6 +114,14 @@ class TrayService {
     }
   }
 
+  /// Story 3-8: 公开重建菜单方法 (Task 4.1)
+  /// 语言切换时需要调用此方法更新菜单文本
+  Future<void> rebuildMenu() async {
+    if (!_isInitialized) return;
+    await _buildMenu();
+    debugPrint('TrayService: 菜单已重建');
+  }
+
   /// 获取托盘图标绝对路径
   Future<String> _getIconPath() async {
     final executableDir = File(Platform.resolvedExecutable).parent;
@@ -121,45 +130,72 @@ class TrayService {
 
   /// 构建托盘右键菜单
   /// Story 3-7: 新增"重新连接 Fcitx5"菜单项 (AC16)
+  /// Story 3-8: 国际化菜单文本 + 语言切换子菜单 (AC2, AC5, AC6)
   /// 模型设置子菜单
   Future<void> _buildMenu() async {
     final currentType = SettingsService.instance.modelType;
+    final lang = LanguageService.instance;
+    final isZh = lang.isZh;
 
     final menu = Menu();
     await menu.buildFrom([
-      MenuItemLabel(label: TrayConstants.menuTitle, enabled: false),
+      MenuItemLabel(label: TrayConstants.appName, enabled: false),
       MenuSeparator(),
       MenuItemLabel(
-        label: TrayConstants.menuShowHide,
+        label: lang.tr('tray_show_hide'),
         onClicked: (_) => _toggleWindow(),
       ),
       MenuItemLabel(
-        label: TrayConstants.menuReconnectFcitx, // AC16: 新增
+        label: lang.tr('tray_reconnect'),
         onClicked: (_) => _reconnectFcitx(),
       ),
       MenuSeparator(),
       MenuItemCheckbox(
-        label: TrayConstants.menuModelInt8,
+        label: lang.tr('tray_model_int8'),
         checked: currentType == ModelType.int8,
         onClicked: (_) => _switchModel(ModelType.int8),
       ),
       MenuItemCheckbox(
-        label: TrayConstants.menuModelStandard,
+        label: lang.tr('tray_model_standard'),
         checked: currentType == ModelType.standard,
         onClicked: (_) => _switchModel(ModelType.standard),
       ),
       MenuSeparator(),
+      // Story 3-8: 语言切换子菜单 (AC2)
+      SubMenu(
+        label: lang.tr('tray_language'),
+        children: [
+          MenuItemCheckbox(
+            label: '简体中文',
+            checked: isZh,
+            onClicked: (_) => _switchLanguage('zh'),
+          ),
+          MenuItemCheckbox(
+            label: 'English',
+            checked: !isZh,
+            onClicked: (_) => _switchLanguage('en'),
+          ),
+        ],
+      ),
       MenuItemLabel(
-        label: TrayConstants.menuSettings,
+        label: lang.tr('tray_settings'),
         onClicked: (_) => _openConfigDirectory(),
       ),
       MenuSeparator(),
       MenuItemLabel(
-        label: TrayConstants.menuExit,
+        label: lang.tr('tray_exit'),
         onClicked: (_) => _exitApp(),
       ),
     ]);
     await _systemTray.setContextMenu(menu);
+  }
+
+  /// Story 3-8: 切换语言 (AC3)
+  Future<void> _switchLanguage(String languageCode) async {
+    await LanguageService.instance.switchLanguage(languageCode);
+    // 语言切换后重建菜单以更新文本
+    await rebuildMenu();
+    debugPrint('TrayService: 语言已切换为 $languageCode');
   }
 
   /// 切换模型版本
@@ -176,7 +212,7 @@ class TrayService {
       await _buildMenu();
       debugPrint('TrayService: 模型切换成功: $newType');
 
-      // 使用 notify-send 发送桌面通知，提醒用户重启
+      // Story 3-8: 使用 notify-send 发送桌面通知，使用国际化文本 (AC10)
       try {
         await Process.run('notify-send', [
           '-a',
@@ -184,7 +220,7 @@ class TrayService {
           '-i',
           'dialog-information',
           'Nextalk',
-          TrayConstants.modelSwitchNotice,
+          LanguageService.instance.tr('tray_model_switch_notice'),
         ]);
       } catch (e) {
         debugPrint('TrayService: 发送通知失败: $e');

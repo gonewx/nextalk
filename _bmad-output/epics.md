@@ -539,3 +539,121 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **And** 显示 "Fcitx5 未连接"
 **And** 3秒后自动隐藏或等待用户操作
 
+---
+
+### Story 3.8: 中英双语国际化与托盘语言切换
+
+**As a** 用户,
+**I want** 应用支持中英双语界面，并可在系统托盘菜单中切换语言,
+**So that** 我可以根据个人习惯选择使用中文或英文界面。
+
+**Acceptance Criteria:**
+
+**Given** 应用首次启动
+**When** 检测系统语言设置
+**Then** 自动选择匹配的语言 (zh_CN → 中文, en_* → 英文)
+**And** 默认回退到中文
+
+**Given** 应用运行中
+**When** 右键点击托盘图标
+**Then** 菜单中显示"语言 / Language"子菜单
+**And** 子菜单包含"简体中文"和"English"两个选项
+**And** 当前语言显示勾选标记
+
+**Given** 托盘语言菜单
+**When** 用户选择不同语言
+**Then** 立即更新所有 UI 文本 (热切换，无需重启)
+**And** 语言偏好持久化到配置文件
+
+**Given** 语言设置已保存
+**When** 应用重启
+**Then** 使用上次选择的语言
+
+---
+
+## Epic 4: 打包发布 (Distribution)
+
+用户可以通过标准的 DEB 包安装 Nextalk，实现一键部署。
+
+### Story 4.1: DEB 包构建脚本
+
+**As a** 开发者,
+**I want** 通过一键脚本构建完整的 DEB 安装包,
+**So that** 可以方便地分发和部署应用。
+
+**Acceptance Criteria:**
+
+**Given** 项目代码已就绪
+**When** 执行 `scripts/build-deb.sh`
+**Then** 自动执行 Flutter release 构建
+**And** 自动编译 Fcitx5 插件
+**And** 生成符合 Debian 规范的 DEB 包
+
+**Given** DEB 包结构
+**When** 检查包内容
+**Then** 主应用安装到 `/opt/nextalk/`
+**And** Fcitx5 插件安装到 `/usr/lib/x86_64-linux-gnu/fcitx5/`
+**And** 插件配置安装到 `/usr/share/fcitx5/addon/`
+**And** 桌面入口安装到 `/usr/share/applications/`
+**And** 图标安装到 `/usr/share/icons/hicolor/`
+
+**Given** DEB 包元数据
+**When** 查看 control 文件
+**Then** 包含正确的包名、版本、描述
+**And** 声明依赖：`fcitx5 (>= 5.0)`, `libgtk-3-0 (>= 3.24)`
+**And** 声明推荐：`pulseaudio | pipewire-pulse`
+
+---
+
+### Story 4.2: 安装与卸载脚本
+
+**As a** 用户,
+**I want** 安装后自动完成必要的配置,
+**So that** 无需手动操作即可使用。
+
+**Acceptance Criteria:**
+
+**Given** 用户执行 `sudo dpkg -i nextalk_*.deb`
+**When** 安装完成
+**Then** postinst 脚本创建 `/usr/bin/nextalk` 符号链接
+**And** 输出提示："请执行 fcitx5 -r 重启输入法以加载插件"
+
+**Given** 用户执行 `sudo apt remove nextalk`
+**When** 卸载进行
+**Then** prerm 脚本清理符号链接
+**And** 不删除用户数据目录 `~/.local/share/nextalk/`
+**And** 输出提示："用户数据保留在 ~/.local/share/nextalk/"
+
+**Given** 安装过程中出错
+**When** 依赖缺失
+**Then** 显示清晰的错误信息和解决建议
+
+---
+
+### Story 4.3: 桌面集成
+
+**As a** 用户,
+**I want** 应用出现在系统应用菜单中,
+**So that** 可以像其他应用一样启动。
+
+**Acceptance Criteria:**
+
+**Given** DEB 包已安装
+**When** 打开系统应用菜单
+**Then** 显示 "Nextalk" 应用入口
+**And** 显示正确的应用图标
+**And** 分类为 "工具" 或 "输入法"
+
+**Given** nextalk.desktop 文件
+**When** 检查内容
+**Then** Name=Nextalk
+**And** Comment=高性能离线语音输入
+**And** Exec=/opt/nextalk/nextalk
+**And** Icon=nextalk
+**And** Categories=Utility;
+
+**Given** 应用图标
+**When** 检查安装
+**Then** 图标安装到 `/usr/share/icons/hicolor/256x256/apps/nextalk.png`
+**And** 图标清晰，符合 freedesktop 规范
+

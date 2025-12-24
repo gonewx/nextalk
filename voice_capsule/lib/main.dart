@@ -8,6 +8,7 @@ import 'services/audio_inference_pipeline.dart';
 import 'services/fcitx_client.dart';
 import 'services/hotkey_controller.dart';
 import 'services/hotkey_service.dart';
+import 'services/language_service.dart';
 import 'services/model_manager.dart';
 import 'services/settings_service.dart';
 import 'services/sherpa_service.dart';
@@ -57,6 +58,10 @@ Future<void> main() async {
     // 2. 初始化设置服务 (必须在托盘服务之前)
     await SettingsService.instance.initialize();
     DiagnosticLogger.instance.info('main', '设置服务初始化完成');
+
+    // Story 3-8: 初始化语言服务 (必须在托盘服务之前)
+    await LanguageService.instance.initialize();
+    DiagnosticLogger.instance.info('main', '语言服务初始化完成');
 
     // 3. 初始化托盘服务 (必须在 WindowService 和 SettingsService 之后)
     await TrayService.instance.initialize();

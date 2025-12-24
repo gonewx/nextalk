@@ -77,4 +77,15 @@ development_status:
   3-5-global-hotkey-listener: done
   3-6-full-business-flow: done
   3-7-init-wizard-error-handling: done
+  3-8-i18n-language-switch: done
   epic-3-retrospective: optional
+
+  # ============================================
+  # Epic 4: 打包发布 (Distribution)
+  # 用户可以通过标准 DEB 包安装 Nextalk
+  # ============================================
+  epic-4: in-progress
+  4-1-deb-build-script: ready-for-dev
+  4-2-install-uninstall-scripts: backlog
+  4-3-desktop-integration: backlog
+  epic-4-retrospective: optional
