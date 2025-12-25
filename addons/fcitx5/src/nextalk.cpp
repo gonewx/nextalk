@@ -8,6 +8,8 @@
 #include <fcitx-utils/key.h>
 #include <fcitx/inputcontext.h>
 #include <fcitx/inputcontextmanager.h>
+#include <fcitx/inputpanel.h>
+#include <fcitx/text.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -610,11 +612,22 @@ void NextalkAddon::commitText(const std::string &text) {
         return;
     }
 
-    // 提交文本
+    // 模拟完整 IME 周期，让终端等应用正确处理
+    // Step 1: 设置 preedit（告诉应用"正在输入"）
+    ic->inputPanel().setClientPreedit(Text(text));
+    ic->updatePreedit();
+    NEXTALK_DEBUG() << "Set preedit: " << text;
+
+    // Step 2: 提交文本
     ic->commitString(text);
     NEXTALK_INFO() << "Committed text to: " << ic->program()
                    << " hasFocus=" << ic->hasFocus()
                    << " text=" << text;
+
+    // Step 3: 清空 preedit
+    ic->inputPanel().setClientPreedit(Text(""));
+    ic->updatePreedit();
+    NEXTALK_DEBUG() << "Cleared preedit";
 }
 
 // ===== 配置 Socket 服务器 (接收 Flutter 发送的配置) =====
