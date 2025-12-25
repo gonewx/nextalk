@@ -20,19 +20,24 @@
 graph TD
     User[用户语音] --> Mic[麦克风]
     Mic --> Audio[PortAudio (C语言库)]
-    
+
     subgraph "进程 A: Voice Capsule (Flutter)"
         Audio -- "FFI (零拷贝)" --> Logic[Dart 业务逻辑]
         Logic -- "FFI (零拷贝)" --> Sherpa[Sherpa-onnx (AI 引擎)]
         Sherpa -- "文本流" --> Logic
         Logic -- "状态更新" --> UI[透明胶囊窗口]
-        Logic -- "Socket 写入" --> IPC_Client[Dart Socket 客户端]
+        Logic -- "文本 Socket" --> IPC_Text[文本发送]
+        Logic -- "配置 Socket" --> IPC_Cfg[配置发送]
+        CmdServer[命令服务器] -- "toggle 命令" --> Logic
         ModelMgr[模型管理器] -- "下载/校验" --> Storage[本地存储 (~/.local)]
     end
 
     subgraph "进程 B: Fcitx5 守护进程"
-        IPC_Client -- "Unix Domain Socket" --> IPC_Server[Nextalk 插件]
+        IPC_Text -- "nextalk-fcitx5.sock" --> IPC_Server[Nextalk 插件]
+        IPC_Cfg -- "nextalk-fcitx5-cfg.sock" --> IPC_Server
+        IPC_Server -- "nextalk-cmd.sock" --> CmdServer
         IPC_Server -- "commitString" --> TargetApp[当前活动窗口]
+        Keyboard[键盘事件] -- "快捷键监听" --> IPC_Server
     end
 ```
 
@@ -87,17 +92,78 @@ nextalk/
 
 ### 4.1 Fcitx5 插件与协议
 
-**角色**: 被动执行者。它监听文本指令并将其实际输入到上下文中。
+**角色**: 双向通信枢纽。它不仅接收文本指令并注入到应用中，还负责监听全局快捷键并通知 Flutter 客户端。
+
+#### 4.1.1 Socket 架构
+
+插件使用三个 Unix Domain Socket 实现双向通信：
+
+| Socket 路径 | 方向 | 用途 | 协议 |
+| :--- | :--- | :--- | :--- |
+| `$XDG_RUNTIME_DIR/nextalk-fcitx5.sock` | Flutter → 插件 | 文本提交 | 长度前缀 + UTF-8 |
+| `$XDG_RUNTIME_DIR/nextalk-fcitx5-cfg.sock` | Flutter → 插件 | 配置命令 | 长度前缀 + 命令字符串 |
+| `$XDG_RUNTIME_DIR/nextalk-cmd.sock` | 插件 → Flutter | 控制命令 | 长度前缀 + 命令字符串 |
 
 *   **传输层**: Unix Domain Socket (Stream 模式)。
-*   **路径策略**: 优先 `$XDG_RUNTIME_DIR/nextalk-fcitx5.sock` (回退方案: `/tmp/...`)。
-*   **安全性**: Socket 文件权限必须设为 `0600` (仅所有者读写)。
-*   **协议定义**:
+*   **安全性**: 所有 Socket 文件权限必须设为 `0600` (仅所有者读写)。
+*   **协议定义** (通用):
 
 | 偏移量 | 类型 | 大小 | 描述 |
 | :--- | :--- | :--- | :--- |
-| 0 | `uint32` | 4 | **长度 (Length)** (小端序 Little Endian)。后续文本字符串的字节长度。 |
-| 4 | `bytes` | N | **载荷 (Payload)**。UTF-8 编码的待提交文本。 |
+| 0 | `uint32` | 4 | **长度 (Length)** (小端序 Little Endian)。后续字符串的字节长度。 |
+| 4 | `bytes` | N | **载荷 (Payload)**。UTF-8 编码的文本或命令。 |
+
+#### 4.1.2 快捷键监听 (Wayland 原生支持)
+
+快捷键监听由 Fcitx5 插件实现，而非 Flutter 侧：
+
+*   **优势**: 原生 Wayland 支持，无需 X11/keybinder 依赖
+*   **实现方式**: 通过 Fcitx5 的 `InputContextKeyEvent` 事件监听
+*   **默认键位**: Right Alt (`Alt_R`)
+*   **配置命令**: `config:hotkey:<key_spec>` (如 `config:hotkey:Alt_R`、`config:hotkey:Control+Shift+Space`)
+
+**支持的按键:**
+- 修饰键: `Alt_L`, `Alt_R`, `Control_L`, `Control_R`, `Shift_L`, `Shift_R`, `Super_L`, `Super_R`
+- 功能键: `F1` - `F12`
+- 常用键: `Space`, `Escape`, `Tab`, `Return`, `BackSpace`, `Caps_Lock`
+- 字母键: `a` - `z`
+- 数字键: `0` - `9`
+
+#### 4.1.3 焦点锁定 (Wayland 支持)
+
+解决 Wayland 下用户录音时切换窗口导致文本提交到错误应用的问题：
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant Fcitx as Fcitx5 插件
+    participant Flutter as Flutter 客户端
+    participant App as 目标应用
+
+    User->>Fcitx: 按下快捷键 (在 App 中)
+    Fcitx->>Fcitx: 锁定当前 InputContext UUID
+    Fcitx->>Flutter: 发送 "toggle" 命令
+    Flutter->>Flutter: 开始录音
+    Note over User: 用户说话，可能切换窗口
+    User->>Fcitx: 再次按下快捷键
+    Fcitx->>Flutter: 发送 "toggle" 命令
+    Flutter->>Fcitx: 发送识别文本
+    Fcitx->>Fcitx: 使用锁定的 InputContext
+    Fcitx->>App: commitString (文本正确提交到原窗口)
+    Fcitx->>Fcitx: 清除锁定状态
+```
+
+*   **锁定时机**: 按下快捷键时锁定当前 `InputContext` 的 UUID
+*   **使用时机**: 提交文本时优先使用锁定的 `InputContext`
+*   **释放时机**: 文本提交后自动清除锁定状态
+
+#### 4.1.4 文本提交流程 (IME 周期模拟)
+
+为确保终端等应用正确处理输入，`commitText` 模拟完整的 IME 周期：
+
+1. **设置 Preedit**: 告诉应用"正在输入"
+2. **提交文本**: 调用 `commitString()`
+3. **清空 Preedit**: 完成输入周期
 
 ### 4.2 音频与 AI 流水线 (零拷贝 FFI)
 

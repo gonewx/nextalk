@@ -45,7 +45,7 @@ FR6 [系统]: 全局快捷键
 
 NFR1: 端到端延迟 < 200ms
 NFR2: 纯离线推理，无网络请求（运行时）
-NFR3: 兼容 Ubuntu 22.04+ (X11/Wayland via XWayland)
+NFR3: 兼容 Ubuntu 22.04+ (X11/Wayland 原生支持，快捷键和文本提交均支持 Wayland)
 NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 
 ### Additional Requirements
@@ -478,6 +478,8 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **I want** 通过快捷键快速唤醒语音输入,
 **So that** 无需鼠标操作，实现高效输入。
 
+**技术方案**: Fcitx5 插件侧原生快捷键监听 (支持 X11/Wayland)
+
 **Acceptance Criteria:**
 
 **Given** 应用在后台运行
@@ -495,10 +497,15 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **Given** 配置文件存在
 **When** 设置自定义快捷键
 **Then** 使用新键位替代默认的 Right Alt
+**And** 支持运行时动态更新 (通过 Socket 命令)
 
-**Given** 快捷键被其他应用占用
-**When** 尝试注册
-**Then** 输出警告日志，不崩溃
+**Given** Wayland 环境下用户录音时切换窗口
+**When** 停止录音并提交文本
+**Then** 文本仍然提交到原来的窗口 (焦点锁定机制)
+
+**Given** Fcitx5 插件监听快捷键
+**When** 检测到配置的快捷键按下
+**Then** 通过 Unix Socket (`nextalk-cmd.sock`) 向 Flutter 发送 toggle 命令
 
 ---
 
@@ -538,6 +545,16 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **Then** 状态指示器变为错误状态
 **And** 显示 "Fcitx5 未连接"
 **And** 3秒后自动隐藏或等待用户操作
+
+**Given** Wayland 环境下用户在应用 A 触发录音后切换到应用 B
+**When** 停止录音并提交文字
+**Then** 文字提交到应用 A (焦点锁定机制)
+**And** 不会误提交到应用 B
+
+**Given** 终端应用 (如 gnome-terminal)
+**When** 提交文字
+**Then** 使用完整 IME 周期 (preedit → commit → clear preedit)
+**And** 终端正确显示输入的文字
 
 ---
 
