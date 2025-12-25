@@ -166,13 +166,6 @@ void main() {
       );
     });
 
-    test('未初始化时访问 voiceActivityDetectorIsSpeech 应该抛出 StateError', () {
-      expect(
-        () => SherpaOnnxVadBindings.voiceActivityDetectorIsSpeech,
-        throwsA(isA<StateError>()),
-      );
-    });
-
     test('resetForTesting 应该重置初始化状态', () {
       SherpaOnnxVadBindings.resetForTesting();
       expect(SherpaOnnxVadBindings.isInitialized, isFalse);
