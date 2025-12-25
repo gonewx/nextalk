@@ -275,6 +275,10 @@ void NextalkAddon::handleKeyEvent(KeyEvent &keyEvent) {
 
             // 发送切换命令到 Flutter
             sendCommandToFlutter("toggle");
+
+            // 立即重置按键状态，不依赖释放事件
+            // 修复：窗口隐藏后焦点转移，释放事件可能丢失导致状态卡死
+            hotkeyPressed_ = false;
         }
     }
 }
