@@ -740,6 +740,7 @@ models/$_modelName/
   }
 
   /// 获取引擎模型的期望目录结构描述
+  /// Story 2-7: 解压时会剥离压缩包顶层目录，所以文件直接在引擎目录下
   String getExpectedStructureForEngine(EngineType engineType) {
     final config = ModelConfigs.forEngine(engineType);
     switch (engineType) {

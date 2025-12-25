@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../constants/capsule_colors.dart';
+import '../../constants/settings_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../services/model_manager.dart';
+import '../../services/settings_service.dart';
 import '../../services/tray_service.dart';
 import '../../services/window_service.dart';
 import '../../state/init_state.dart';
@@ -95,22 +97,50 @@ class _InitWizardState extends State<InitWizard> {
   /// 从校验阶段恢复（临时文件已完整）
   Future<void> _resumeFromVerification() async {
     try {
-      final error = await widget.modelManager.ensureModelReady(
-        onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
-          if (!mounted) return;
-          setState(() {
-            if (progress >= 0.7 || status.contains('解压')) {
-              _state = InitStateData.extracting(progress);
-            } else {
-              _state = InitStateData(
-                phase: InitPhase.verifying,
-                progress: progress,
-                statusMessage: status,
-              );
-            }
-          });
-        },
-      );
+      // 根据当前配置的引擎类型选择下载方法
+      final engineType = SettingsService.instance.isInitialized
+          ? SettingsService.instance.engineType
+          : EngineType.sensevoice; // 默认 SenseVoice
+
+      final ModelError error;
+      if (engineType == EngineType.sensevoice) {
+        // SenseVoice 需要下载模型 + VAD
+        error = await widget.modelManager.ensureSenseVoiceReady(
+          onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
+            if (!mounted) return;
+            setState(() {
+              if (progress >= 0.7 || status.contains('解压')) {
+                _state = InitStateData.extracting(progress);
+              } else {
+                _state = InitStateData(
+                  phase: InitPhase.verifying,
+                  progress: progress,
+                  statusMessage: status,
+                );
+              }
+            });
+          },
+        );
+      } else {
+        // Zipformer 只需要下载模型
+        error = await widget.modelManager.ensureModelReadyForEngine(
+          EngineType.zipformer,
+          onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
+            if (!mounted) return;
+            setState(() {
+              if (progress >= 0.7 || status.contains('解压')) {
+                _state = InitStateData.extracting(progress);
+              } else {
+                _state = InitStateData(
+                  phase: InitPhase.verifying,
+                  progress: progress,
+                  statusMessage: status,
+                );
+              }
+            });
+          },
+        );
+      }
 
       if (!mounted) return;
 
@@ -167,29 +197,24 @@ class _InitWizardState extends State<InitWizard> {
     if (!mounted) return;
 
     try {
-      final error = await widget.modelManager.ensureModelReady(
-        onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
-          if (!mounted) return;
-          setState(() {
-            // 根据进度和状态判断当前阶段
-            if (progress >= 0.7 || status.contains('解压')) {
-              _state = InitStateData.extracting(progress);
-            } else if (progress >= 0.6 || status.contains('校验')) {
-              _state = InitStateData(
-                phase: InitPhase.verifying,
-                progress: progress,
-                statusMessage: status,
-              );
-            } else {
-              _state = InitStateData.downloading(
-                progress: progress,
-                downloaded: downloaded,
-                total: total,
-              );
-            }
-          });
-        },
-      );
+      // 根据当前配置的引擎类型选择下载方法
+      final engineType = SettingsService.instance.isInitialized
+          ? SettingsService.instance.engineType
+          : EngineType.sensevoice; // 默认 SenseVoice
+
+      final ModelError error;
+      if (engineType == EngineType.sensevoice) {
+        // SenseVoice 需要下载模型 + VAD
+        error = await widget.modelManager.ensureSenseVoiceReady(
+          onProgress: _onDownloadProgress,
+        );
+      } else {
+        // Zipformer 只需要下载模型
+        error = await widget.modelManager.ensureModelReadyForEngine(
+          EngineType.zipformer,
+          onProgress: _onDownloadProgress,
+        );
+      }
 
       if (!mounted) return;
 
@@ -222,6 +247,30 @@ class _InitWizardState extends State<InitWizard> {
     }
   }
 
+  /// 下载进度回调
+  void _onDownloadProgress(double progress, String status,
+      {int downloaded = 0, int total = 0}) {
+    if (!mounted) return;
+    setState(() {
+      // 根据进度和状态判断当前阶段
+      if (progress >= 0.7 || status.contains('解压')) {
+        _state = InitStateData.extracting(progress);
+      } else if (progress >= 0.6 || status.contains('校验')) {
+        _state = InitStateData(
+          phase: InitPhase.verifying,
+          progress: progress,
+          statusMessage: status,
+        );
+      } else {
+        _state = InitStateData.downloading(
+          progress: progress,
+          downloaded: downloaded,
+          total: total,
+        );
+      }
+    });
+  }
+
   /// 切换到手动安装
   void _switchToManual() {
     setState(() {
@@ -248,9 +297,10 @@ class _InitWizardState extends State<InitWizard> {
 
   /// 复制下载链接
   /// Story 3-8: 使用国际化文本
-  Future<void> _copyLink() async {
+  /// Story 2-7: 支持复制不同引擎的 URL
+  Future<void> _copyLink(String url) async {
     await Clipboard.setData(
-      ClipboardData(text: ModelManager.downloadUrl),
+      ClipboardData(text: url),
     );
     if (mounted) {
       final l10n = AppLocalizations.of(context);
@@ -269,14 +319,28 @@ class _InitWizardState extends State<InitWizard> {
   }
 
   /// 验证模型
+  /// Story 2-7: 支持验证当前引擎的模型（SenseVoice 还需要验证 VAD）
   Future<void> _verifyModel() async {
     setState(() {
       _state = InitStateData.verifying();
     });
 
-    final status = widget.modelManager.checkModelStatus();
+    // 获取当前引擎类型
+    final engineType = SettingsService.instance.isInitialized
+        ? SettingsService.instance.engineType
+        : EngineType.sensevoice;
 
-    if (status == ModelStatus.ready) {
+    // 检查 ASR 模型状态
+    final asrStatus = widget.modelManager.checkModelStatusForEngine(engineType);
+
+    // 如果是 SenseVoice，还需要检查 VAD 模型
+    bool vadReady = true;
+    if (engineType == EngineType.sensevoice) {
+      final vadStatus = widget.modelManager.checkVadModelStatus();
+      vadReady = vadStatus == ModelStatus.ready;
+    }
+
+    if (asrStatus == ModelStatus.ready && vadReady) {
       setState(() {
         _state = InitStateData.completed();
       });
@@ -284,10 +348,16 @@ class _InitWizardState extends State<InitWizard> {
       TrayService.instance.updateStatus(TrayStatus.normal);
     } else {
       final l10n = AppLocalizations.of(context);
+      String errorMsg = l10n?.wizardModelVerifyFailed ?? '未检测到有效模型，请确认文件已正确放置';
+      if (asrStatus != ModelStatus.ready) {
+        errorMsg = '${engineType == EngineType.sensevoice ? "SenseVoice" : "Zipformer"} 模型未就绪';
+      } else if (!vadReady) {
+        errorMsg = 'VAD 模型未就绪';
+      }
       setState(() {
         _state = InitStateData.error(
           ModelError.none,
-          message: l10n?.wizardModelVerifyFailed ?? '未检测到有效模型，请确认文件已正确放置',
+          message: errorMsg,
         );
       });
       // 验证失败时更新托盘状态为警告
@@ -366,13 +436,23 @@ class _InitWizardState extends State<InitWizard> {
         );
 
       case InitPhase.manualGuide:
+        // Story 2-7: 根据当前引擎类型动态显示下载说明
+        final engineType = SettingsService.instance.isInitialized
+            ? SettingsService.instance.engineType
+            : EngineType.sensevoice;
+        final isSenseVoice = engineType == EngineType.sensevoice;
+
         return ManualInstallGuide(
           onCopyLink: _copyLink,
           onOpenDirectory: _openDirectory,
           onVerifyModel: _verifyModel,
           onSwitchToAuto: _switchToAuto,
-          modelUrl: ModelManager.downloadUrl,
+          engineType: engineType,
+          modelUrl: widget.modelManager.getDownloadUrlForEngine(engineType),
           targetPath: ModelManager.modelDirectory,
+          expectedStructure: widget.modelManager.getExpectedStructureForEngine(engineType),
+          vadUrl: isSenseVoice ? widget.modelManager.vadDownloadUrl : null,
+          vadExpectedStructure: isSenseVoice ? widget.modelManager.vadExpectedStructure : null,
         );
 
       case InitPhase.checkingModel:

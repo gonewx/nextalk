@@ -423,7 +423,7 @@ class HotkeyController {
           null, // 使用 LanguageService 国际化
         ),
       ASRError.vadInitFailed => (
-          CapsuleErrorType.modelLoadFailed,
+          CapsuleErrorType.modelIncomplete, // VAD 模型缺失，需要下载
           null, // 使用 LanguageService 国际化
         ),
       ASRError.invalidConfig => (

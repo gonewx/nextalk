@@ -203,6 +203,14 @@ class SenseVoiceEngine implements ASREngine {
       vadConfig.ref.provider = config.provider.toNativeUtf8();
       vadConfig.ref.debug = enableDebugLog ? 1 : 0;
 
+      // Ten VAD 配置 (不使用，设置为空)
+      vadConfig.ref.tenVad.model = nullptr;
+      vadConfig.ref.tenVad.threshold = 0.0;
+      vadConfig.ref.tenVad.minSilenceDuration = 0.0;
+      vadConfig.ref.tenVad.minSpeechDuration = 0.0;
+      vadConfig.ref.tenVad.maxSpeechDuration = 0.0;
+      vadConfig.ref.tenVad.windowSize = 0;
+
       // 创建 VAD (bufferSizeInSeconds = 30.0)
       _vad = SherpaOnnxVadBindings.createVoiceActivityDetector(vadConfig, 30.0);
 
@@ -243,12 +251,30 @@ class SenseVoiceEngine implements ASREngine {
   /// 初始化离线识别器
   ASRError _initializeRecognizer(
       SenseVoiceConfig config, String modelPath, String tokensPath) {
+    if (enableDebugLog) {
+      // ignore: avoid_print
+      print('[SenseVoiceEngine] 开始初始化离线识别器...');
+      // ignore: avoid_print
+      print('[SenseVoiceEngine] modelPath: $modelPath');
+      // ignore: avoid_print
+      print('[SenseVoiceEngine] tokensPath: $tokensPath');
+    }
+
     final recognizerConfig = calloc<SherpaOnnxOfflineRecognizerConfig>();
+
+    if (enableDebugLog) {
+      // ignore: avoid_print
+      print('[SenseVoiceEngine] 已分配配置内存，开始设置字段...');
+    }
 
     try {
       // 特征配置
       recognizerConfig.ref.featConfig.sampleRate = config.sampleRate;
       recognizerConfig.ref.featConfig.featureDim = 80;
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ featConfig 设置完成');
+      }
 
       // SenseVoice 模型配置
       recognizerConfig.ref.modelConfig.senseVoice.model =
@@ -256,6 +282,10 @@ class SenseVoiceEngine implements ASREngine {
       recognizerConfig.ref.modelConfig.senseVoice.language =
           config.language.toNativeUtf8();
       recognizerConfig.ref.modelConfig.senseVoice.useItn = config.useItn ? 1 : 0;
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ senseVoice 配置设置完成');
+      }
 
       // 其他模型配置 (空字符串)
       recognizerConfig.ref.modelConfig.transducer.encoder = ''.toNativeUtf8();
@@ -269,6 +299,10 @@ class SenseVoiceEngine implements ASREngine {
       recognizerConfig.ref.modelConfig.whisper.task = ''.toNativeUtf8();
       recognizerConfig.ref.modelConfig.whisper.tailPaddings = 0;
       recognizerConfig.ref.modelConfig.tdnn.model = ''.toNativeUtf8();
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ 基础模型配置设置完成');
+      }
 
       // 通用模型配置
       recognizerConfig.ref.modelConfig.tokens = tokensPath.toNativeUtf8();
@@ -279,12 +313,76 @@ class SenseVoiceEngine implements ASREngine {
       recognizerConfig.ref.modelConfig.modelingUnit = ''.toNativeUtf8();
       recognizerConfig.ref.modelConfig.bpeVocab = ''.toNativeUtf8();
       recognizerConfig.ref.modelConfig.telespeechCtc = ''.toNativeUtf8();
-      recognizerConfig.ref.modelConfig.tokensBuf = nullptr;
-      recognizerConfig.ref.modelConfig.tokensBufSize = 0;
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ 通用模型配置设置完成');
+      }
+
+      // 新增模型配置 (sherpa-onnx v1.12.20+)
+      // Moonshine 配置
+      recognizerConfig.ref.modelConfig.moonshine.preprocessor = ''.toNativeUtf8();
+      recognizerConfig.ref.modelConfig.moonshine.encoder = ''.toNativeUtf8();
+      recognizerConfig.ref.modelConfig.moonshine.uncachedDecoder = ''.toNativeUtf8();
+      recognizerConfig.ref.modelConfig.moonshine.cachedDecoder = ''.toNativeUtf8();
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ moonshine 配置设置完成');
+      }
+
+      // FireRedAsr 配置
+      recognizerConfig.ref.modelConfig.fireRedAsr.encoder = ''.toNativeUtf8();
+      recognizerConfig.ref.modelConfig.fireRedAsr.decoder = ''.toNativeUtf8();
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ fireRedAsr 配置设置完成');
+      }
+
+      // Dolphin 配置
+      recognizerConfig.ref.modelConfig.dolphin.model = ''.toNativeUtf8();
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ dolphin 配置设置完成');
+      }
+
+      // Zipformer CTC 配置
+      recognizerConfig.ref.modelConfig.zipformerCtc.model = ''.toNativeUtf8();
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ zipformerCtc 配置设置完成');
+      }
+
+      // Canary 配置
+      recognizerConfig.ref.modelConfig.canary.encoder = ''.toNativeUtf8();
+      recognizerConfig.ref.modelConfig.canary.decoder = ''.toNativeUtf8();
+      recognizerConfig.ref.modelConfig.canary.srcLang = ''.toNativeUtf8();
+      recognizerConfig.ref.modelConfig.canary.tgtLang = ''.toNativeUtf8();
+      recognizerConfig.ref.modelConfig.canary.usePnc = 0;
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ canary 配置设置完成');
+      }
+
+      // Wenet CTC 配置
+      recognizerConfig.ref.modelConfig.wenetCtc.model = ''.toNativeUtf8();
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ wenetCtc 配置设置完成');
+      }
+
+      // Omnilingual ASR CTC 配置 (v1.12.20 新增)
+      recognizerConfig.ref.modelConfig.omnilingual.model = ''.toNativeUtf8();
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ omnilingual 配置设置完成');
+      }
 
       // LM 配置
       recognizerConfig.ref.lmConfig.model = ''.toNativeUtf8();
       recognizerConfig.ref.lmConfig.scale = 1.0;
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ LM 配置设置完成');
+      }
 
       // 解码配置
       recognizerConfig.ref.decodingMethod = 'greedy_search'.toNativeUtf8();
@@ -294,14 +392,29 @@ class SenseVoiceEngine implements ASREngine {
       recognizerConfig.ref.ruleFsts = ''.toNativeUtf8();
       recognizerConfig.ref.ruleFars = ''.toNativeUtf8();
       recognizerConfig.ref.blankPenalty = 0.0;
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ 解码配置设置完成');
+      }
 
       // 同音替换配置
+      recognizerConfig.ref.hr.dictDir = ''.toNativeUtf8(); // unused but required
       recognizerConfig.ref.hr.lexicon = ''.toNativeUtf8();
       recognizerConfig.ref.hr.ruleFsts = ''.toNativeUtf8();
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✓ HR 配置设置完成');
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] 所有配置完成，准备调用 createOfflineRecognizer...');
+      }
 
       // 创建识别器
       _recognizer =
           SherpaOnnxOfflineBindings.createOfflineRecognizer(recognizerConfig);
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] createOfflineRecognizer 调用完成');
+      }
 
       // 释放配置字符串
       _freeRecognizerConfigStrings(recognizerConfig);
@@ -336,29 +449,77 @@ class SenseVoiceEngine implements ASREngine {
   /// 释放识别器配置中分配的字符串内存
   void _freeRecognizerConfigStrings(
       Pointer<SherpaOnnxOfflineRecognizerConfig> c) {
+    // SenseVoice 配置
     calloc.free(c.ref.modelConfig.senseVoice.model);
     calloc.free(c.ref.modelConfig.senseVoice.language);
+
+    // Transducer 配置
     calloc.free(c.ref.modelConfig.transducer.encoder);
     calloc.free(c.ref.modelConfig.transducer.decoder);
     calloc.free(c.ref.modelConfig.transducer.joiner);
+
+    // Paraformer 配置
     calloc.free(c.ref.modelConfig.paraformer.model);
+
+    // NeMo CTC 配置
     calloc.free(c.ref.modelConfig.nemoCtc.model);
+
+    // Whisper 配置
     calloc.free(c.ref.modelConfig.whisper.encoder);
     calloc.free(c.ref.modelConfig.whisper.decoder);
     calloc.free(c.ref.modelConfig.whisper.language);
     calloc.free(c.ref.modelConfig.whisper.task);
+
+    // Tdnn 配置
     calloc.free(c.ref.modelConfig.tdnn.model);
+
+    // 通用模型配置
     calloc.free(c.ref.modelConfig.tokens);
     calloc.free(c.ref.modelConfig.provider);
     calloc.free(c.ref.modelConfig.modelType);
     calloc.free(c.ref.modelConfig.modelingUnit);
     calloc.free(c.ref.modelConfig.bpeVocab);
     calloc.free(c.ref.modelConfig.telespeechCtc);
+
+    // Moonshine 配置
+    calloc.free(c.ref.modelConfig.moonshine.preprocessor);
+    calloc.free(c.ref.modelConfig.moonshine.encoder);
+    calloc.free(c.ref.modelConfig.moonshine.uncachedDecoder);
+    calloc.free(c.ref.modelConfig.moonshine.cachedDecoder);
+
+    // FireRedAsr 配置
+    calloc.free(c.ref.modelConfig.fireRedAsr.encoder);
+    calloc.free(c.ref.modelConfig.fireRedAsr.decoder);
+
+    // Dolphin 配置
+    calloc.free(c.ref.modelConfig.dolphin.model);
+
+    // Zipformer CTC 配置
+    calloc.free(c.ref.modelConfig.zipformerCtc.model);
+
+    // Canary 配置
+    calloc.free(c.ref.modelConfig.canary.encoder);
+    calloc.free(c.ref.modelConfig.canary.decoder);
+    calloc.free(c.ref.modelConfig.canary.srcLang);
+    calloc.free(c.ref.modelConfig.canary.tgtLang);
+
+    // Wenet CTC 配置
+    calloc.free(c.ref.modelConfig.wenetCtc.model);
+
+    // Omnilingual ASR CTC 配置
+    calloc.free(c.ref.modelConfig.omnilingual.model);
+
+    // LM 配置
     calloc.free(c.ref.lmConfig.model);
+
+    // 解码配置
     calloc.free(c.ref.decodingMethod);
     calloc.free(c.ref.hotwordsFile);
     calloc.free(c.ref.ruleFsts);
     calloc.free(c.ref.ruleFars);
+
+    // 同音替换配置
+    calloc.free(c.ref.hr.dictDir);
     calloc.free(c.ref.hr.lexicon);
     calloc.free(c.ref.hr.ruleFsts);
   }

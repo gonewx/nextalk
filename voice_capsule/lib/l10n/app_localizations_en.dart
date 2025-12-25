@@ -37,6 +37,34 @@ class AppLocalizationsEn extends AppLocalizations {
       'Model switched, restart app to take effect';
 
   @override
+  String get trayAsrEngine => 'ASR Engine';
+
+  @override
+  String get trayEngineZipformer => 'Zipformer (Streaming)';
+
+  @override
+  String get trayEngineSensevoice => 'SenseVoice (Offline)';
+
+  @override
+  String get trayEngineSwitching => 'Switching...';
+
+  @override
+  String trayEngineSwitchSuccess(Object engine) {
+    return 'Engine switched to $engine';
+  }
+
+  @override
+  String trayEngineSwitchFallback(Object engine) {
+    return 'Switch failed, fallback to $engine';
+  }
+
+  @override
+  String get trayModelSettings => 'Model Settings';
+
+  @override
+  String get trayEngineActual => 'In Use';
+
+  @override
   String get wizardDownloading => 'Downloading...';
 
   @override

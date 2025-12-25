@@ -26,6 +26,14 @@ import 'utils/diagnostic_logger.dart';
 /// Story 3-7: 全局错误边界与诊断日志
 /// Story 2-7: 支持多引擎 ASR
 
+/// 将 EngineType 转换为 ASREngineType
+ASREngineType _toASREngineType(EngineType type) {
+  return switch (type) {
+    EngineType.zipformer => ASREngineType.zipformer,
+    EngineType.sensevoice => ASREngineType.sensevoice,
+  };
+}
+
 /// 全局状态控制器 (用于 UI 更新)
 final _stateController = StreamController<CapsuleStateData>.broadcast();
 
@@ -134,7 +142,7 @@ Future<void> main() async {
     } on EngineNotAvailableException catch (e) {
       // 所有引擎都不可用，创建一个空壳引擎 (实际使用配置的类型)
       DiagnosticLogger.instance.warn('main', '${e.message}, 尝试的引擎: ${e.triedEngines}');
-      _asrEngine = ASREngineFactory.create(configuredEngineType, enableDebugLog: true);
+      _asrEngine = ASREngineFactory.create(_toASREngineType(configuredEngineType), enableDebugLog: true);
       _actualEngineType = configuredEngineType;
       TrayService.instance.setActualEngineType(configuredEngineType);
       // 注意：此时应用会在后续尝试使用引擎时显示下载引导
@@ -223,7 +231,7 @@ Future<void> main() async {
         DiagnosticLogger.instance.info('main', '切换 ASR 引擎: $newEngineType');
 
         // 创建新引擎实例
-        final newEngine = ASREngineFactory.create(newEngineType, enableDebugLog: true);
+        final newEngine = ASREngineFactory.create(_toASREngineType(newEngineType), enableDebugLog: true);
 
         // 切换引擎 (销毁旧引擎，使用新引擎)
         await _pipeline!.switchEngine(newEngine);

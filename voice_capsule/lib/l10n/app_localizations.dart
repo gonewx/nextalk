@@ -152,6 +152,54 @@ abstract class AppLocalizations {
   /// **'模型已切换，重启应用后生效'**
   String get trayModelSwitchNotice;
 
+  /// No description provided for @trayAsrEngine.
+  ///
+  /// In zh, this message translates to:
+  /// **'ASR 引擎'**
+  String get trayAsrEngine;
+
+  /// No description provided for @trayEngineZipformer.
+  ///
+  /// In zh, this message translates to:
+  /// **'Zipformer (流式)'**
+  String get trayEngineZipformer;
+
+  /// No description provided for @trayEngineSensevoice.
+  ///
+  /// In zh, this message translates to:
+  /// **'SenseVoice (离线)'**
+  String get trayEngineSensevoice;
+
+  /// No description provided for @trayEngineSwitching.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换中...'**
+  String get trayEngineSwitching;
+
+  /// No description provided for @trayEngineSwitchSuccess.
+  ///
+  /// In zh, this message translates to:
+  /// **'引擎已切换为 {engine}'**
+  String trayEngineSwitchSuccess(Object engine);
+
+  /// No description provided for @trayEngineSwitchFallback.
+  ///
+  /// In zh, this message translates to:
+  /// **'切换失败，已回退到 {engine}'**
+  String trayEngineSwitchFallback(Object engine);
+
+  /// No description provided for @trayModelSettings.
+  ///
+  /// In zh, this message translates to:
+  /// **'模型设置'**
+  String get trayModelSettings;
+
+  /// No description provided for @trayEngineActual.
+  ///
+  /// In zh, this message translates to:
+  /// **'当前使用'**
+  String get trayEngineActual;
+
   /// No description provided for @wizardDownloading.
   ///
   /// In zh, this message translates to:

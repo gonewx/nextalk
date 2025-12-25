@@ -53,7 +53,9 @@ final class SherpaOnnxOnlineCtcFstDecoderConfig extends Struct {
 }
 
 /// 同音替换配置
+/// 注意: dict_dir 字段虽然标记为 unused，但必须存在以匹配 C 结构体布局
 final class SherpaOnnxHomophoneReplacerConfig extends Struct {
+  external Pointer<Utf8> dictDir; // unused but required for struct alignment
   external Pointer<Utf8> lexicon;
   external Pointer<Utf8> ruleFsts;
 }

@@ -337,10 +337,10 @@ class AudioInferencePipeline {
         rule3MinUtteranceLength: 20.0,
       );
     } else {
-      // SenseVoice 配置将在 Task 3 中完善
+      // SenseVoice 配置
       config = SenseVoiceConfig(
-        modelDir: _modelManager.modelPath,
-        vadModelPath: '', // TODO: 从 ModelManager 获取 VAD 模型路径
+        modelDir: _modelManager.getModelPathForEngine(EngineType.sensevoice),
+        vadModelPath: _modelManager.vadModelFilePath,
       );
     }
 

@@ -53,13 +53,62 @@ final class SherpaOnnxOfflineTdnnModelConfig extends Struct {
   external Pointer<Utf8> model;
 }
 
-/// 同音替换配置 (复用在线版本)
+/// Moonshine 模型配置 (离线)
+final class SherpaOnnxOfflineMoonshineModelConfig extends Struct {
+  external Pointer<Utf8> preprocessor;
+  external Pointer<Utf8> encoder;
+  external Pointer<Utf8> uncachedDecoder;
+  external Pointer<Utf8> cachedDecoder;
+}
+
+/// FireRedAsr 模型配置 (离线)
+final class SherpaOnnxOfflineFireRedAsrModelConfig extends Struct {
+  external Pointer<Utf8> encoder;
+  external Pointer<Utf8> decoder;
+}
+
+/// Dolphin 模型配置 (离线)
+final class SherpaOnnxOfflineDolphinModelConfig extends Struct {
+  external Pointer<Utf8> model;
+}
+
+/// Zipformer CTC 模型配置 (离线)
+final class SherpaOnnxOfflineZipformerCtcModelConfig extends Struct {
+  external Pointer<Utf8> model;
+}
+
+/// Canary 模型配置 (离线)
+final class SherpaOnnxOfflineCanaryModelConfig extends Struct {
+  external Pointer<Utf8> encoder;
+  external Pointer<Utf8> decoder;
+  external Pointer<Utf8> srcLang;
+  external Pointer<Utf8> tgtLang;
+
+  @Int32()
+  external int usePnc;
+}
+
+/// Wenet CTC 模型配置 (离线)
+final class SherpaOnnxOfflineWenetCtcModelConfig extends Struct {
+  external Pointer<Utf8> model;
+}
+
+/// Omnilingual ASR CTC 模型配置 (离线)
+/// 注意: v1.12.20 新增字段，必须包含以确保结构体大小匹配
+final class SherpaOnnxOfflineOmnilingualAsrCtcModelConfig extends Struct {
+  external Pointer<Utf8> model;
+}
+
+/// 同音替换配置
+/// 注意: dict_dir 字段虽然标记为 unused，但必须存在以匹配 C 结构体布局
 final class SherpaOnnxOfflineHomophoneReplacerConfig extends Struct {
+  external Pointer<Utf8> dictDir; // unused
   external Pointer<Utf8> lexicon;
   external Pointer<Utf8> ruleFsts;
 }
 
 /// 离线模型配置
+/// 注意: 字段顺序必须与 C API (sherpa-onnx v1.12.20) 完全一致
 final class SherpaOnnxOfflineModelConfig extends Struct {
   external SherpaOnnxOfflineTransducerModelConfig transducer;
   external SherpaOnnxOfflineParaformerModelConfig paraformer;
@@ -82,11 +131,13 @@ final class SherpaOnnxOfflineModelConfig extends Struct {
   external Pointer<Utf8> telespeechCtc;
 
   external SherpaOnnxOfflineSenseVoiceModelConfig senseVoice;
-
-  external Pointer<Utf8> tokensBuf;
-
-  @Int32()
-  external int tokensBufSize;
+  external SherpaOnnxOfflineMoonshineModelConfig moonshine;
+  external SherpaOnnxOfflineFireRedAsrModelConfig fireRedAsr;
+  external SherpaOnnxOfflineDolphinModelConfig dolphin;
+  external SherpaOnnxOfflineZipformerCtcModelConfig zipformerCtc;
+  external SherpaOnnxOfflineCanaryModelConfig canary;
+  external SherpaOnnxOfflineWenetCtcModelConfig wenetCtc;
+  external SherpaOnnxOfflineOmnilingualAsrCtcModelConfig omnilingual;
 }
 
 /// 离线语言模型配置
@@ -169,6 +220,9 @@ final class SherpaOnnxOfflineRecognizerResult extends Struct {
 
   /// 持续时间数组
   external Pointer<Float> durations;
+
+  /// log probs 数组 (v1.12.20 新增)
+  external Pointer<Float> ysLogProbs;
 }
 
 // ===== FFI 函数类型定义 (Native) =====

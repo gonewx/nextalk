@@ -34,6 +34,32 @@ final class SherpaOnnxSileroVadModelConfig extends Struct {
   external double maxSpeechDuration;
 }
 
+/// Ten VAD 模型配置 (v1.12.20+ 新增)
+final class SherpaOnnxTenVadModelConfig extends Struct {
+  /// VAD 模型文件路径
+  external Pointer<Utf8> model;
+
+  /// 语音检测阈值
+  @Float()
+  external double threshold;
+
+  /// 最小静音时长 (秒)
+  @Float()
+  external double minSilenceDuration;
+
+  /// 最小语音时长 (秒)
+  @Float()
+  external double minSpeechDuration;
+
+  /// 窗口大小 (采样点数)
+  @Int32()
+  external int windowSize;
+
+  /// 最大语音时长 (秒)
+  @Float()
+  external double maxSpeechDuration;
+}
+
 /// VAD 模型配置
 final class SherpaOnnxVadModelConfig extends Struct {
   /// Silero VAD 配置
@@ -53,6 +79,9 @@ final class SherpaOnnxVadModelConfig extends Struct {
   /// 调试模式
   @Int32()
   external int debug;
+
+  /// Ten VAD 配置 (v1.12.20+ 新增)
+  external SherpaOnnxTenVadModelConfig tenVad;
 }
 
 /// VAD 检测器 (不透明指针)
@@ -108,9 +137,6 @@ typedef DestroySpeechSegmentNative = Void Function(
 typedef VoiceActivityDetectorResetNative = Void Function(
     Pointer<SherpaOnnxVoiceActivityDetector>);
 
-typedef VoiceActivityDetectorIsSpeechNative = Int32 Function(
-    Pointer<SherpaOnnxVoiceActivityDetector>);
-
 // ===== FFI 函数类型定义 (Dart) =====
 
 typedef CreateVoiceActivityDetectorDart
@@ -147,9 +173,6 @@ typedef DestroySpeechSegmentDart = void Function(
 typedef VoiceActivityDetectorResetDart = void Function(
     Pointer<SherpaOnnxVoiceActivityDetector>);
 
-typedef VoiceActivityDetectorIsSpeechDart = int Function(
-    Pointer<SherpaOnnxVoiceActivityDetector>);
-
 // ===== Sherpa-onnx VAD 绑定类 =====
 
 /// Sherpa-onnx VAD FFI 绑定
@@ -177,7 +200,6 @@ class SherpaOnnxVadBindings {
   static VoiceActivityDetectorFrontDart? _voiceActivityDetectorFront;
   static DestroySpeechSegmentDart? _destroySpeechSegment;
   static VoiceActivityDetectorResetDart? _voiceActivityDetectorReset;
-  static VoiceActivityDetectorIsSpeechDart? _voiceActivityDetectorIsSpeech;
 
   static bool _initialized = false;
 
@@ -274,14 +296,6 @@ class SherpaOnnxVadBindings {
     return _voiceActivityDetectorReset!;
   }
 
-  /// 检查当前是否在语音中
-  ///
-  /// 返回 1 表示当前正在说话，0 表示静音
-  static VoiceActivityDetectorIsSpeechDart get voiceActivityDetectorIsSpeech {
-    _checkInitialized();
-    return _voiceActivityDetectorIsSpeech!;
-  }
-
   static void _checkInitialized() {
     if (!_initialized) {
       throw StateError('SherpaOnnxVadBindings 未初始化，请先调用 init()');
@@ -341,11 +355,6 @@ class SherpaOnnxVadBindings {
         VoiceActivityDetectorResetNative,
         VoiceActivityDetectorResetDart>('SherpaOnnxVoiceActivityDetectorReset');
 
-    _voiceActivityDetectorIsSpeech = lib.lookupFunction<
-            VoiceActivityDetectorIsSpeechNative,
-            VoiceActivityDetectorIsSpeechDart>(
-        'SherpaOnnxVoiceActivityDetectorIsSpeech');
-
     _initialized = true;
   }
 
@@ -363,7 +372,6 @@ class SherpaOnnxVadBindings {
     _voiceActivityDetectorFront = null;
     _destroySpeechSegment = null;
     _voiceActivityDetectorReset = null;
-    _voiceActivityDetectorIsSpeech = null;
   }
 }
 

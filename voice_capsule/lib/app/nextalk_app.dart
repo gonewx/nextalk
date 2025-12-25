@@ -323,9 +323,16 @@ class _NextalkAppState extends State<NextalkApp> {
       case CapsuleErrorType.modelLoadFailed:
         return [
           ErrorAction(
+            label: l10n?.actionRedownload ?? '重新下载',
+            onPressed: () {
+              TrayService.instance.updateStatus(TrayStatus.normal);
+              _showInitWizard();
+            },
+            isPrimary: true,
+          ),
+          ErrorAction(
             label: l10n?.actionRetry ?? '重试',
             onPressed: () => HotkeyController.instance.retryRecording(),
-            isPrimary: true,
           ),
           ErrorAction(
             label: l10n?.actionClose ?? '关闭',

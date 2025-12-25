@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../constants/capsule_colors.dart';
+import '../../constants/settings_constants.dart';
 import '../../l10n/app_localizations.dart';
 
 /// 手动安装引导组件
 /// Story 3-7: 初始化向导 - AC5, AC6, AC7
 /// Story 3-8: 国际化 - AC9
+/// Story 2-7: 多模型 ASR 支持 - 动态显示不同引擎的下载说明
 /// 提供下载链接、目标路径和检测按钮
 class ManualInstallGuide extends StatelessWidget {
   const ManualInstallGuide({
@@ -13,13 +15,16 @@ class ManualInstallGuide extends StatelessWidget {
     required this.onOpenDirectory,
     required this.onVerifyModel,
     required this.onSwitchToAuto,
-    this.modelUrl =
-        'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2',
-    this.targetPath = '~/.local/share/nextalk/models/',
+    required this.engineType,
+    required this.modelUrl,
+    required this.targetPath,
+    required this.expectedStructure,
+    this.vadUrl,
+    this.vadExpectedStructure,
   });
 
-  /// 复制链接回调
-  final VoidCallback onCopyLink;
+  /// 复制链接回调（参数为要复制的 URL）
+  final void Function(String url) onCopyLink;
 
   /// 打开目录回调
   final VoidCallback onOpenDirectory;
@@ -30,18 +35,32 @@ class ManualInstallGuide extends StatelessWidget {
   /// 切换到自动下载回调
   final VoidCallback onSwitchToAuto;
 
+  /// 当前引擎类型
+  final EngineType engineType;
+
   /// 模型下载 URL
   final String modelUrl;
 
   /// 目标路径
   final String targetPath;
 
+  /// 期望的目录结构
+  final String expectedStructure;
+
+  /// VAD 模型下载 URL (仅 SenseVoice 需要)
+  final String? vadUrl;
+
+  /// VAD 期望的目录结构 (仅 SenseVoice 需要)
+  final String? vadExpectedStructure;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final isSenseVoice = engineType == EngineType.sensevoice;
+    final engineName = isSenseVoice ? 'SenseVoice' : 'Zipformer';
 
     return Container(
-      constraints: const BoxConstraints(maxWidth: 480),
+      constraints: const BoxConstraints(maxWidth: 520),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: CapsuleColors.background,
@@ -59,10 +78,10 @@ class ManualInstallGuide extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 标题
+          // 标题（显示当前引擎类型）
           Center(
             child: Text(
-              '📁 ${l10n?.wizardManualInstallTitle ?? '手动安装模型'}',
+              '📁 ${l10n?.wizardManualInstallTitle ?? '手动安装模型'} ($engineName)',
               style: const TextStyle(
                 color: CapsuleColors.textWhite,
                 fontSize: 18,
@@ -72,7 +91,7 @@ class ManualInstallGuide extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // 步骤 1: 下载模型
+          // 步骤 1: 下载 ASR 模型
           _buildStep(
             context: context,
             number: '1',
@@ -91,7 +110,7 @@ class ManualInstallGuide extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 TextButton.icon(
-                  onPressed: onCopyLink,
+                  onPressed: () => onCopyLink(modelUrl),
                   icon: const Icon(Icons.copy, size: 16),
                   label: Text(l10n?.wizardCopyLink ?? '复制链接'),
                   style: TextButton.styleFrom(
@@ -103,6 +122,40 @@ class ManualInstallGuide extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
+
+          // 步骤 1.5: 下载 VAD 模型（仅 SenseVoice 需要）
+          if (isSenseVoice && vadUrl != null) ...[
+            _buildStep(
+              context: context,
+              number: '1b',
+              title: '下载 VAD 模型 (语音活动检测):',
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _truncateUrl(vadUrl!),
+                      style: TextStyle(
+                        color: CapsuleColors.textHint,
+                        fontSize: 12,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () => onCopyLink(vadUrl!),
+                    icon: const Icon(Icons.copy, size: 16),
+                    label: Text(l10n?.wizardCopyLink ?? '复制链接'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: CapsuleColors.accentRed,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // 步骤 2: 解压并放置
           _buildStep(
@@ -144,13 +197,37 @@ class ManualInstallGuide extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // 步骤 3: 目录结构说明
+          // 步骤 3: ASR 模型目录结构说明
           _buildStep(
             context: context,
             number: '3',
             title: l10n?.wizardStep3Structure ?? '目录结构应为:',
-            child: Tooltip(
-              message: 'sherpa-onnx-streaming-zipformer-bilingual-zh-en/',
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black26,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SelectableText(
+                expectedStructure.trim(),
+                style: TextStyle(
+                  color: CapsuleColors.textHint,
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  height: 1.5,
+                ),
+              ),
+            ),
+          ),
+
+          // 步骤 3b: VAD 模型目录结构（仅 SenseVoice 需要）
+          if (isSenseVoice && vadExpectedStructure != null) ...[
+            const SizedBox(height: 12),
+            _buildStep(
+              context: context,
+              number: '3b',
+              title: 'VAD 模型结构:',
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
@@ -159,11 +236,7 @@ class ManualInstallGuide extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: SelectableText(
-                  'sherpa-onnx-streaming-zipformer-bilingual-zh-en/\n'
-                  '  ├── encoder-*.onnx\n'
-                  '  ├── decoder-*.onnx\n'
-                  '  ├── joiner-*.onnx\n'
-                  '  └── tokens.txt',
+                  vadExpectedStructure!.trim(),
                   style: TextStyle(
                     color: CapsuleColors.textHint,
                     fontSize: 11,
@@ -173,7 +246,7 @@ class ManualInstallGuide extends StatelessWidget {
                 ),
               ),
             ),
-          ),
+          ],
           const SizedBox(height: 24),
 
           // 按钮区域

@@ -19,6 +19,7 @@
   "trayEngineSwitchSuccess": "Engine switched to {engine}",
   "trayEngineSwitchFallback": "Switch failed, fallback to {engine}",
   "trayModelSettings": "Model Settings",
+  "trayEngineActual": "In Use",
 
   "wizardDownloading": "Downloading...",
   "wizardExtracting": "Extracting...",

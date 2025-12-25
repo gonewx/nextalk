@@ -36,6 +36,34 @@ class AppLocalizationsZh extends AppLocalizations {
   String get trayModelSwitchNotice => '模型已切换，重启应用后生效';
 
   @override
+  String get trayAsrEngine => 'ASR 引擎';
+
+  @override
+  String get trayEngineZipformer => 'Zipformer (流式)';
+
+  @override
+  String get trayEngineSensevoice => 'SenseVoice (离线)';
+
+  @override
+  String get trayEngineSwitching => '切换中...';
+
+  @override
+  String trayEngineSwitchSuccess(Object engine) {
+    return '引擎已切换为 $engine';
+  }
+
+  @override
+  String trayEngineSwitchFallback(Object engine) {
+    return '切换失败，已回退到 $engine';
+  }
+
+  @override
+  String get trayModelSettings => '模型设置';
+
+  @override
+  String get trayEngineActual => '当前使用';
+
+  @override
   String get wizardDownloading => '正在下载...';
 
   @override

@@ -203,6 +203,7 @@ class ZipformerEngine implements ASREngine {
       c.ref.blankPenalty = 0.0;
 
       // 同音替换配置
+      c.ref.hr.dictDir = ''.toNativeUtf8(); // unused but required
       c.ref.hr.lexicon = ''.toNativeUtf8();
       c.ref.hr.ruleFsts = ''.toNativeUtf8();
 
@@ -263,6 +264,7 @@ class ZipformerEngine implements ASREngine {
     calloc.free(c.ref.ctcFstDecoderConfig.graph);
     calloc.free(c.ref.ruleFsts);
     calloc.free(c.ref.ruleFars);
+    calloc.free(c.ref.hr.dictDir);
     calloc.free(c.ref.hr.lexicon);
     calloc.free(c.ref.hr.ruleFsts);
   }
