@@ -1,7 +1,7 @@
 import 'dart:async';
 
+import 'asr/asr_engine.dart';
 import 'audio_inference_pipeline.dart';
-import 'sherpa_service.dart';
 import 'tray_service.dart';
 import 'window_service.dart';
 import 'fcitx_client.dart';
@@ -373,7 +373,7 @@ class HotkeyController {
           CapsuleErrorType.modelNotFound,
           null, // 使用 LanguageService 国际化
         ),
-      PipelineError.recognizerFailed => _getDetailedSherpaError(),
+      PipelineError.recognizerFailed => _getDetailedASRError(),
       PipelineError.none => (null, null),
     };
 
@@ -391,49 +391,46 @@ class HotkeyController {
     }
   }
 
-  /// Story 3-7: 获取详细的 Sherpa 错误信息 (AC9)
+  /// Story 3-7: 获取详细的 ASR 错误信息 (AC9)
   /// Story 3-8: 移除硬编码消息，使用 CapsuleStateData.displayMessage 的国际化翻译
-  (CapsuleErrorType, String?) _getDetailedSherpaError() {
-    final sherpaError = _pipeline?.lastSherpaError ?? SherpaError.none;
+  /// Story 2-7: 重构为使用 ASRError (ASR 引擎抽象层统一错误类型)
+  (CapsuleErrorType, String?) _getDetailedASRError() {
+    final asrError = _pipeline?.lastASRError ?? ASRError.none;
 
-    return switch (sherpaError) {
-      SherpaError.libraryLoadFailed => (
+    return switch (asrError) {
+      ASRError.libraryLoadFailed => (
           CapsuleErrorType.modelLoadFailed,
           null, // 使用 LanguageService 国际化
         ),
-      SherpaError.modelNotFound => (
+      ASRError.modelNotFound => (
           CapsuleErrorType.modelNotFound,
           null, // 使用 LanguageService 国际化
         ),
-      SherpaError.tokensNotFound => (
+      ASRError.modelFileMissing => (
           CapsuleErrorType.modelIncomplete,
           null, // 使用 LanguageService 国际化
         ),
-      SherpaError.encoderNotFound => (
-          CapsuleErrorType.modelIncomplete,
-          null, // 使用 LanguageService 国际化
-        ),
-      SherpaError.decoderNotFound => (
-          CapsuleErrorType.modelIncomplete,
-          null, // 使用 LanguageService 国际化
-        ),
-      SherpaError.joinerNotFound => (
-          CapsuleErrorType.modelIncomplete,
-          null, // 使用 LanguageService 国际化
-        ),
-      SherpaError.recognizerCreateFailed => (
+      ASRError.recognizerCreateFailed => (
           CapsuleErrorType.modelLoadFailed,
           null, // 使用 LanguageService 国际化
         ),
-      SherpaError.streamCreateFailed => (
+      ASRError.streamCreateFailed => (
           CapsuleErrorType.modelLoadFailed,
           null, // 使用 LanguageService 国际化
         ),
-      SherpaError.notInitialized => (
+      ASRError.notInitialized => (
           CapsuleErrorType.modelLoadFailed,
           null, // 使用 LanguageService 国际化
         ),
-      SherpaError.none => (
+      ASRError.vadInitFailed => (
+          CapsuleErrorType.modelLoadFailed,
+          null, // 使用 LanguageService 国际化
+        ),
+      ASRError.invalidConfig => (
+          CapsuleErrorType.modelLoadFailed,
+          null, // 使用 LanguageService 国际化
+        ),
+      ASRError.none => (
           CapsuleErrorType.modelLoadFailed,
           null, // 使用 LanguageService 国际化
         ),

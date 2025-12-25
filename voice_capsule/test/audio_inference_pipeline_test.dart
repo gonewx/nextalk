@@ -3,10 +3,10 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:voice_capsule/services/asr/asr_engine.dart';
 import 'package:voice_capsule/services/audio_capture.dart';
 import 'package:voice_capsule/services/audio_inference_pipeline.dart';
 import 'package:voice_capsule/services/model_manager.dart';
-import 'package:voice_capsule/services/sherpa_service.dart';
 
 /// Mock AudioCapture for testing
 class MockAudioCapture extends AudioCapture {
@@ -70,10 +70,11 @@ class MockAudioCapture extends AudioCapture {
   bool get isDisposed => _disposed;
 }
 
-/// Mock SherpaService for testing
-class MockSherpaService extends SherpaService {
+/// Mock ASREngine for testing (Story 2-7: ASR 引擎抽象层)
+class MockASREngine implements ASREngine {
   bool _initialized = false;
-  SherpaError _initError = SherpaError.none;
+  ASRError _initError = ASRError.none;
+  ASRError _lastError = ASRError.none;
   bool _ready = false;
   bool _hasNewData = false; // 模拟有新数据需要解码
   String _resultText = '';
@@ -87,10 +88,10 @@ class MockSherpaService extends SherpaService {
   int triggerEndpointAfterCalls = 0; // >0 时，N 次调用后返回 true
   bool _endpointTriggered = false;
 
-  // Story 2-6: 记录收到的 SherpaConfig
-  SherpaConfig? lastReceivedConfig;
+  // Story 2-6: 记录收到的 ASRConfig
+  ASRConfig? lastReceivedConfig;
 
-  void setInitError(SherpaError error) => _initError = error;
+  void setInitError(ASRError error) => _initError = error;
   void setReady(bool ready) => _ready = ready;
   void setResultText(String text) => _resultText = text;
 
@@ -104,14 +105,29 @@ class MockSherpaService extends SherpaService {
     _endpointTriggered = false;
   }
 
+  // Story 2-7: 引擎类型 mock
+  ASREngineType _engineType = ASREngineType.zipformer;
+  void setEngineType(ASREngineType type) => _engineType = type;
+  bool get disposed => _disposed;
+
   @override
-  Future<SherpaError> initialize(SherpaConfig config) async {
+  ASREngineType get engineType => _engineType;
+
+  @override
+  bool get isInitialized => _initialized;
+
+  @override
+  ASRError get lastError => _lastError;
+
+  @override
+  Future<ASRError> initialize(ASRConfig config) async {
     lastReceivedConfig = config; // Story 2-6: 记录配置
-    if (_initError != SherpaError.none) {
+    if (_initError != ASRError.none) {
+      _lastError = _initError;
       return _initError;
     }
     _initialized = true;
-    return SherpaError.none;
+    return ASRError.none;
   }
 
   @override
@@ -138,8 +154,8 @@ class MockSherpaService extends SherpaService {
   }
 
   @override
-  SherpaResult getResult() {
-    return SherpaResult(
+  ASRResult getResult() {
+    return ASRResult(
       text: _resultText,
       tokens: [],
       timestamps: [],
@@ -165,10 +181,10 @@ class MockSherpaService extends SherpaService {
   @override
   void reset() {
     // Story 2-6: reset 后可以重新触发端点
-    // ⚠️ 注意: 真实的 SherpaService.reset() 只清空音频缓冲区，
+    // ⚠️ 注意: 真实的 ASREngine.reset() 只清空音频缓冲区，
     // VAD 端点检测状态是 C 层内部状态，不会被重置。
     // Mock 实现重置这些状态是为了简化测试，但这与真实行为有差异。
-    // 在集成测试中应使用真实的 SherpaService 验证 autoReset 行为。
+    // 在集成测试中应使用真实的 ASREngine 验证 autoReset 行为。
     _endpointTriggered = false;
     _endpointCallCount = 0;
   }
@@ -178,9 +194,6 @@ class MockSherpaService extends SherpaService {
     _initialized = false;
     _disposed = true;
   }
-
-  @override
-  bool get isInitialized => _initialized;
 
   bool get isDisposed => _disposed;
 }
@@ -203,17 +216,17 @@ class MockModelManager extends ModelManager {
 void main() {
   group('AudioInferencePipeline 类骨架 (Task 1)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -274,7 +287,7 @@ void main() {
     test('enableDebugLog 参数默认为 false', () {
       final pipelineWithDefault = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
       // 默认不启用调试日志 (通过观察无日志输出验证)
@@ -284,17 +297,17 @@ void main() {
 
   group('AudioInferencePipeline start() 方法 (Task 2)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -313,8 +326,8 @@ void main() {
       expect(pipeline.isRunning, isFalse);
     });
 
-    test('SherpaService 初始化失败时返回 recognizerFailed 错误 (AC7)', () async {
-      mockSherpaService.setInitError(SherpaError.recognizerCreateFailed);
+    test('ASREngine 初始化失败时返回 recognizerFailed 错误 (AC7)', () async {
+      mockAsrEngine.setInitError(ASRError.recognizerCreateFailed);
 
       final error = await pipeline.start();
 
@@ -354,17 +367,17 @@ void main() {
 
   group('AudioInferencePipeline 采集-推理循环 (Task 3)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -374,8 +387,8 @@ void main() {
     });
 
     test('运行时 acceptWaveform 被调用 (AC2, AC3)', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('测试');
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('测试');
 
       await pipeline.start();
 
@@ -385,12 +398,12 @@ void main() {
       await pipeline.stop();
 
       // 验证 acceptWaveform 被多次调用
-      expect(mockSherpaService.acceptWaveformCalls, greaterThan(0));
+      expect(mockAsrEngine.acceptWaveformCalls, greaterThan(0));
     });
 
     test('识别结果通过 resultStream 输出 (AC4)', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('你好世界');
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('你好世界');
 
       final results = <String>[];
       pipeline.resultStream.listen(results.add);
@@ -406,8 +419,8 @@ void main() {
     });
 
     test('相同文本不重复发送 (去重)', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('重复文本');
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('重复文本');
 
       final results = <String>[];
       pipeline.resultStream.listen(results.add);
@@ -440,17 +453,17 @@ void main() {
 
   group('AudioInferencePipeline stop() 方法 (Task 4)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -470,7 +483,7 @@ void main() {
     });
 
     test('stop() 返回最终识别文本 (AC6)', () async {
-      mockSherpaService.setResultText('最终结果');
+      mockAsrEngine.setResultText('最终结果');
 
       await pipeline.start();
       final finalText = await pipeline.stop();
@@ -489,19 +502,19 @@ void main() {
 
   group('AudioInferencePipeline dispose() 方法 (Task 5)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
     });
 
     test('dispose() 后 StreamController 已关闭 (AC8)', () async {
       final pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
 
@@ -530,7 +543,7 @@ void main() {
     test('dispose() 释放原生资源 (AC8)', () async {
       final pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
 
@@ -538,13 +551,13 @@ void main() {
       await pipeline.dispose();
 
       expect(mockAudioCapture.isDisposed, isTrue);
-      expect(mockSherpaService.isDisposed, isTrue);
+      expect(mockAsrEngine.isDisposed, isTrue);
     });
 
     test('正在运行时 dispose() 先停止再释放', () async {
       final pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
 
@@ -561,17 +574,17 @@ void main() {
   // H2 修复: 零拷贝验证测试组
   group('AudioInferencePipeline 零拷贝验证 (AC2)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -581,8 +594,8 @@ void main() {
     });
 
     test('acceptWaveform 收到的指针与 AudioCapture.buffer 相同 (零拷贝)', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('测试零拷贝');
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('测试零拷贝');
 
       await pipeline.start();
 
@@ -592,12 +605,12 @@ void main() {
       await pipeline.stop();
 
       // 验证 acceptWaveform 被调用
-      expect(mockSherpaService.acceptWaveformCalls, greaterThan(0));
+      expect(mockAsrEngine.acceptWaveformCalls, greaterThan(0));
 
       // H2 核心验证: 指针地址必须相同 (零拷贝)
-      expect(mockSherpaService.lastReceivedBuffer, isNotNull);
+      expect(mockAsrEngine.lastReceivedBuffer, isNotNull);
       expect(
-        mockSherpaService.lastReceivedBuffer!.address,
+        mockAsrEngine.lastReceivedBuffer!.address,
         equals(mockAudioCapture.buffer.address),
         reason: '零拷贝要求: acceptWaveform 收到的指针必须与 AudioCapture.buffer 相同',
       );
@@ -607,17 +620,17 @@ void main() {
   // H1 修复: 延迟统计测试组
   group('AudioInferencePipeline 延迟测量 (AC5)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -635,8 +648,8 @@ void main() {
     });
 
     test('运行后有延迟统计数据', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('测试延迟');
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('测试延迟');
 
       await pipeline.start();
 
@@ -652,10 +665,10 @@ void main() {
     });
 
     test('start() 重置延迟统计', () async {
-      mockSherpaService.setReady(true);
+      mockAsrEngine.setReady(true);
 
       // 第一次运行，使用不同的文本确保产生结果
-      mockSherpaService.setResultText('第一次');
+      mockAsrEngine.setResultText('第一次');
       await pipeline.start();
       await Future.delayed(const Duration(milliseconds: 200));
       await pipeline.stop();
@@ -665,7 +678,7 @@ void main() {
       final firstSampleCount = firstStats.sampleCount;
 
       // 第二次运行，使用相同文本（因为 stop 后 _lastEmittedText 被重置）
-      mockSherpaService.setResultText('第二次');
+      mockAsrEngine.setResultText('第二次');
       await pipeline.start();
       await Future.delayed(const Duration(milliseconds: 200));
       await pipeline.stop();
@@ -757,17 +770,17 @@ void main() {
 
   group('Story 2-6: VAD 成员变量和公开接口 (Task 2)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -792,7 +805,7 @@ void main() {
     test('构造函数接受 VadConfig 参数', () {
       final customPipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
         vadConfig: VadConfig.continuous(),
       );
@@ -823,21 +836,20 @@ void main() {
       expect(pipeline.vadConfig.autoStopOnEndpoint, isTrue);
     });
 
-    test('自定义 silenceThresholdSec 传递给 SherpaConfig (AC3)', () async {
+    test('自定义 silenceThresholdSec 传递给 ASRConfig (AC3)', () async {
       final customPipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
         vadConfig: const VadConfig(silenceThresholdSec: 2.0),
       );
 
       await customPipeline.start();
 
-      expect(mockSherpaService.lastReceivedConfig, isNotNull);
-      expect(
-        mockSherpaService.lastReceivedConfig!.rule2MinTrailingSilence,
-        equals(2.0),
-      );
+      expect(mockAsrEngine.lastReceivedConfig, isNotNull);
+      // ZipformerConfig 子类有 rule2MinTrailingSilence 属性
+      final config = mockAsrEngine.lastReceivedConfig as ZipformerConfig;
+      expect(config.rule2MinTrailingSilence, equals(2.0));
 
       await customPipeline.dispose();
     });
@@ -845,17 +857,17 @@ void main() {
 
   group('Story 2-6: VAD 端点检测逻辑 (Task 3)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -866,9 +878,9 @@ void main() {
 
     test('VAD 端点触发时 endpointStream 发出事件，isVadTriggered 为 true (AC1, AC2, AC5)',
         () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('VAD 测试');
-      mockSherpaService.triggerEndpointAfterCalls = 2; // 第 2 次调用时触发
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('VAD 测试');
+      mockAsrEngine.triggerEndpointAfterCalls = 2; // 第 2 次调用时触发
 
       final events = <EndpointEvent>[];
       pipeline.endpointStream.listen(events.add);
@@ -885,9 +897,9 @@ void main() {
 
     test('autoStopOnEndpoint: true 时端点触发后 isRunning 变为 false (AC2, AC6)',
         () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('停止测试');
-      mockSherpaService.triggerEndpointAfterCalls = 2;
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('停止测试');
+      mockAsrEngine.triggerEndpointAfterCalls = 2;
 
       await pipeline.start();
       expect(pipeline.isRunning, isTrue);
@@ -901,14 +913,14 @@ void main() {
     test('autoStopOnEndpoint: false 时端点触发后 isRunning 保持 true (AC6)', () async {
       final continuousPipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
         vadConfig: const VadConfig(autoStopOnEndpoint: false),
       );
 
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('连续测试');
-      mockSherpaService.triggerEndpointAfterCalls = 2;
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('连续测试');
+      mockAsrEngine.triggerEndpointAfterCalls = 2;
 
       await continuousPipeline.start();
 
@@ -923,14 +935,14 @@ void main() {
     test('autoReset: true 时端点触发后流状态被重置 (AC7)', () async {
       final continuousPipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
         vadConfig: VadConfig.continuous(),
       );
 
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('重置测试');
-      mockSherpaService.triggerEndpointAfterCalls = 2;
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('重置测试');
+      mockAsrEngine.triggerEndpointAfterCalls = 2;
 
       final events = <EndpointEvent>[];
       continuousPipeline.endpointStream.listen(events.add);
@@ -940,9 +952,9 @@ void main() {
       // 等待第一次 VAD 触发
       await Future.delayed(const Duration(milliseconds: 400));
 
-      // reset() 被调用后，mockSherpaService 会重置端点状态
+      // reset() 被调用后，mockAsrEngine 会重置端点状态
       // 设置新的触发条件
-      mockSherpaService.triggerEndpointAfterCalls = 2;
+      mockAsrEngine.triggerEndpointAfterCalls = 2;
 
       // 等待第二次 VAD 触发
       await Future.delayed(const Duration(milliseconds: 400));
@@ -953,9 +965,9 @@ void main() {
     });
 
     test('durationMs 正确反映录音时长 (AC5)', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('时长测试');
-      mockSherpaService.triggerEndpointAfterCalls = 3;
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('时长测试');
+      mockAsrEngine.triggerEndpointAfterCalls = 3;
 
       final events = <EndpointEvent>[];
       pipeline.endpointStream.listen(events.add);
@@ -976,17 +988,17 @@ void main() {
 
   group('Story 2-6: stop() 方法修改 (Task 4)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -997,8 +1009,8 @@ void main() {
 
     test('手动 stop() 时 endpointStream 发出事件，isVadTriggered 为 false (AC8)',
         () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('手动停止');
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('手动停止');
 
       final events = <EndpointEvent>[];
       pipeline.endpointStream.listen(events.add);
@@ -1013,9 +1025,9 @@ void main() {
     });
 
     test('VAD 触发后 stop() 不产生重复事件 (AC8)', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('不重复');
-      mockSherpaService.triggerEndpointAfterCalls = 2;
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('不重复');
+      mockAsrEngine.triggerEndpointAfterCalls = 2;
 
       final events = <EndpointEvent>[];
       pipeline.endpointStream.listen(events.add);
@@ -1036,19 +1048,19 @@ void main() {
 
   group('Story 2-6: dispose() 方法修改 (Task 4.2)', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
     });
 
     test('dispose() 后 endpointStream 已关闭', () async {
       final pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
 
@@ -1069,17 +1081,17 @@ void main() {
 
   group('Story 2-6: 边界条件测试', () {
     late MockAudioCapture mockAudioCapture;
-    late MockSherpaService mockSherpaService;
+    late MockASREngine mockAsrEngine;
     late MockModelManager mockModelManager;
     late AudioInferencePipeline pipeline;
 
     setUp(() {
       mockAudioCapture = MockAudioCapture();
-      mockSherpaService = MockSherpaService();
+      mockAsrEngine = MockASREngine();
       mockModelManager = MockModelManager();
       pipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
     });
@@ -1089,10 +1101,10 @@ void main() {
     });
 
     test('连续 isEndpoint() 返回 true 时只发送一个事件', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('连续端点');
-      // MockSherpaService 的 isEndpoint 实现已经确保只返回一次 true
-      mockSherpaService.triggerEndpointAfterCalls = 2;
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('连续端点');
+      // MockASREngine 的 isEndpoint 实现已经确保只返回一次 true
+      mockAsrEngine.triggerEndpointAfterCalls = 2;
 
       final events = <EndpointEvent>[];
       pipeline.endpointStream.listen(events.add);
@@ -1116,11 +1128,11 @@ void main() {
 
     // AC4: 短暂停顿不触发端点检测
     test('短暂停顿 (< 阈值) 不触发端点 (AC4)', () async {
-      mockSherpaService.setReady(true);
-      mockSherpaService.setResultText('短暂停顿测试');
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('短暂停顿测试');
       // 设置一个较大的触发次数，模拟 VAD 未检测到足够长的静音
       // 即使处理了多个音频块，只要静音时长 < 阈值，isEndpoint() 应返回 false
-      mockSherpaService.triggerEndpointAfterCalls = 100; // 远超测试周期
+      mockAsrEngine.triggerEndpointAfterCalls = 100; // 远超测试周期
 
       final events = <EndpointEvent>[];
       pipeline.endpointStream.listen(events.add);
@@ -1138,25 +1150,127 @@ void main() {
       await pipeline.stop();
     });
 
-    test('默认静音阈值正确传递给 SherpaConfig', () async {
+    test('默认静音阈值正确传递给 ASRConfig', () async {
       // 使用默认配置 (silenceThresholdSec = null)
       final defaultPipeline = AudioInferencePipeline(
         audioCapture: mockAudioCapture,
-        sherpaService: mockSherpaService,
+        asrEngine: mockAsrEngine,
         modelManager: mockModelManager,
       );
 
       await defaultPipeline.start();
 
       // 验证默认值 1.2 被正确传递
-      expect(mockSherpaService.lastReceivedConfig, isNotNull);
+      expect(mockAsrEngine.lastReceivedConfig, isNotNull);
+      // ZipformerConfig 子类有 rule2MinTrailingSilence 属性
+      final config = mockAsrEngine.lastReceivedConfig as ZipformerConfig;
       expect(
-        mockSherpaService.lastReceivedConfig!.rule2MinTrailingSilence,
+        config.rule2MinTrailingSilence,
         equals(1.2),
         reason: '默认静音阈值应为 1.2 秒',
       );
 
       await defaultPipeline.dispose();
+    });
+  });
+
+  group('Story 2-7: 引擎切换功能 (AC5)', () {
+    late MockAudioCapture mockAudioCapture;
+    late MockASREngine mockAsrEngine;
+    late MockASREngine newMockAsrEngine;
+    late MockModelManager mockModelManager;
+    late AudioInferencePipeline pipeline;
+
+    setUp(() {
+      mockAudioCapture = MockAudioCapture();
+      mockAsrEngine = MockASREngine();
+      newMockAsrEngine = MockASREngine();
+      mockModelManager = MockModelManager();
+      mockModelManager.setModelReady(true);
+      pipeline = AudioInferencePipeline(
+        audioCapture: mockAudioCapture,
+        asrEngine: mockAsrEngine,
+        modelManager: mockModelManager,
+        enableDebugLog: true,
+      );
+    });
+
+    tearDown(() async {
+      await pipeline.dispose();
+    });
+
+    test('switchEngine 在 idle 状态下成功切换引擎', () async {
+      // 验证初始引擎
+      expect(pipeline.currentEngineType, equals(ASREngineType.zipformer));
+
+      // 设置新引擎类型
+      newMockAsrEngine.setEngineType(ASREngineType.sensevoice);
+
+      // 切换引擎
+      final error = await pipeline.switchEngine(newMockAsrEngine);
+      expect(error, equals(PipelineError.none));
+      expect(pipeline.currentEngineType, equals(ASREngineType.sensevoice));
+    });
+
+    test('switchEngine 在运行状态下先停止再切换', () async {
+      // 启动流水线
+      final startError = await pipeline.start();
+      expect(startError, equals(PipelineError.none));
+      expect(pipeline.isRunning, isTrue);
+
+      // 设置新引擎类型
+      newMockAsrEngine.setEngineType(ASREngineType.sensevoice);
+
+      // 切换引擎 (应该先停止)
+      final switchError = await pipeline.switchEngine(newMockAsrEngine);
+      expect(switchError, equals(PipelineError.none));
+      expect(pipeline.isRunning, isFalse);
+      expect(pipeline.currentEngineType, equals(ASREngineType.sensevoice));
+    });
+
+    test('switchEngine 释放旧引擎资源', () async {
+      // 启动流水线使旧引擎被初始化
+      await pipeline.start();
+      await pipeline.stop();
+
+      // 切换引擎
+      newMockAsrEngine.setEngineType(ASREngineType.sensevoice);
+      await pipeline.switchEngine(newMockAsrEngine);
+
+      // 验证旧引擎已被释放
+      expect(mockAsrEngine.disposed, isTrue);
+    });
+
+    test('switchEngine 后可以正常重新启动', () async {
+      // 设置新引擎
+      newMockAsrEngine.setEngineType(ASREngineType.sensevoice);
+      await pipeline.switchEngine(newMockAsrEngine);
+
+      // 重新启动
+      final startError = await pipeline.start();
+      expect(startError, equals(PipelineError.none));
+      expect(pipeline.isRunning, isTrue);
+
+      await pipeline.stop();
+    });
+
+    test('currentEngineType 返回正确的引擎类型', () {
+      expect(pipeline.currentEngineType, equals(ASREngineType.zipformer));
+    });
+
+    test('switchEngine 重置错误状态', () async {
+      // 模拟一个错误状态
+      mockModelManager.setModelReady(false);
+      await pipeline.start();
+      expect(pipeline.lastError, equals(PipelineError.modelNotReady));
+
+      // 恢复模型状态
+      mockModelManager.setModelReady(true);
+
+      // 切换引擎应该重置错误状态
+      newMockAsrEngine.setEngineType(ASREngineType.sensevoice);
+      await pipeline.switchEngine(newMockAsrEngine);
+      expect(pipeline.lastError, equals(PipelineError.none));
     });
   });
 }

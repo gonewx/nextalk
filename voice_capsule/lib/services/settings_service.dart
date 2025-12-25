@@ -6,8 +6,11 @@ import 'package:yaml/yaml.dart';
 
 import '../constants/settings_constants.dart';
 
-/// 模型切换回调类型
+/// 模型切换回调类型 (Zipformer 版本切换)
 typedef ModelSwitchCallback = Future<void> Function(ModelType newType);
+
+/// 引擎切换回调类型 (Story 2-7: Zipformer ↔ SenseVoice)
+typedef EngineSwitchCallback = Future<void> Function(EngineType newType);
 
 /// 设置服务
 ///
@@ -27,6 +30,9 @@ class SettingsService {
 
   /// 模型切换回调 (由 main.dart 注入)
   ModelSwitchCallback? onModelSwitch;
+
+  /// Story 2-7: 引擎切换回调 (由 main.dart 注入)
+  EngineSwitchCallback? onEngineSwitch;
 
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
@@ -175,10 +181,132 @@ class SettingsService {
     }
   }
 
+  // ===== Story 2-7: 引擎类型 =====
+
+  /// 获取当前引擎类型
+  EngineType get engineType {
+    if (_prefs == null) return SettingsConstants.defaultEngineType;
+
+    final typeStr = _prefs!.getString(SettingsConstants.keyEngineType);
+    if (typeStr == null) {
+      // 尝试从 YAML 读取
+      final yamlEngine = _yamlConfig?['model']?['engine'] as String?;
+      if (yamlEngine != null) {
+        final parsed = EngineType.values.where((e) => e.name == yamlEngine);
+        if (parsed.isNotEmpty) return parsed.first;
+      }
+      return SettingsConstants.defaultEngineType;
+    }
+
+    // 解析 SharedPreferences 中的值
+    final parsed = EngineType.values.where((e) => e.name == typeStr);
+    return parsed.isNotEmpty ? parsed.first : SettingsConstants.defaultEngineType;
+  }
+
+  /// 设置引擎类型
+  Future<void> setEngineType(EngineType type) async {
+    if (_prefs == null) return;
+
+    final typeStr = type.name;
+    await _prefs!.setString(SettingsConstants.keyEngineType, typeStr);
+
+    // 同步更新 YAML 配置文件
+    await _updateYamlEngineType(typeStr);
+
+    debugPrint('SettingsService: 引擎类型已设置为 $typeStr');
+  }
+
+  /// 更新 YAML 文件中的引擎类型
+  Future<void> _updateYamlEngineType(String typeStr) async {
+    try {
+      final settingsFile = File(SettingsConstants.settingsFilePath);
+      if (!settingsFile.existsSync()) return;
+
+      final content = settingsFile.readAsStringSync();
+      // 匹配 "engine: xxx" 行 (保留缩进和注释)
+      final updatedContent = content.replaceFirstMapped(
+        RegExp(r'^(\s*engine:\s*)\S+', multiLine: true),
+        (match) => '${match.group(1)}$typeStr',
+      );
+
+      if (content != updatedContent) {
+        settingsFile.writeAsStringSync(updatedContent);
+        // 更新内存缓存
+        if (_yamlConfig != null && _yamlConfig!['model'] != null) {
+          (_yamlConfig!['model'] as Map<String, dynamic>)['engine'] = typeStr;
+        }
+        debugPrint('SettingsService: YAML 引擎类型已更新');
+      }
+    } catch (e) {
+      debugPrint('SettingsService: 更新 YAML 引擎类型失败: $e');
+    }
+  }
+
+  /// 切换引擎类型并触发回调 (AC5: 需销毁并重建 Pipeline)
+  Future<bool> switchEngineType(EngineType newType) async {
+    if (engineType == newType) return true;
+
+    try {
+      // 1. 先保存配置 (确保回调读取到新值)
+      await setEngineType(newType);
+
+      // 2. 调用切换回调 (由 main.dart 注入，负责销毁旧 Pipeline 并创建新 Pipeline)
+      if (onEngineSwitch != null) {
+        await onEngineSwitch!(newType);
+      }
+
+      debugPrint('SettingsService: 引擎切换成功: $newType');
+      return true;
+    } catch (e) {
+      debugPrint('SettingsService: 引擎切换失败: $e');
+      return false;
+    }
+  }
+
+  // ===== SenseVoice 配置 =====
+
+  /// 获取 SenseVoice use_itn 配置
+  bool get senseVoiceUseItn {
+    final value = _yamlConfig?['model']?['sensevoice']?['use_itn'];
+    if (value is bool) return value;
+    return SettingsConstants.defaultSenseVoiceUseItn;
+  }
+
+  /// 获取 SenseVoice language 配置
+  String get senseVoiceLanguage {
+    final value = _yamlConfig?['model']?['sensevoice']?['language'] as String?;
+    if (value != null && value.isNotEmpty) return value;
+    return SettingsConstants.defaultSenseVoiceLanguage;
+  }
+
   // ===== 自定义下载 URL =====
 
-  /// 获取自定义模型下载 URL (从 YAML 读取)
+  /// 获取 Zipformer 自定义模型下载 URL (从 YAML 读取)
+  String? get zipformerCustomUrl {
+    final url = _yamlConfig?['model']?['zipformer']?['custom_url'] as String?;
+    if (url == null || url.isEmpty) return null;
+    return url;
+  }
+
+  /// 获取 SenseVoice 自定义模型下载 URL (从 YAML 读取)
+  String? get senseVoiceCustomUrl {
+    final url = _yamlConfig?['model']?['sensevoice']?['custom_url'] as String?;
+    if (url == null || url.isEmpty) return null;
+    return url;
+  }
+
+  /// 获取当前引擎的自定义模型下载 URL
   String? get customModelUrl {
+    if (engineType == EngineType.sensevoice) {
+      return senseVoiceCustomUrl;
+    }
+    return zipformerCustomUrl;
+  }
+
+  /// [已废弃] 旧版自定义下载 URL，为了兼容保留
+  /// 使用 [zipformerCustomUrl] 或 [senseVoiceCustomUrl] 替代
+  @Deprecated('Use zipformerCustomUrl or senseVoiceCustomUrl instead')
+  String? get legacyCustomModelUrl {
     final url = _yamlConfig?['model']?['custom_url'] as String?;
     if (url == null || url.isEmpty) return null;
     return url;

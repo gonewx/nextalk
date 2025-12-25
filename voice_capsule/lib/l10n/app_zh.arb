@@ -14,6 +14,14 @@
   "trayExit": "退出",
   "trayModelSwitchNotice": "模型已切换，重启应用后生效",
 
+  "trayAsrEngine": "ASR 引擎",
+  "trayEngineZipformer": "Zipformer (流式)",
+  "trayEngineSensevoice": "SenseVoice (离线)",
+  "trayEngineSwitching": "切换中...",
+  "trayEngineSwitchSuccess": "引擎已切换为 {engine}",
+  "trayEngineSwitchFallback": "切换失败，已回退到 {engine}",
+  "trayModelSettings": "模型设置",
+
   "wizardDownloading": "正在下载...",
   "wizardExtracting": "正在解压...",
   "wizardVerifying": "正在校验...",

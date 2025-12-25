@@ -107,6 +107,17 @@ class LanguageService {
     return _translations[code]?[key] ?? key;
   }
 
+  /// 带参数替换的翻译方法 (Story 2-7: AC6)
+  /// [key] 翻译键
+  /// [params] 参数映射，例如 {'engine': 'SenseVoice'}
+  String trWithParams(String key, Map<String, String> params) {
+    String result = tr(key);
+    params.forEach((paramKey, value) {
+      result = result.replaceAll('{$paramKey}', value);
+    });
+    return result;
+  }
+
   /// 内置翻译映射 (服务层使用)
   /// 包含托盘菜单、通知等无法获取 BuildContext 的字符串
   static const Map<String, Map<String, String>> _translations = {
@@ -120,6 +131,14 @@ class LanguageService {
       'tray_language': '语言 / Language',
       'tray_exit': '退出',
       'tray_model_switch_notice': '模型已切换，重启应用后生效',
+      // Story 2-7: 引擎切换 (AC6)
+      'tray_asr_engine': 'ASR 引擎',
+      'tray_engine_zipformer': 'Zipformer (流式)',
+      'tray_engine_sensevoice': 'SenseVoice (离线)',
+      'tray_engine_switching': '切换中...',
+      'tray_engine_switch_success': '引擎已切换为 {engine}',
+      'tray_engine_switch_fallback': '切换失败，已回退到 {engine}',
+      'tray_model_settings': '模型设置',
 
       // 错误消息 (AC7)
       'error_fcitx_not_connected': 'Fcitx5 未连接',
@@ -164,6 +183,14 @@ class LanguageService {
       'tray_language': '语言 / Language',
       'tray_exit': 'Exit',
       'tray_model_switch_notice': 'Model switched, restart app to take effect',
+      // Story 2-7: 引擎切换 (AC6)
+      'tray_asr_engine': 'ASR Engine',
+      'tray_engine_zipformer': 'Zipformer (Streaming)',
+      'tray_engine_sensevoice': 'SenseVoice (Offline)',
+      'tray_engine_switching': 'Switching...',
+      'tray_engine_switch_success': 'Engine switched to {engine}',
+      'tray_engine_switch_fallback': 'Switch failed, fallback to {engine}',
+      'tray_model_settings': 'Model Settings',
 
       // 错误消息 (AC8)
       'error_fcitx_not_connected': 'Fcitx5 Not Connected',

@@ -62,6 +62,7 @@ development_status:
   2-4-model-manager: done
   2-5-audio-inference-pipeline: done
   2-6-vad-endpoint-detection: done
+  2-7-multi-model-asr-support: done
   epic-2-retrospective: optional
 
   # ============================================

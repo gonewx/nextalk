@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 
 import 'app/nextalk_app.dart';
 import 'services/animation_ticker_service.dart';
+import 'constants/settings_constants.dart';
+import 'services/asr/asr_engine.dart';
+import 'services/asr/asr_engine_factory.dart';
+import 'services/asr/engine_initializer.dart';
 import 'services/audio_capture.dart';
 import 'services/audio_inference_pipeline.dart';
 import 'services/command_server.dart';
@@ -12,7 +16,6 @@ import 'services/hotkey_service.dart';
 import 'services/language_service.dart';
 import 'services/model_manager.dart';
 import 'services/settings_service.dart';
-import 'services/sherpa_service.dart';
 import 'services/tray_service.dart';
 import 'services/window_service.dart';
 import 'state/capsule_state.dart';
@@ -21,15 +24,29 @@ import 'utils/diagnostic_logger.dart';
 /// Nextalk Voice Capsule 入口
 /// Story 3-6: 完整业务流串联
 /// Story 3-7: 全局错误边界与诊断日志
+/// Story 2-7: 支持多引擎 ASR
 
 /// 全局状态控制器 (用于 UI 更新)
 final _stateController = StreamController<CapsuleStateData>.broadcast();
 
 /// 全局服务实例
 AudioCapture? _audioCapture;
-SherpaService? _sherpaService;
+ASREngine? _asrEngine;
 AudioInferencePipeline? _pipeline;
 FcitxClient? _fcitxClient;
+
+/// Story 2-7: 实际使用的引擎类型 (可能与配置不同，发生回退时)
+EngineType? _actualEngineType;
+
+/// Story 2-7: 获取实际使用的引擎类型 (AC7: 托盘菜单显示实际引擎)
+/// 返回 null 表示尚未初始化
+EngineType? getActualEngineType() => _actualEngineType;
+
+/// Story 2-7: 检查是否发生了引擎回退
+bool hasEngineFallback() {
+  if (_actualEngineType == null) return false;
+  return _actualEngineType != SettingsService.instance.engineType;
+}
 
 Future<void> main() async {
   // Story 3-7: 使用 runZonedGuarded 捕获未处理异常 (AC17)
@@ -86,12 +103,47 @@ Future<void> main() async {
 
     // 6. 创建服务实例 (即使模型未就绪也创建，便于后续初始化)
     _audioCapture = AudioCapture();
-    _sherpaService = SherpaService();
+
+    // Story 2-7: 使用 EngineInitializer 初始化引擎 (带回退逻辑)
+    final engineInitializer = EngineInitializer(modelManager);
+    final configuredEngineType = SettingsService.instance.engineType;
+
+    try {
+      final initResult = await engineInitializer.initialize(
+        preferredType: configuredEngineType,
+        enableDebugLog: true,
+      );
+
+      _asrEngine = initResult.engine;
+      _actualEngineType = initResult.actualEngineType;
+
+      // Story 2-7: 更新托盘服务中的实际引擎类型 (AC7)
+      TrayService.instance.setActualEngineType(initResult.actualEngineType);
+
+      if (initResult.fallbackOccurred) {
+        DiagnosticLogger.instance.warn(
+          'main',
+          '引擎回退: $configuredEngineType → ${initResult.actualEngineType}, '
+          '原因: ${initResult.fallbackReason}',
+        );
+        // 重建托盘菜单以显示实际引擎标记
+        await TrayService.instance.rebuildMenu();
+      } else {
+        DiagnosticLogger.instance.info('main', '创建 ASR 引擎: $configuredEngineType');
+      }
+    } on EngineNotAvailableException catch (e) {
+      // 所有引擎都不可用，创建一个空壳引擎 (实际使用配置的类型)
+      DiagnosticLogger.instance.warn('main', '${e.message}, 尝试的引擎: ${e.triedEngines}');
+      _asrEngine = ASREngineFactory.create(configuredEngineType, enableDebugLog: true);
+      _actualEngineType = configuredEngineType;
+      TrayService.instance.setActualEngineType(configuredEngineType);
+      // 注意：此时应用会在后续尝试使用引擎时显示下载引导
+    }
 
     // 7. 创建音频推理流水线
     _pipeline = AudioInferencePipeline(
       audioCapture: _audioCapture!,
-      sherpaService: _sherpaService!,
+      asrEngine: _asrEngine!,
       modelManager: modelManager,
       enableDebugLog: true, // 开发阶段启用日志
     );
@@ -135,7 +187,7 @@ Future<void> main() async {
       // 释放快捷键服务
       await HotkeyService.instance.dispose();
 
-      // 释放流水线 (包含 AudioCapture + SherpaService)
+      // 释放流水线 (包含 AudioCapture + ASREngine)
       await _pipeline?.dispose();
 
       // 释放 FcitxClient
@@ -162,6 +214,28 @@ Future<void> main() async {
         DiagnosticLogger.instance.info('main', '切换模型类型: $newType');
         await _pipeline!.switchModelType(newType);
         DiagnosticLogger.instance.info('main', '模型切换完成');
+      }
+    };
+
+    // Story 2-7: 设置引擎切换回调 (AC5: 销毁旧 Pipeline → 创建新 Pipeline)
+    SettingsService.instance.onEngineSwitch = (newEngineType) async {
+      if (_pipeline != null) {
+        DiagnosticLogger.instance.info('main', '切换 ASR 引擎: $newEngineType');
+
+        // 创建新引擎实例
+        final newEngine = ASREngineFactory.create(newEngineType, enableDebugLog: true);
+
+        // 切换引擎 (销毁旧引擎，使用新引擎)
+        await _pipeline!.switchEngine(newEngine);
+
+        // 更新全局引擎引用
+        _asrEngine = newEngine;
+        _actualEngineType = newEngineType;
+
+        // 切换成功，恢复托盘状态为正常
+        await TrayService.instance.updateStatus(TrayStatus.normal);
+
+        DiagnosticLogger.instance.info('main', 'ASR 引擎切换完成: $newEngineType');
       }
     };
 

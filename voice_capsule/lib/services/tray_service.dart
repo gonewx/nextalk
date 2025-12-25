@@ -55,6 +55,9 @@ class TrayService {
   /// Story 3-7: 当前托盘状态
   TrayStatus _currentStatus = TrayStatus.normal;
 
+  /// Story 2-7: 实际使用的引擎类型 (可能与配置不同)
+  EngineType? _actualEngineType;
+
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
 
@@ -63,6 +66,20 @@ class TrayService {
 
   /// Story 3-7: 当前托盘状态
   TrayStatus get currentStatus => _currentStatus;
+
+  /// Story 2-7: 获取实际使用的引擎类型
+  EngineType? get actualEngineType => _actualEngineType;
+
+  /// Story 2-7: 设置实际使用的引擎类型 (由 main.dart 在初始化时调用)
+  void setActualEngineType(EngineType type) {
+    _actualEngineType = type;
+  }
+
+  /// Story 2-7: 检查是否发生了引擎回退
+  bool get hasEngineFallback {
+    if (_actualEngineType == null) return false;
+    return _actualEngineType != SettingsService.instance.engineType;
+  }
 
   /// Story 3-7: 更新托盘状态 (切换图标, AC19)
   /// system_tray 不支持角标，使用不同图标文件模拟
@@ -131,11 +148,29 @@ class TrayService {
   /// 构建托盘右键菜单
   /// Story 3-7: 新增"重新连接 Fcitx5"菜单项 (AC16)
   /// Story 3-8: 国际化菜单文本 + 语言切换子菜单 (AC2, AC5, AC6)
-  /// 模型设置子菜单
+  /// Story 2-7: 引擎切换子菜单 (AC6), 显示实际引擎 (AC7)
   Future<void> _buildMenu() async {
-    final currentType = SettingsService.instance.modelType;
+    final currentModelType = SettingsService.instance.modelType;
+    final configuredEngineType = SettingsService.instance.engineType;
     final lang = LanguageService.instance;
     final isZh = lang.isZh;
+
+    // Story 2-7: 检查实际引擎与配置是否不同 (AC7)
+    final actualEngine = _actualEngineType ?? configuredEngineType;
+    final isFallback = hasEngineFallback;
+
+    // 生成引擎标签 (如果发生回退，标记实际使用的引擎)
+    String getEngineLabel(EngineType type) {
+      final baseLabel = type == EngineType.zipformer
+          ? lang.tr('tray_engine_zipformer')
+          : lang.tr('tray_engine_sensevoice');
+
+      // 如果发生回退且这是实际使用的引擎，添加标记
+      if (isFallback && type == actualEngine) {
+        return isZh ? '$baseLabel ✓' : '$baseLabel ✓';
+      }
+      return baseLabel;
+    }
 
     final menu = Menu();
     await menu.buildFrom([
@@ -150,15 +185,40 @@ class TrayService {
         onClicked: (_) => _reconnectFcitx(),
       ),
       MenuSeparator(),
-      MenuItemCheckbox(
-        label: lang.tr('tray_model_int8'),
-        checked: currentType == ModelType.int8,
-        onClicked: (_) => _switchModel(ModelType.int8),
-      ),
-      MenuItemCheckbox(
-        label: lang.tr('tray_model_standard'),
-        checked: currentType == ModelType.standard,
-        onClicked: (_) => _switchModel(ModelType.standard),
+      // Story 2-7: 模型设置子菜单 (AC6, AC7)
+      SubMenu(
+        label: lang.tr('tray_model_settings'),
+        children: [
+          // ASR 引擎选择 (显示配置的引擎为选中状态)
+          MenuItemLabel(label: lang.tr('tray_asr_engine'), enabled: false),
+          MenuItemCheckbox(
+            label: getEngineLabel(EngineType.zipformer),
+            // 选中状态基于配置，实际引擎用 ✓ 标记
+            checked: configuredEngineType == EngineType.zipformer,
+            onClicked: (_) => _switchEngine(EngineType.zipformer),
+          ),
+          MenuItemCheckbox(
+            label: getEngineLabel(EngineType.sensevoice),
+            checked: configuredEngineType == EngineType.sensevoice,
+            onClicked: (_) => _switchEngine(EngineType.sensevoice),
+          ),
+          MenuSeparator(),
+          // Zipformer 版本选择 (仅当使用 Zipformer 引擎时有效)
+          MenuItemLabel(
+            label: 'Zipformer ${lang.tr("tray_model_int8").split(" ").last}',
+            enabled: false,
+          ),
+          MenuItemCheckbox(
+            label: lang.tr('tray_model_int8'),
+            checked: currentModelType == ModelType.int8,
+            onClicked: (_) => _switchModel(ModelType.int8),
+          ),
+          MenuItemCheckbox(
+            label: lang.tr('tray_model_standard'),
+            checked: currentModelType == ModelType.standard,
+            onClicked: (_) => _switchModel(ModelType.standard),
+          ),
+        ],
       ),
       MenuSeparator(),
       // Story 3-8: 语言切换子菜单 (AC2)
@@ -196,6 +256,83 @@ class TrayService {
     // 语言切换后重建菜单以更新文本
     await rebuildMenu();
     debugPrint('TrayService: 语言已切换为 $languageCode');
+  }
+
+  /// Story 2-7: 切换 ASR 引擎 (AC6)
+  /// 注意：由于 onnxruntime 限制，引擎切换需要销毁并重建 Pipeline
+  Future<void> _switchEngine(EngineType newType) async {
+    final currentType = SettingsService.instance.engineType;
+    if (currentType == newType) {
+      return; // 没有变化
+    }
+
+    final lang = LanguageService.instance;
+
+    // 发送切换中通知
+    try {
+      await Process.run('notify-send', [
+        '-a',
+        'Nextalk',
+        '-i',
+        'dialog-information',
+        'Nextalk',
+        lang.tr('tray_engine_switching'),
+      ]);
+    } catch (e) {
+      debugPrint('TrayService: 发送切换通知失败: $e');
+    }
+
+    final success = await SettingsService.instance.switchEngineType(newType);
+    if (success) {
+      // 更新实际引擎类型 (Story 2-7: AC7)
+      _actualEngineType = newType;
+
+      // 重新构建菜单以更新选中状态
+      await _buildMenu();
+      debugPrint('TrayService: 引擎切换成功: $newType');
+
+      // 获取本地化的引擎显示名称
+      final engineDisplayName = _getEngineDisplayName(newType);
+
+      // 发送切换成功通知 (包含引擎名称)
+      try {
+        await Process.run('notify-send', [
+          '-a',
+          'Nextalk',
+          '-i',
+          'dialog-information',
+          'Nextalk',
+          lang.trWithParams('tray_engine_switch_success', {'engine': engineDisplayName}),
+        ]);
+      } catch (e) {
+        debugPrint('TrayService: 发送通知失败: $e');
+      }
+    } else {
+      debugPrint('TrayService: 引擎切换失败');
+      // 发送切换失败通知 (包含回退引擎名称)
+      final fallbackEngineName = _getEngineDisplayName(SettingsService.instance.engineType);
+      try {
+        await Process.run('notify-send', [
+          '-a',
+          'Nextalk',
+          '-i',
+          'dialog-warning',
+          'Nextalk',
+          lang.trWithParams('tray_engine_switch_fallback', {'engine': fallbackEngineName}),
+        ]);
+      } catch (e) {
+        debugPrint('TrayService: 发送通知失败: $e');
+      }
+    }
+  }
+
+  /// 获取引擎的本地化显示名称 (Story 2-7: AC6)
+  String _getEngineDisplayName(EngineType type) {
+    final lang = LanguageService.instance;
+    return switch (type) {
+      EngineType.zipformer => lang.tr('tray_engine_zipformer'),
+      EngineType.sensevoice => lang.tr('tray_engine_sensevoice'),
+    };
   }
 
   /// 切换模型版本

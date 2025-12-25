@@ -12,6 +12,14 @@
   "trayExit": "Exit",
   "trayModelSwitchNotice": "Model switched, restart app to take effect",
 
+  "trayAsrEngine": "ASR Engine",
+  "trayEngineZipformer": "Zipformer (Streaming)",
+  "trayEngineSensevoice": "SenseVoice (Offline)",
+  "trayEngineSwitching": "Switching...",
+  "trayEngineSwitchSuccess": "Engine switched to {engine}",
+  "trayEngineSwitchFallback": "Switch failed, fallback to {engine}",
+  "trayModelSettings": "Model Settings",
+
   "wizardDownloading": "Downloading...",
   "wizardExtracting": "Extracting...",
   "wizardVerifying": "Verifying...",

@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import '../constants/settings_constants.dart';
+import 'asr/asr_engine.dart';
+import 'asr/asr_engine_factory.dart';
+import 'asr/zipformer_engine.dart';
 import 'audio_capture.dart';
 import 'model_manager.dart';
 import 'settings_service.dart';
-import 'sherpa_service.dart';
 
 /// 流水线状态枚举
 enum PipelineState {
@@ -112,13 +114,13 @@ class VadConfig {
 /// 音频-推理流水线
 ///
 /// 将音频采集和语音识别整合为一体的流水线服务。
-/// 实现零拷贝数据流: PortAudio -> Sherpa-onnx (同一内存指针)
+/// 实现零拷贝数据流: PortAudio -> ASREngine (同一内存指针)
 ///
 /// 使用示例:
 /// ```dart
 /// final pipeline = AudioInferencePipeline(
 ///   audioCapture: audioCapture,
-///   sherpaService: sherpaService,
+///   asrEngine: ZipformerEngine(),
 ///   modelManager: modelManager,
 /// );
 ///
@@ -130,11 +132,11 @@ class VadConfig {
 /// ```
 class AudioInferencePipeline {
   // === 常量定义 ===
-  /// 默认 Rule2 静音阈值 (秒) - 与 SherpaConfig 默认值保持一致
+  /// 默认 Rule2 静音阈值 (秒) - 与 ZipformerConfig 默认值保持一致
   static const double kDefaultRule2Silence = 1.2;
   // === 依赖注入 (通过构造函数传入，便于测试) ===
   final AudioCapture _audioCapture;
-  SherpaService _sherpaService; // 改为非 final 以支持热切换
+  ASREngine _asrEngine; // 改为 ASREngine 抽象接口
   final ModelManager _modelManager;
 
   // === 配置选项 ===
@@ -167,12 +169,12 @@ class AudioInferencePipeline {
   // === 构造函数 ===
   AudioInferencePipeline({
     required AudioCapture audioCapture,
-    required SherpaService sherpaService,
+    required ASREngine asrEngine,
     required ModelManager modelManager,
     this.enableDebugLog = false,
     VadConfig? vadConfig, // Story 2-6: 可选 VAD 配置
   })  : _audioCapture = audioCapture,
-        _sherpaService = sherpaService,
+        _asrEngine = asrEngine,
         _modelManager = modelManager {
     if (vadConfig != null) {
       _vadConfig = vadConfig;
@@ -199,8 +201,8 @@ class AudioInferencePipeline {
   /// 最近一次错误
   PipelineError get lastError => _lastError;
 
-  /// Story 3-7: 获取更详细的 Sherpa 错误 (AC9: 显示具体原因)
-  SherpaError get lastSherpaError => _sherpaService.lastError;
+  /// Story 3-7: 获取更详细的 ASR 错误 (AC9: 显示具体原因)
+  ASRError get lastASRError => _asrEngine.lastError;
 
   /// Story 2-6: 当前 VAD 配置
   VadConfig get vadConfig => _vadConfig;
@@ -221,7 +223,7 @@ class AudioInferencePipeline {
     return true;
   }
 
-  /// 热切换模型版本
+  /// 热切换模型版本 (Zipformer int8/standard)
   ///
   /// 注意：由于 onnxruntime 的限制，运行时切换模型需要重启应用。
   /// 此方法仅保存配置，不进行实际切换。
@@ -232,6 +234,41 @@ class AudioInferencePipeline {
     // 实际切换会在下次应用启动时生效
     return true;
   }
+
+  /// Story 2-7: 切换 ASR 引擎 (Zipformer ↔ SenseVoice)
+  ///
+  /// 注意：由于 onnxruntime 的限制，切换引擎需要销毁并重建 Pipeline。
+  /// 此操作会停止当前录音，释放旧引擎资源，然后创建新引擎。
+  ///
+  /// [newEngine] 新的 ASR 引擎实例
+  ///
+  /// 返回 [PipelineError.none] 表示成功
+  Future<PipelineError> switchEngine(ASREngine newEngine) async {
+    // 1. 如果正在运行，先停止
+    if (_state == PipelineState.running) {
+      await stop();
+    }
+
+    // 2. 释放旧引擎资源 (但不关闭 StreamController)
+    _asrEngine.dispose();
+
+    // 3. 替换为新引擎
+    _asrEngine = newEngine;
+
+    // 4. 重置状态
+    _lastError = PipelineError.none;
+    _lastEmittedText = '';
+
+    if (enableDebugLog) {
+      // ignore: avoid_print
+      print('[Pipeline] 🔄 引擎已切换为: ${newEngine.engineType}');
+    }
+
+    return PipelineError.none;
+  }
+
+  /// Story 2-7: 获取当前引擎类型
+  ASREngineType get currentEngineType => _asrEngine.engineType;
 
   /// 获取延迟统计信息 (AC5: 端到端延迟 < 200ms)
   LatencyStats get latencyStats {
@@ -279,24 +316,36 @@ class AudioInferencePipeline {
       return _lastError;
     }
 
-    // 2. 初始化 SherpaService (使用 VadConfig 中的静音阈值和 SettingsService 中的模型类型)
+    // 2. 初始化 ASREngine (使用 VadConfig 中的静音阈值和 SettingsService 中的模型类型)
     final silenceThreshold =
         _vadConfig.silenceThresholdSec ?? kDefaultRule2Silence;
     final useInt8 = SettingsService.instance.isInitialized
         ? SettingsService.instance.modelType == ModelType.int8
         : true; // 默认使用 int8
-    final config = SherpaConfig(
-      modelDir: _modelManager.modelPath,
-      useInt8Model: useInt8,
-      numThreads: 2,
-      sampleRate: 16000,
-      enableEndpoint: true, // Story 2-6: VAD 端点检测
-      rule1MinTrailingSilence: 2.4,
-      rule2MinTrailingSilence: silenceThreshold,
-      rule3MinUtteranceLength: 20.0,
-    );
-    final sherpaError = await _sherpaService.initialize(config);
-    if (sherpaError != SherpaError.none) {
+
+    // 根据引擎类型创建配置
+    final ASRConfig config;
+    if (_asrEngine.engineType == ASREngineType.zipformer) {
+      config = ZipformerConfig(
+        modelDir: _modelManager.modelPath,
+        useInt8Model: useInt8,
+        numThreads: 2,
+        sampleRate: 16000,
+        enableEndpoint: true, // Story 2-6: VAD 端点检测
+        rule1MinTrailingSilence: 2.4,
+        rule2MinTrailingSilence: silenceThreshold,
+        rule3MinUtteranceLength: 20.0,
+      );
+    } else {
+      // SenseVoice 配置将在 Task 3 中完善
+      config = SenseVoiceConfig(
+        modelDir: _modelManager.modelPath,
+        vadModelPath: '', // TODO: 从 ModelManager 获取 VAD 模型路径
+      );
+    }
+
+    final asrError = await _asrEngine.initialize(config);
+    if (asrError != ASRError.none) {
       _setError(PipelineError.recognizerFailed);
       return _lastError;
     }
@@ -337,11 +386,11 @@ class AudioInferencePipeline {
     }
 
     // 获取最终识别结果
-    _sherpaService.inputFinished();
-    while (_sherpaService.isReady()) {
-      _sherpaService.decode();
+    _asrEngine.inputFinished();
+    while (_asrEngine.isReady()) {
+      _asrEngine.decode();
     }
-    final finalResult = _sherpaService.getResult();
+    final finalResult = _asrEngine.getResult();
 
     // Story 2-6: 发送手动停止事件 (仅当不是 VAD 触发时)
     if (!_vadTriggeredStop && !_isDisposed && !_endpointController.isClosed) {
@@ -360,8 +409,8 @@ class AudioInferencePipeline {
     // 停止音频采集
     await _audioCapture.stop();
 
-    // 重置 Sherpa 流状态 (保留模型，只清空缓冲区)
-    _sherpaService.reset();
+    // 重置 ASR 流状态 (保留模型，只清空缓冲区)
+    _asrEngine.reset();
 
     // 重置状态
     _stopRequested = false;
@@ -402,7 +451,7 @@ class AudioInferencePipeline {
 
     // 3. 释放原生资源
     _audioCapture.dispose();
-    _sherpaService.dispose();
+    _asrEngine.dispose();
 
     // 4. 清理状态
     _state = PipelineState.idle;
@@ -452,7 +501,7 @@ class AudioInferencePipeline {
     // Story 2-6: VAD 自动停止时的清理逻辑
     if (_vadTriggeredStop && _state == PipelineState.running) {
       await _audioCapture.stop();
-      _sherpaService.reset();
+      _asrEngine.reset();
       _stopRequested = false;
       _lastEmittedText = '';
       _vadTriggeredStop = false;
@@ -500,16 +549,16 @@ class AudioInferencePipeline {
     }
 
     if (samplesRead > 0) {
-      // 同一指针传给 Sherpa (零拷贝)
-      _sherpaService.acceptWaveform(
+      // 同一指针传给 ASREngine (零拷贝)
+      _asrEngine.acceptWaveform(
           AudioConfig.sampleRate, buffer, samplesRead);
 
       // 解码并获取结果 (仅当有足够数据时)
-      while (_sherpaService.isReady()) {
-        _sherpaService.decode();
+      while (_asrEngine.isReady()) {
+        _asrEngine.decode();
       }
 
-      final result = _sherpaService.getResult();
+      final result = _asrEngine.getResult();
 
       // 去重: 只在文本变化时发送事件
       if (result.text.isNotEmpty && result.text != _lastEmittedText) {
@@ -534,7 +583,7 @@ class AudioInferencePipeline {
       }
 
       // Story 2-6: VAD 端点检测
-      if (_sherpaService.isEndpoint() && !_vadTriggeredStop) {
+      if (_asrEngine.isEndpoint() && !_vadTriggeredStop) {
         await _handleEndpoint();
       }
     }
@@ -549,13 +598,13 @@ class AudioInferencePipeline {
     // 1. 尝试获取当前已识别的文本
     String preservedText = _lastEmittedText;
 
-    // 尝试从 Sherpa 获取最新结果
+    // 尝试从 ASREngine 获取最新结果
     try {
-      _sherpaService.inputFinished();
-      while (_sherpaService.isReady()) {
-        _sherpaService.decode();
+      _asrEngine.inputFinished();
+      while (_asrEngine.isReady()) {
+        _asrEngine.decode();
       }
-      final result = _sherpaService.getResult();
+      final result = _asrEngine.getResult();
       if (result.text.isNotEmpty) {
         preservedText = result.text;
       }
@@ -592,11 +641,11 @@ class AudioInferencePipeline {
   Future<void> _handleEndpoint() async {
     try {
       // 1. 调用 inputFinished() 确保最终解码
-      _sherpaService.inputFinished();
-      while (_sherpaService.isReady()) {
-        _sherpaService.decode();
+      _asrEngine.inputFinished();
+      while (_asrEngine.isReady()) {
+        _asrEngine.decode();
       }
-      final finalResult = _sherpaService.getResult();
+      final finalResult = _asrEngine.getResult();
 
       // 2. 计算录音时长
       final durationMs = _recordingStartTime != null
@@ -619,7 +668,7 @@ class AudioInferencePipeline {
         _vadTriggeredStop = true; // 标记 VAD 触发，防止 stop() 重复发送事件
         _stopRequested = true;
       } else if (_vadConfig.autoReset) {
-        _sherpaService.reset();
+        _asrEngine.reset();
         _lastEmittedText = '';
         _recordingStartTime = DateTime.now();
       }

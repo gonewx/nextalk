@@ -6,6 +6,7 @@ import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 
+import '../constants/settings_constants.dart';
 import 'settings_service.dart';
 
 /// 模型状态枚举
@@ -33,13 +34,104 @@ enum ModelError {
 typedef ProgressCallback = void Function(double progress, String status,
     {int downloaded, int total});
 
+// ===== Story 2-7: 多引擎模型配置 =====
+
+/// 模型配置 (用于多引擎支持)
+class ModelConfig {
+  /// 模型显示名称
+  final String displayName;
+
+  /// 模型目录名 (在 models/ 下的子目录)
+  final String dirName;
+
+  /// 压缩包内顶层目录名 (解压时剥离)
+  final String archiveTopDir;
+
+  /// 默认下载 URL
+  final String defaultUrl;
+
+  /// SHA256 校验值 (null 表示跳过校验)
+  final String? sha256;
+
+  /// 必需的模型文件前缀列表 (用于完整性检查)
+  final List<String> requiredFilePrefixes;
+
+  /// 是否为单文件模型 (如 silero_vad.onnx)
+  final bool isSingleFile;
+
+  const ModelConfig({
+    required this.displayName,
+    required this.dirName,
+    required this.archiveTopDir,
+    required this.defaultUrl,
+    this.sha256,
+    this.requiredFilePrefixes = const [],
+    this.isSingleFile = false,
+  });
+}
+
+/// 预定义模型配置
+class ModelConfigs {
+  ModelConfigs._();
+
+  /// Zipformer 流式模型 (中英双语)
+  static const zipformer = ModelConfig(
+    displayName: 'Zipformer (流式)',
+    dirName: 'zipformer',
+    archiveTopDir: 'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20',
+    defaultUrl:
+        'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
+        'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2',
+    sha256: '27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8',
+    requiredFilePrefixes: ['encoder', 'decoder', 'joiner'],
+  );
+
+  /// SenseVoice 离线模型 (多语言)
+  /// 注意: sherpa-onnx 官方未提供 SHA256 校验值，跳过校验
+  static const sensevoice = ModelConfig(
+    displayName: 'SenseVoice (离线)',
+    dirName: 'sensevoice',
+    archiveTopDir: 'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17',
+    defaultUrl:
+        'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
+        'sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2',
+    sha256: null, // 官方未提供校验值
+    requiredFilePrefixes: ['model'],
+  );
+
+  /// Silero VAD 模型
+  /// 注意: sherpa-onnx 官方未提供 SHA256 校验值，跳过校验
+  static const sileroVad = ModelConfig(
+    displayName: 'Silero VAD',
+    dirName: 'vad',
+    archiveTopDir: '', // 单文件，无顶层目录
+    defaultUrl:
+        'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
+        'silero_vad.onnx',
+    sha256: null, // 官方未提供校验值
+    requiredFilePrefixes: ['silero_vad'],
+    isSingleFile: true,
+  );
+
+  /// 根据引擎类型获取配置
+  static ModelConfig forEngine(EngineType type) {
+    switch (type) {
+      case EngineType.zipformer:
+        return zipformer;
+      case EngineType.sensevoice:
+        return sensevoice;
+    }
+  }
+}
+
 class ModelManager {
+  // === 向后兼容: 原有 Zipformer 配置 ===
   static const String _modelName =
       'sherpa-onnx-streaming-zipformer-bilingual-zh-en';
   static const String _archiveName =
       'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20';
   static const String _defaultDownloadUrl =
-      'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
+        'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
       '$_archiveName.tar.bz2';
   static const String _expectedSha256 =
       '27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8';
@@ -544,5 +636,504 @@ models/$_modelName/
     try {
       if (tempFile.existsSync()) tempFile.deleteSync();
     } catch (_) {}
+  }
+
+  // ===== Story 2-7: 多引擎模型管理 =====
+
+  /// 获取指定引擎的模型目录路径
+  String getModelPathForEngine(EngineType engineType) {
+    final config = ModelConfigs.forEngine(engineType);
+    return '$_modelBaseDir/${config.dirName}';
+  }
+
+  /// 获取 VAD 模型目录路径
+  String get vadModelPath => '$_modelBaseDir/${ModelConfigs.sileroVad.dirName}';
+
+  /// 获取 VAD 模型文件路径
+  String get vadModelFilePath => '$vadModelPath/silero_vad.onnx';
+
+  /// 检查指定引擎的模型状态
+  ModelStatus checkModelStatusForEngine(EngineType engineType) {
+    final config = ModelConfigs.forEngine(engineType);
+    final modelDir = Directory(getModelPathForEngine(engineType));
+
+    if (!modelDir.existsSync()) {
+      return ModelStatus.notFound;
+    }
+
+    // 检查必需文件
+    for (final prefix in config.requiredFilePrefixes) {
+      if (!_hasModelFileInDir(modelDir.path, prefix)) {
+        return ModelStatus.incomplete;
+      }
+    }
+
+    // 检查 tokens.txt (除了单文件模型)
+    if (!config.isSingleFile && !File('${modelDir.path}/tokens.txt').existsSync()) {
+      return ModelStatus.incomplete;
+    }
+
+    return ModelStatus.ready;
+  }
+
+  /// 检查 VAD 模型状态
+  ModelStatus checkVadModelStatus() {
+    final vadFile = File(vadModelFilePath);
+    if (!vadFile.existsSync()) {
+      return ModelStatus.notFound;
+    }
+    return ModelStatus.ready;
+  }
+
+  /// 检查指定引擎的模型是否就绪
+  bool isModelReadyForEngine(EngineType engineType) {
+    return checkModelStatusForEngine(engineType) == ModelStatus.ready;
+  }
+
+  /// 检查 VAD 模型是否就绪
+  bool get isVadModelReady => checkVadModelStatus() == ModelStatus.ready;
+
+  /// 检查 SenseVoice 引擎是否完全就绪 (模型 + VAD)
+  bool get isSenseVoiceReady {
+    return isModelReadyForEngine(EngineType.sensevoice) && isVadModelReady;
+  }
+
+  /// 在指定目录中查找模型文件
+  bool _hasModelFileInDir(String dirPath, String prefix) {
+    final dir = Directory(dirPath);
+    if (!dir.existsSync()) return false;
+    try {
+      return dir.listSync().any((f) {
+        final name = f.path.split('/').last;
+        return name.startsWith(prefix) && name.endsWith('.onnx');
+      });
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 获取引擎模型的下载 URL
+  String getDownloadUrlForEngine(EngineType engineType) {
+    final config = ModelConfigs.forEngine(engineType);
+
+    // 优先使用配置文件中的自定义 URL
+    if (SettingsService.instance.isInitialized) {
+      final customUrl = _getCustomUrlForEngine(engineType);
+      if (customUrl != null && customUrl.isNotEmpty) {
+        return customUrl;
+      }
+    }
+    return config.defaultUrl;
+  }
+
+  /// 获取 VAD 模型下载 URL
+  String get vadDownloadUrl => ModelConfigs.sileroVad.defaultUrl;
+
+  /// 从配置获取引擎的自定义 URL
+  String? _getCustomUrlForEngine(EngineType engineType) {
+    // 后续 Task 5 会扩展 settings.yaml 支持多引擎配置
+    // 目前仅支持 Zipformer 的 custom_url
+    if (engineType == EngineType.zipformer) {
+      return SettingsService.instance.customModelUrl;
+    }
+    return null;
+  }
+
+  /// 获取引擎模型的期望目录结构描述
+  String getExpectedStructureForEngine(EngineType engineType) {
+    final config = ModelConfigs.forEngine(engineType);
+    switch (engineType) {
+      case EngineType.zipformer:
+        return '''
+models/${config.dirName}/
+├── encoder-epoch-*.onnx
+├── decoder-epoch-*.onnx
+├── joiner-epoch-*.onnx
+└── tokens.txt
+''';
+      case EngineType.sensevoice:
+        return '''
+models/${config.dirName}/
+├── model.onnx (或 model.int8.onnx)
+└── tokens.txt
+''';
+    }
+  }
+
+  /// 获取 VAD 模型的期望结构描述
+  String get vadExpectedStructure => '''
+models/vad/
+└── silero_vad.onnx
+''';
+
+  /// 下载指定引擎的模型
+  Future<String> downloadModelForEngine(
+    EngineType engineType, {
+    ProgressCallback? onProgress,
+    int maxRetries = 3,
+  }) async {
+    final config = ModelConfigs.forEngine(engineType);
+    final url = getDownloadUrlForEngine(engineType);
+    final tempPath = '$_xdgDataHome/nextalk/temp_${config.dirName}.tar.bz2';
+
+    return _downloadFile(
+      url: url,
+      tempPath: tempPath,
+      onProgress: onProgress,
+      maxRetries: maxRetries,
+    );
+  }
+
+  /// 下载 VAD 模型 (单文件)
+  Future<String> downloadVadModel({
+    ProgressCallback? onProgress,
+    int maxRetries = 3,
+  }) async {
+    final url = vadDownloadUrl;
+    final targetPath = vadModelFilePath;
+
+    // 确保目录存在
+    final vadDir = Directory(vadModelPath);
+    if (!vadDir.existsSync()) {
+      vadDir.createSync(recursive: true);
+    }
+
+    return _downloadFile(
+      url: url,
+      tempPath: targetPath, // VAD 是单文件，直接下载到目标位置
+      onProgress: onProgress,
+      maxRetries: maxRetries,
+    );
+  }
+
+  /// 通用文件下载方法
+  Future<String> _downloadFile({
+    required String url,
+    required String tempPath,
+    ProgressCallback? onProgress,
+    int maxRetries = 3,
+  }) async {
+    // 确保目录存在
+    final baseDir = Directory('$_xdgDataHome/nextalk');
+    if (!baseDir.existsSync()) {
+      baseDir.createSync(recursive: true);
+    }
+
+    final tempFile = File(tempPath);
+    Object lastException = Exception('下载失败');
+
+    _cancelToken = CancelToken();
+    bool isCancelled = false;
+    _cancelToken!.whenCancel.then((_) => isCancelled = true);
+
+    for (var attempt = 1; attempt <= maxRetries; attempt++) {
+      HttpClient? client;
+      try {
+        client = HttpClient();
+        client.connectionTimeout = const Duration(seconds: 30);
+
+        // 配置代理
+        final httpProxy = Platform.environment['HTTP_PROXY'] ??
+            Platform.environment['http_proxy'] ??
+            Platform.environment['HTTPS_PROXY'] ??
+            Platform.environment['https_proxy'];
+        if (httpProxy != null && httpProxy.isNotEmpty) {
+          client.findProxy = (uri) => 'PROXY $httpProxy';
+          client.badCertificateCallback = (cert, host, port) => true;
+        }
+
+        // 检查已下载大小
+        int downloadedBytes = 0;
+        if (tempFile.existsSync()) {
+          downloadedBytes = tempFile.lengthSync();
+        }
+
+        // 获取文件总大小
+        final uri = Uri.parse(url);
+        int totalBytes = 0;
+        try {
+          final headClient = HttpClient();
+          headClient.connectionTimeout = const Duration(seconds: 10);
+          final headRequest = await headClient.headUrl(uri);
+          final headResponse = await headRequest.close();
+          totalBytes = headResponse.contentLength;
+          await headResponse.drain<void>();
+          headClient.close(force: true);
+        } catch (_) {}
+
+        // 如果已经下载完成
+        if (totalBytes > 0 && downloadedBytes >= totalBytes) {
+          onProgress?.call(1.0, '下载完成');
+          client.close();
+          return tempPath;
+        }
+
+        // 发起 GET 请求
+        onProgress?.call(0.0, '下载中 (尝试 $attempt/$maxRetries)...',
+            downloaded: downloadedBytes, total: totalBytes);
+
+        final request = await client.getUrl(uri);
+
+        // 断点续传
+        if (downloadedBytes > 0) {
+          request.headers.set('Range', 'bytes=$downloadedBytes-');
+        }
+
+        final response = await request.close();
+        final statusCode = response.statusCode;
+        final isResuming = statusCode == 206;
+
+        if (downloadedBytes > 0 && !isResuming) {
+          if (tempFile.existsSync()) {
+            tempFile.deleteSync();
+          }
+          downloadedBytes = 0;
+        }
+
+        // 计算总大小
+        final contentLength = response.contentLength;
+        final expectedTotal = isResuming
+            ? downloadedBytes + contentLength
+            : (totalBytes > 0 ? totalBytes : contentLength);
+
+        // 下载
+        final raf = tempFile.openSync(
+            mode: isResuming ? FileMode.append : FileMode.write);
+        int received = isResuming ? downloadedBytes : 0;
+
+        try {
+          await for (final chunk in response) {
+            if (isCancelled) {
+              throw Exception('用户取消下载');
+            }
+            raf.writeFromSync(chunk);
+            received += chunk.length;
+
+            if (expectedTotal > 0) {
+              final progress = received / expectedTotal;
+              onProgress?.call(
+                progress,
+                '下载中: ${(progress * 100).toStringAsFixed(1)}%',
+                downloaded: received,
+                total: expectedTotal,
+              );
+            }
+          }
+        } finally {
+          raf.closeSync();
+        }
+
+        onProgress?.call(1.0, '下载完成',
+            downloaded: received, total: expectedTotal);
+        client.close();
+        return tempPath;
+      } catch (e) {
+        client?.close();
+        lastException = e is Exception ? e : Exception(e.toString());
+
+        if (isCancelled) {
+          throw DioException(
+            requestOptions: RequestOptions(path: url),
+            type: DioExceptionType.cancel,
+          );
+        }
+
+        if (attempt < maxRetries) {
+          onProgress?.call(0.0, '下载失败，3秒后重试...', downloaded: 0, total: 0);
+          await Future.delayed(const Duration(seconds: 3));
+        }
+      }
+    }
+
+    throw lastException;
+  }
+
+  /// 解压指定引擎的模型
+  Future<void> extractModelForEngine(
+    EngineType engineType,
+    String archivePath, {
+    ProgressCallback? onProgress,
+  }) async {
+    final config = ModelConfigs.forEngine(engineType);
+    final targetPath = getModelPathForEngine(engineType);
+
+    onProgress?.call(0.0, '解压中 (后台处理)...', downloaded: 0, total: 0);
+
+    await Isolate.run(() => _extractInIsolate(
+          archivePath,
+          targetPath,
+          config.archiveTopDir,
+        ));
+
+    onProgress?.call(1.0, '解压完成', downloaded: 0, total: 0);
+  }
+
+  /// 确保指定引擎的模型就绪
+  Future<ModelError> ensureModelReadyForEngine(
+    EngineType engineType, {
+    ProgressCallback? onProgress,
+  }) async {
+    final config = ModelConfigs.forEngine(engineType);
+
+    // 1. 检查现有模型
+    final status = checkModelStatusForEngine(engineType);
+    if (status == ModelStatus.ready) {
+      onProgress?.call(1.0, '${config.displayName} 模型已就绪', downloaded: 0, total: 0);
+      return ModelError.none;
+    }
+
+    final tempPath = '$_xdgDataHome/nextalk/temp_${config.dirName}.tar.bz2';
+    final tempFile = File(tempPath);
+    bool downloadCompleted = false;
+
+    try {
+      // 2. 下载 (0% - 60%)
+      onProgress?.call(0.0, '开始下载 ${config.displayName}...', downloaded: 0, total: 0);
+      await downloadModelForEngine(
+        engineType,
+        onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
+            onProgress?.call(p * 0.6, s, downloaded: downloaded, total: total),
+        maxRetries: 3,
+      );
+      downloadCompleted = true;
+
+      // 3. 校验 (60% - 70%)
+      if (config.sha256 != null) {
+        onProgress?.call(0.6, '校验中...', downloaded: 0, total: 0);
+        final valid = await _verifyChecksumForFile(tempPath, config.sha256!);
+        if (!valid) {
+          tempFile.deleteSync();
+          return ModelError.checksumMismatch;
+        }
+      }
+
+      // 4. 解压 (70% - 100%)
+      onProgress?.call(0.7, '解压中...', downloaded: 0, total: 0);
+      await extractModelForEngine(
+        engineType,
+        tempPath,
+        onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
+            onProgress?.call(0.7 + p * 0.3, s, downloaded: 0, total: 0),
+      );
+
+      // 5. 清理临时文件
+      if (tempFile.existsSync()) {
+        tempFile.deleteSync();
+      }
+
+      onProgress?.call(1.0, '${config.displayName} 模型准备完成', downloaded: 0, total: 0);
+      return ModelError.none;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) {
+        return ModelError.downloadCancelled;
+      }
+      return ModelError.networkError;
+    } on FileSystemException catch (e) {
+      if (downloadCompleted) {
+        _cleanupTempFile(tempFile);
+      }
+      if (e.message.contains('No space')) {
+        return ModelError.diskSpaceError;
+      }
+      return ModelError.permissionDenied;
+    } catch (e) {
+      if (downloadCompleted) {
+        _cleanupTempFile(tempFile);
+        return ModelError.extractionFailed;
+      } else {
+        return ModelError.networkError;
+      }
+    }
+  }
+
+  /// 确保 VAD 模型就绪 (单文件下载)
+  Future<ModelError> ensureVadModelReady({
+    ProgressCallback? onProgress,
+  }) async {
+    // 1. 检查现有模型
+    final status = checkVadModelStatus();
+    if (status == ModelStatus.ready) {
+      onProgress?.call(1.0, 'VAD 模型已就绪', downloaded: 0, total: 0);
+      return ModelError.none;
+    }
+
+    try {
+      // 2. 下载 (0% - 100%)
+      onProgress?.call(0.0, '开始下载 VAD 模型...', downloaded: 0, total: 0);
+      await downloadVadModel(
+        onProgress: onProgress,
+        maxRetries: 3,
+      );
+
+      onProgress?.call(1.0, 'VAD 模型准备完成', downloaded: 0, total: 0);
+      return ModelError.none;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) {
+        return ModelError.downloadCancelled;
+      }
+      return ModelError.networkError;
+    } on FileSystemException catch (e) {
+      if (e.message.contains('No space')) {
+        return ModelError.diskSpaceError;
+      }
+      return ModelError.permissionDenied;
+    } catch (_) {
+      return ModelError.networkError;
+    }
+  }
+
+  /// 确保 SenseVoice 引擎完全就绪 (模型 + VAD)
+  Future<ModelError> ensureSenseVoiceReady({
+    ProgressCallback? onProgress,
+  }) async {
+    // 1. 确保 SenseVoice 模型就绪 (0% - 80%)
+    final modelError = await ensureModelReadyForEngine(
+      EngineType.sensevoice,
+      onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
+          onProgress?.call(p * 0.8, s, downloaded: downloaded, total: total),
+    );
+
+    if (modelError != ModelError.none) {
+      return modelError;
+    }
+
+    // 2. 确保 VAD 模型就绪 (80% - 100%)
+    final vadError = await ensureVadModelReady(
+      onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
+          onProgress?.call(0.8 + p * 0.2, s, downloaded: downloaded, total: total),
+    );
+
+    return vadError;
+  }
+
+  /// 校验文件 SHA256
+  Future<bool> _verifyChecksumForFile(String filePath, String expectedSha256) async {
+    final actual = await _computeSha256(filePath);
+    return actual == expectedSha256;
+  }
+
+  /// 删除指定引擎的模型
+  Future<void> deleteModelForEngine(EngineType engineType) async {
+    final dir = Directory(getModelPathForEngine(engineType));
+    if (dir.existsSync()) {
+      await dir.delete(recursive: true);
+    }
+  }
+
+  /// 删除 VAD 模型
+  Future<void> deleteVadModel() async {
+    final file = File(vadModelFilePath);
+    if (file.existsSync()) {
+      await file.delete();
+    }
+  }
+
+  /// 打开指定引擎的模型目录
+  Future<void> openModelDirectoryForEngine(EngineType engineType) async {
+    final dir = Directory(getModelPathForEngine(engineType));
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    await Process.run('xdg-open', [dir.path]);
   }
 }

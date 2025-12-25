@@ -361,6 +361,35 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 
 ---
 
+### Story 2.7: 多模型 ASR 支持 (SenseVoice 集成)
+
+**As a** 用户,
+**I want** 应用支持多种语音识别模型，可通过配置切换不同引擎,
+**So that** 我可以根据场景选择最适合的识别方案 (流式低延迟 vs 离线高精度)。
+
+**Acceptance Criteria:**
+
+**Given** 当前系统仅支持 Zipformer 流式模型
+**When** 重构 ASR 架构
+**Then** 创建统一的 `ASREngine` 抽象接口
+**And** 现有 Zipformer 功能通过 `ZipformerEngine` 实现
+**And** 新增 `SenseVoiceEngine` 实现离线识别 (VAD + SenseVoice)
+**And** 引擎切换不影响上层调用
+
+**Given** 用户在配置中选择 SenseVoice 引擎
+**When** 初始化识别系统
+**Then** 使用 Silero VAD 进行语音活动检测
+**And** VAD 检测到语音段后送入 SenseVoice 识别
+**And** 识别结果按段落输出 (伪流式体验)
+**And** 输出包含自动标点符号
+
+**Given** 托盘菜单
+**When** 用户切换 ASR 引擎
+**Then** 支持运行时热切换 (无需重启)
+**And** 默认使用 SenseVoice 引擎
+
+---
+
 ## Epic 3: 完整产品体验 (The Product)
 
 用户获得无缝、美观的语音输入体验，支持快捷键唤醒、视觉反馈和系统集成。
