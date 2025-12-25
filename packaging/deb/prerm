@@ -39,7 +39,12 @@ restart_fcitx5() {
 }
 
 case "$1" in
-    remove|upgrade|deconfigure)
+    upgrade)
+        # During upgrade, just clean symlink silently - postinst will recreate it
+        rm -f /usr/bin/nextalk
+        ;;
+
+    remove|deconfigure)
         # Clean symlink
         rm -f /usr/bin/nextalk
 

@@ -15,10 +15,11 @@ enum HotkeyState {
   submitting, // 提交中 (处理文本上屏)
 }
 
-/// 快捷键业务控制器 - Story 3-5
+/// 快捷键业务控制器 - Story 3-5 (重构版)
 ///
 /// 协调快捷键事件与各服务的交互:
-/// - HotkeyService: 监听全局快捷键
+/// - CommandServer: 接收来自 Fcitx5 插件的快捷键命令
+/// - HotkeyService: 加载配置并同步到 Fcitx5
 /// - WindowService: 控制窗口显隐
 /// - AudioInferencePipeline: 控制录音和识别
 /// - FcitxClient: 提交文本
@@ -57,6 +58,32 @@ class HotkeyController {
 
   /// Story 3-7: 获取保存的文本 (用于复制/重试)
   String? get preservedText => _lastRecognizedText;
+
+  // ===== 公开的控制方法 (供 CommandServer 调用) =====
+
+  /// 切换录音状态 (模拟快捷键按下)
+  ///
+  /// 供 Fcitx5 插件通过 CommandServer 触发
+  Future<void> toggle() async {
+    await _onHotkeyPressed();
+  }
+
+  /// 显示窗口并开始录音
+  Future<void> show() async {
+    if (_state == HotkeyState.idle) {
+      await _startRecording();
+    }
+  }
+
+  /// 隐藏窗口
+  Future<void> hide() async {
+    if (_state == HotkeyState.recording) {
+      await _stopAndSubmit();
+    } else if (_state == HotkeyState.idle && WindowService.instance.isVisible) {
+      await WindowService.instance.hide();
+      _updateState(CapsuleStateData.idle());
+    }
+  }
 
   /// Story 3-7: 重试提交保存的文本 (AC15)
   Future<void> retrySubmit() async {
@@ -206,13 +233,18 @@ class HotkeyController {
     // ignore: avoid_print
     print('[HotkeyController] 📝 最终文本: "$finalText"');
 
-    // 3. 提交文本到 Fcitx5 (AC4)
-    await _submitText(finalText);
-
-    // 4. 隐藏窗口 (AC5: 瞬间消失)
+    // 3. 先隐藏窗口 (Wayland 焦点修复)
+    // 在 Wayland 下，必须先隐藏窗口让原应用恢复焦点，
+    // 否则 Fcitx5 的 commitString 无法生效
     await WindowService.instance.hide();
 
-    // 5. 重置状态
+    // 4. 等待焦点恢复 (关键！)
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // 5. 提交文本到 Fcitx5 (AC4)
+    await _submitText(finalText);
+
+    // 6. 重置状态
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
   }
@@ -302,13 +334,16 @@ class HotkeyController {
     // 1. 更新 UI 状态
     _updateState(CapsuleStateData.processing());
 
-    // 2. 提交文本
-    await _submitText(finalText);
-
-    // 3. 隐藏窗口
+    // 2. 先隐藏窗口 (Wayland 焦点修复)
     await WindowService.instance.hide();
 
-    // 4. 重置状态
+    // 3. 等待焦点恢复
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // 4. 提交文本
+    await _submitText(finalText);
+
+    // 5. 重置状态
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
   }

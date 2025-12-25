@@ -28,6 +28,14 @@ static void my_application_activate(GApplication* application) {
   // 设置无边框窗口
   gtk_window_set_decorated(window, FALSE);
 
+  // ⚠️ 尝试使用 UTILITY 类型提示 (Wayland workaround)
+  // UTILITY 窗口：不在任务栏显示，可以拖动，通常不抢焦点
+  gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_UTILITY);
+
+  // ⚠️ 关键：不在任务栏/Dock 显示图标
+  gtk_window_set_skip_taskbar_hint(window, TRUE);
+  gtk_window_set_skip_pager_hint(window, TRUE);
+
   // ⚠️ 关键：禁止接受焦点 - 防止抢占其他应用的输入焦点
   // 这样 Fcitx5 的 InputContext 焦点会保持在用户正在输入的应用中
   gtk_window_set_accept_focus(window, FALSE);

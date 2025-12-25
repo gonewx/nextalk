@@ -1,16 +1,14 @@
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:voice_capsule/constants/hotkey_constants.dart';
 
-/// Story 3-5: 快捷键常量测试
+/// Story 3-5: 快捷键常量测试 (重构版)
 void main() {
   group('HotkeyConstants Tests', () {
     group('默认快捷键配置', () {
       test('defaultKey 应该是 altRight', () {
         expect(
           HotkeyConstants.defaultKey,
-          equals(PhysicalKeyboardKey.altRight),
+          equals('altRight'),
         );
       });
 
@@ -19,132 +17,117 @@ void main() {
       });
     });
 
-    group('备用快捷键配置', () {
-      test('fallbackKey 应该是 space', () {
-        expect(
-          HotkeyConstants.fallbackKey,
-          equals(PhysicalKeyboardKey.space),
-        );
-      });
-
-      test('fallbackModifiers 应该包含 ctrl 和 shift', () {
-        expect(HotkeyConstants.fallbackModifiers, hasLength(2));
-        expect(
-          HotkeyConstants.fallbackModifiers,
-          contains(HotKeyModifier.control),
-        );
-        expect(
-          HotkeyConstants.fallbackModifiers,
-          contains(HotKeyModifier.shift),
-        );
-      });
-    });
-
-    group('配置文件常量 (已迁移至 SettingsConstants)', () {
-      // 配置文件相关常量已统一至 SettingsConstants
-      // 现在使用 settings.yaml 作为统一配置文件
-      test('keyMap 应该包含必要的键位映射', () {
-        expect(HotkeyConstants.keyMap.isNotEmpty, isTrue);
-      });
-    });
-
-    group('键位映射 keyMap', () {
+    group('keyToFcitx5 映射', () {
       test('应该包含 altRight', () {
-        expect(HotkeyConstants.keyMap.containsKey('altRight'), isTrue);
+        expect(HotkeyConstants.keyToFcitx5.containsKey('altRight'), isTrue);
         expect(
-          HotkeyConstants.keyMap['altRight'],
-          equals(PhysicalKeyboardKey.altRight),
+          HotkeyConstants.keyToFcitx5['altRight'],
+          equals('Alt_R'),
         );
       });
 
       test('应该包含 space', () {
-        expect(HotkeyConstants.keyMap.containsKey('space'), isTrue);
+        expect(HotkeyConstants.keyToFcitx5.containsKey('space'), isTrue);
         expect(
-          HotkeyConstants.keyMap['space'],
-          equals(PhysicalKeyboardKey.space),
+          HotkeyConstants.keyToFcitx5['space'],
+          equals('space'),
         );
       });
 
       test('应该包含 ctrl 系列', () {
-        expect(HotkeyConstants.keyMap.containsKey('ctrl'), isTrue);
-        expect(HotkeyConstants.keyMap.containsKey('ctrlLeft'), isTrue);
-        expect(HotkeyConstants.keyMap.containsKey('ctrlRight'), isTrue);
+        expect(HotkeyConstants.keyToFcitx5.containsKey('ctrl'), isTrue);
+        expect(HotkeyConstants.keyToFcitx5.containsKey('ctrlLeft'), isTrue);
+        expect(HotkeyConstants.keyToFcitx5.containsKey('ctrlRight'), isTrue);
       });
 
       test('应该包含所有 F1-F12 功能键', () {
         for (int i = 1; i <= 12; i++) {
           expect(
-            HotkeyConstants.keyMap.containsKey('f$i'),
+            HotkeyConstants.keyToFcitx5.containsKey('f$i'),
             isTrue,
-            reason: 'keyMap 应该包含 f$i',
+            reason: 'keyToFcitx5 应该包含 f$i',
+          );
+          expect(
+            HotkeyConstants.keyToFcitx5['f$i'],
+            equals('F$i'),
+            reason: 'f$i 应该映射到 F$i',
           );
         }
       });
+
+      test('应该正确映射修饰键作为主键', () {
+        expect(HotkeyConstants.keyToFcitx5['alt'], equals('Alt_L'));
+        expect(HotkeyConstants.keyToFcitx5['altLeft'], equals('Alt_L'));
+        expect(HotkeyConstants.keyToFcitx5['altRight'], equals('Alt_R'));
+        expect(HotkeyConstants.keyToFcitx5['ctrl'], equals('Control_L'));
+        expect(HotkeyConstants.keyToFcitx5['shift'], equals('Shift_L'));
+        expect(HotkeyConstants.keyToFcitx5['meta'], equals('Super_L'));
+      });
     });
 
-    group('修饰键映射 modifierMap', () {
+    group('modifierToFcitx5 映射', () {
       test('应该包含 ctrl', () {
-        expect(HotkeyConstants.modifierMap.containsKey('ctrl'), isTrue);
+        expect(HotkeyConstants.modifierToFcitx5.containsKey('ctrl'), isTrue);
         expect(
-          HotkeyConstants.modifierMap['ctrl'],
-          equals(HotKeyModifier.control),
+          HotkeyConstants.modifierToFcitx5['ctrl'],
+          equals('Control'),
         );
       });
 
       test('应该包含 shift', () {
-        expect(HotkeyConstants.modifierMap.containsKey('shift'), isTrue);
+        expect(HotkeyConstants.modifierToFcitx5.containsKey('shift'), isTrue);
         expect(
-          HotkeyConstants.modifierMap['shift'],
-          equals(HotKeyModifier.shift),
+          HotkeyConstants.modifierToFcitx5['shift'],
+          equals('Shift'),
         );
       });
 
       test('应该包含 alt', () {
-        expect(HotkeyConstants.modifierMap.containsKey('alt'), isTrue);
+        expect(HotkeyConstants.modifierToFcitx5.containsKey('alt'), isTrue);
         expect(
-          HotkeyConstants.modifierMap['alt'],
-          equals(HotKeyModifier.alt),
+          HotkeyConstants.modifierToFcitx5['alt'],
+          equals('Alt'),
         );
       });
 
       test('应该包含 meta', () {
-        expect(HotkeyConstants.modifierMap.containsKey('meta'), isTrue);
+        expect(HotkeyConstants.modifierToFcitx5.containsKey('meta'), isTrue);
         expect(
-          HotkeyConstants.modifierMap['meta'],
-          equals(HotKeyModifier.meta),
+          HotkeyConstants.modifierToFcitx5['meta'],
+          equals('Super'),
         );
       });
 
-      test('control 和 ctrl 应该映射到同一个修饰键', () {
+      test('control 和 ctrl 应该映射到同一个 Fcitx5 修饰键', () {
         expect(
-          HotkeyConstants.modifierMap['ctrl'],
-          equals(HotkeyConstants.modifierMap['control']),
+          HotkeyConstants.modifierToFcitx5['ctrl'],
+          equals(HotkeyConstants.modifierToFcitx5['control']),
         );
       });
     });
 
-    group('HotKey 集成测试', () {
-      test('可以使用默认快捷键创建 HotKey', () {
-        final hotkey = HotKey(
-          key: HotkeyConstants.defaultKey,
-          modifiers: HotkeyConstants.defaultModifiers.isEmpty
-              ? null
-              : HotkeyConstants.defaultModifiers,
-        );
-
-        expect(hotkey.key, equals(HotkeyConstants.defaultKey));
-        expect(hotkey.modifiers, isNull);
+    group('Fcitx5 格式字符串', () {
+      test('单键应该直接映射', () {
+        expect(HotkeyConstants.keyToFcitx5['escape'], equals('Escape'));
+        expect(HotkeyConstants.keyToFcitx5['tab'], equals('Tab'));
+        expect(HotkeyConstants.keyToFcitx5['enter'], equals('Return'));
       });
 
-      test('可以使用备用快捷键创建 HotKey', () {
-        final hotkey = HotKey(
-          key: HotkeyConstants.fallbackKey,
-          modifiers: HotkeyConstants.fallbackModifiers,
-        );
+      test('方向键应该正确映射', () {
+        expect(HotkeyConstants.keyToFcitx5['arrowUp'], equals('Up'));
+        expect(HotkeyConstants.keyToFcitx5['arrowDown'], equals('Down'));
+        expect(HotkeyConstants.keyToFcitx5['arrowLeft'], equals('Left'));
+        expect(HotkeyConstants.keyToFcitx5['arrowRight'], equals('Right'));
+      });
 
-        expect(hotkey.key, equals(HotkeyConstants.fallbackKey));
-        expect(hotkey.modifiers, isNotNull);
-        expect(hotkey.modifiers, hasLength(2));
+      test('小键盘数字键应该正确映射', () {
+        for (int i = 0; i <= 9; i++) {
+          expect(
+            HotkeyConstants.keyToFcitx5['numpad$i'],
+            equals('KP_$i'),
+            reason: 'numpad$i 应该映射到 KP_$i',
+          );
+        }
       });
     });
   });

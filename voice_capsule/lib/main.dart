@@ -5,6 +5,7 @@ import 'app/nextalk_app.dart';
 import 'services/animation_ticker_service.dart';
 import 'services/audio_capture.dart';
 import 'services/audio_inference_pipeline.dart';
+import 'services/command_server.dart';
 import 'services/fcitx_client.dart';
 import 'services/hotkey_controller.dart';
 import 'services/hotkey_service.dart';
@@ -69,6 +70,10 @@ Future<void> main() async {
     // 4. 初始化全局快捷键服务
     await HotkeyService.instance.initialize();
 
+    // 4.1 启动命令服务器 (接收 Fcitx5 插件的快捷键命令，支持 Wayland)
+    await CommandServer.instance.start();
+    DiagnosticLogger.instance.info('main', '命令服务器启动完成');
+
     // 5. 检查/下载模型
     final modelManager = ModelManager();
     if (!modelManager.isModelReady) {
@@ -101,12 +106,28 @@ Future<void> main() async {
       stateController: _stateController,
     );
 
+    // 9.1 设置命令服务器回调 (Wayland 快捷键支持)
+    CommandServer.instance.onCommand = (command) {
+      DiagnosticLogger.instance.info('main', '收到 Fcitx5 命令: $command');
+      if (command == 'toggle') {
+        // 触发与快捷键相同的动作
+        HotkeyController.instance.toggle();
+      } else if (command == 'show') {
+        HotkeyController.instance.show();
+      } else if (command == 'hide') {
+        HotkeyController.instance.hide();
+      }
+    };
+
     // 10. 设置托盘回调 (AC12: 释放所有资源, AC16: 重连 Fcitx5)
     TrayService.instance.onBeforeExit = () async {
       DiagnosticLogger.instance.info('main', '开始清理资源...');
 
       // 停止动画预热服务
       AnimationTickerService.instance.stop();
+
+      // 停止命令服务器
+      await CommandServer.instance.dispose();
 
       // 释放控制器
       await HotkeyController.instance.dispose();

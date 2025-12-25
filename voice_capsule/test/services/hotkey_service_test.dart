@@ -1,16 +1,14 @@
 import 'dart:io';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:voice_capsule/services/hotkey_service.dart';
 import 'package:voice_capsule/constants/hotkey_constants.dart';
 import 'package:voice_capsule/constants/settings_constants.dart';
 
-/// Story 3-5: HotkeyService 测试
+/// Story 3-5: HotkeyService 测试 (重构版)
 ///
-/// 注意: hotkey_manager 依赖原生 keybinder 库
-/// 完整功能测试需要: flutter test -d linux (真实设备)
-/// 这里仅测试不依赖原生调用的逻辑
+/// 注意: 快捷键监听已改由 Fcitx5 插件处理
+/// HotkeyService 现在只负责配置读取和同步
 void main() {
   group('HotkeyService Tests', () {
     group('单例模式', () {
@@ -40,10 +38,6 @@ void main() {
         await HotkeyService.instance.onHotkeyPressed!();
         expect(callCount, equals(1));
       });
-
-      test('registrationFailed 应该是 bool 类型', () {
-        expect(HotkeyService.instance.registrationFailed, isA<bool>());
-      });
     });
 
     group('配置文件路径 (统一使用 settings.yaml)', () {
@@ -64,25 +58,25 @@ void main() {
     });
 
     group('快捷键配置解析', () {
-      test('默认快捷键应该是 Right Alt', () {
+      test('默认快捷键应该是 altRight', () {
         expect(
           HotkeyConstants.defaultKey,
-          equals(PhysicalKeyboardKey.altRight),
+          equals('altRight'),
         );
       });
 
-      test('keyMap 应该包含所有支持的键', () {
-        // 验证 keyMap 包含配置文件可能用到的所有键
-        expect(HotkeyConstants.keyMap.containsKey('altRight'), isTrue);
-        expect(HotkeyConstants.keyMap.containsKey('space'), isTrue);
-        expect(HotkeyConstants.keyMap.containsKey('ctrl'), isTrue);
+      test('keyToFcitx5 应该包含所有支持的键', () {
+        // 验证 keyToFcitx5 包含配置文件可能用到的所有键
+        expect(HotkeyConstants.keyToFcitx5.containsKey('altRight'), isTrue);
+        expect(HotkeyConstants.keyToFcitx5.containsKey('space'), isTrue);
+        expect(HotkeyConstants.keyToFcitx5.containsKey('ctrl'), isTrue);
       });
 
-      test('modifierMap 应该包含所有支持的修饰键', () {
-        expect(HotkeyConstants.modifierMap.containsKey('ctrl'), isTrue);
-        expect(HotkeyConstants.modifierMap.containsKey('shift'), isTrue);
-        expect(HotkeyConstants.modifierMap.containsKey('alt'), isTrue);
-        expect(HotkeyConstants.modifierMap.containsKey('meta'), isTrue);
+      test('modifierToFcitx5 应该包含所有支持的修饰键', () {
+        expect(HotkeyConstants.modifierToFcitx5.containsKey('ctrl'), isTrue);
+        expect(HotkeyConstants.modifierToFcitx5.containsKey('shift'), isTrue);
+        expect(HotkeyConstants.modifierToFcitx5.containsKey('alt'), isTrue);
+        expect(HotkeyConstants.modifierToFcitx5.containsKey('meta'), isTrue);
       });
     });
 
@@ -106,16 +100,27 @@ void main() {
       });
     });
 
-    group('错误处理策略 (AC7)', () {
-      test('备用快捷键应该与主快捷键不同', () {
-        expect(
-          HotkeyConstants.defaultKey,
-          isNot(equals(HotkeyConstants.fallbackKey)),
-        );
+    group('HotkeyConfig', () {
+      test('默认配置应该正确', () {
+        final config = HotkeyConfig.defaultConfig;
+        expect(config.key, equals('altRight'));
+        expect(config.modifiers, isEmpty);
       });
 
-      test('备用快捷键应该有修饰键', () {
-        expect(HotkeyConstants.fallbackModifiers, isNotEmpty);
+      test('toFcitx5Format 应该正确转换无修饰键的配置', () {
+        const config = HotkeyConfig(
+          key: 'altRight',
+          modifiers: [],
+        );
+        expect(config.toFcitx5Format(), equals('Alt_R'));
+      });
+
+      test('toFcitx5Format 应该正确转换带修饰键的配置', () {
+        const config = HotkeyConfig(
+          key: 'space',
+          modifiers: ['ctrl', 'shift'],
+        );
+        expect(config.toFcitx5Format(), equals('Control+Shift+space'));
       });
     });
   });

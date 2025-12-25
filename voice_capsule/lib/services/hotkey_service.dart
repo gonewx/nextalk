@@ -1,8 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
-import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:yaml/yaml.dart';
 
 import '../constants/hotkey_constants.dart';
@@ -11,86 +9,106 @@ import '../constants/settings_constants.dart';
 /// 快捷键按下回调类型
 typedef HotkeyPressedCallback = Future<void> Function();
 
-/// 全局快捷键服务 - Story 3-5
+/// 快捷键配置数据
+class HotkeyConfig {
+  final String key;
+  final List<String> modifiers;
+
+  const HotkeyConfig({
+    required this.key,
+    required this.modifiers,
+  });
+
+  /// 默认快捷键配置 (Right Alt)
+  static const HotkeyConfig defaultConfig = HotkeyConfig(
+    key: 'altRight',
+    modifiers: [],
+  );
+
+  /// 转换为 Fcitx5 格式
+  /// 格式: "Modifier+Modifier+Key" 或 "Key"
+  String toFcitx5Format() {
+    final parts = <String>[];
+
+    // 添加修饰键
+    for (final modifier in modifiers) {
+      final fcitx5Modifier = HotkeyConstants.modifierToFcitx5[modifier];
+      if (fcitx5Modifier != null) {
+        parts.add(fcitx5Modifier);
+      }
+    }
+
+    // 添加主键
+    final fcitx5Key = HotkeyConstants.keyToFcitx5[key];
+    if (fcitx5Key != null) {
+      parts.add(fcitx5Key);
+    } else {
+      parts.add(key); // 回退到原始键名
+    }
+
+    return parts.join('+');
+  }
+
+  @override
+  String toString() => '$key + $modifiers';
+}
+
+/// 快捷键配置服务 - Story 3-5 (重构版)
 ///
 /// 职责:
 /// - 加载配置文件或使用默认快捷键
-/// - 注册/注销全局快捷键
-/// - 处理按键事件回调
-/// - 错误处理 (快捷键冲突时使用备用快捷键)
+/// - 同步配置到 Fcitx5 插件
+///
+/// 注意: 实际的快捷键监听由 Fcitx5 插件处理，
+/// Flutter 端通过 CommandServer 接收命令
 class HotkeyService {
   HotkeyService._();
   static final HotkeyService instance = HotkeyService._();
 
-  HotKey? _registeredHotkey;
+  HotkeyConfig? _currentConfig;
   bool _isInitialized = false;
-  bool _registrationFailed = false;
 
-  /// 重置服务状态 (仅用于测试)
-  ///
-  /// 注意: 不会注销已注册的快捷键，仅重置内部状态。
-  /// 生产代码中请使用 [dispose] 方法。
-  @visibleForTesting
-  void resetForTesting() {
-    _isInitialized = false;
-    _registrationFailed = false;
-    _registeredHotkey = null;
-    onHotkeyPressed = null;
+  /// Fcitx5 配置 Socket 路径
+  String get _fcitxConfigSocketPath {
+    final runtimeDir = Platform.environment['XDG_RUNTIME_DIR'];
+    if (runtimeDir != null && runtimeDir.isNotEmpty) {
+      return '$runtimeDir/nextalk-fcitx5-cfg.sock';
+    }
+    return '/tmp/nextalk-fcitx5-cfg.sock';
   }
 
   /// 快捷键按下回调 (由 HotkeyController 注入)
+  /// 保留此字段以保持向后兼容，但实际触发由 CommandServer 处理
   HotkeyPressedCallback? onHotkeyPressed;
 
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
 
-  /// 注册是否失败 (AC7: 快捷键被占用)
-  bool get registrationFailed => _registrationFailed;
+  /// 当前快捷键配置
+  HotkeyConfig? get currentConfig => _currentConfig;
 
-  /// 当前注册的快捷键
-  HotKey? get currentHotkey => _registeredHotkey;
-
-  /// 初始化并注册快捷键 (AC8: 应用启动时调用)
+  /// 初始化并同步配置到 Fcitx5
   ///
   /// 流程:
   /// 1. 加载配置文件或使用默认快捷键
-  /// 2. 尝试注册主快捷键
-  /// 3. 如果主快捷键被占用，尝试备用快捷键 (AC7)
+  /// 2. 同步配置到 Fcitx5 插件
   Future<void> initialize() async {
     if (_isInitialized) return;
 
-    try {
-      // 1. 加载配置 (配置文件或默认值)
-      final hotkey = await _loadHotkeyConfig();
+    // 1. 加载配置
+    _currentConfig = await _loadHotkeyConfig();
 
-      // 2. 注册全局快捷键
-      await hotKeyManager.register(
-        hotkey,
-        keyDownHandler: (hotKey) async {
-          if (onHotkeyPressed != null) {
-            await onHotkeyPressed!();
-          }
-        },
-      );
+    // ignore: avoid_print
+    print('[HotkeyService] ✅ 配置加载完成: ${_currentConfig!.toFcitx5Format()}');
 
-      _registeredHotkey = hotkey;
-      _isInitialized = true;
-      _registrationFailed = false;
+    // 2. 同步配置到 Fcitx5 插件
+    await syncToFcitx5(_currentConfig!);
 
-      // ignore: avoid_print
-      print('[HotkeyService] ✅ 快捷键注册成功: ${_hotkeyToString(hotkey)}');
-    } catch (e) {
-      _registrationFailed = true;
-      // AC7: 快捷键被占用时输出警告，不崩溃
-      // ignore: avoid_print
-      print('[HotkeyService] ⚠️ 快捷键注册失败 (可能被其他应用占用): $e');
-      // 尝试使用备用快捷键 (Ctrl+Shift+Space)
-      await _tryFallbackHotkey();
-    }
+    _isInitialized = true;
   }
 
   /// 加载快捷键配置 (AC6: 支持配置文件自定义)
-  Future<HotKey> _loadHotkeyConfig() async {
+  Future<HotkeyConfig> _loadHotkeyConfig() async {
     try {
       final configFile = _getConfigFile();
       if (await configFile.exists()) {
@@ -103,19 +121,15 @@ class HotkeyService {
           final modifierNames =
               (hotkeyConfig['modifiers'] as List?)?.cast<String>() ?? [];
 
-          if (keyName != null && HotkeyConstants.keyMap.containsKey(keyName)) {
-            final key = HotkeyConstants.keyMap[keyName]!;
-            final modifiers = modifierNames
-                .where((m) => HotkeyConstants.modifierMap.containsKey(m))
-                .map((m) => HotkeyConstants.modifierMap[m]!)
-                .toList();
-
+          if (keyName != null && HotkeyConstants.keyToFcitx5.containsKey(keyName)) {
             // ignore: avoid_print
             print('[HotkeyService] 从配置文件加载快捷键: $keyName + $modifierNames');
 
-            return HotKey(
-              key: key,
-              modifiers: modifiers.isEmpty ? null : modifiers,
+            return HotkeyConfig(
+              key: keyName,
+              modifiers: modifierNames
+                  .where((m) => HotkeyConstants.modifierToFcitx5.containsKey(m))
+                  .toList(),
             );
           }
         }
@@ -126,12 +140,7 @@ class HotkeyService {
     }
 
     // 返回默认快捷键
-    return HotKey(
-      key: HotkeyConstants.defaultKey,
-      modifiers: HotkeyConstants.defaultModifiers.isEmpty
-          ? null
-          : HotkeyConstants.defaultModifiers,
-    );
+    return HotkeyConfig.defaultConfig;
   }
 
   /// 获取配置文件 (统一使用 settings.yaml)
@@ -139,76 +148,56 @@ class HotkeyService {
     return File(SettingsConstants.settingsFilePath);
   }
 
-  /// 尝试备用快捷键 (Ctrl+Shift+Space)
-  ///
-  /// 当主快捷键被其他应用占用时调用
-  Future<void> _tryFallbackHotkey() async {
-    try {
-      final fallbackHotkey = HotKey(
-        key: HotkeyConstants.fallbackKey,
-        modifiers: HotkeyConstants.fallbackModifiers,
-      );
-
-      await hotKeyManager.register(
-        fallbackHotkey,
-        keyDownHandler: (hotKey) async {
-          if (onHotkeyPressed != null) {
-            await onHotkeyPressed!();
-          }
-        },
-      );
-
-      _registeredHotkey = fallbackHotkey;
-      _isInitialized = true;
-      _registrationFailed = false;
-
-      // ignore: avoid_print
-      print('[HotkeyService] ✅ 备用快捷键注册成功: ${_hotkeyToString(fallbackHotkey)}');
-    } catch (e) {
-      // ignore: avoid_print
-      print('[HotkeyService] ❌ 备用快捷键也注册失败: $e');
-      _isInitialized = true; // 标记已初始化，但功能降级
-    }
-  }
-
-  /// 注销快捷键 (AC9: 退出时调用)
-  Future<void> unregister() async {
-    if (_registeredHotkey != null) {
-      try {
-        await hotKeyManager.unregister(_registeredHotkey!);
-        // ignore: avoid_print
-        print('[HotkeyService] 快捷键已注销');
-      } catch (e) {
-        // ignore: avoid_print
-        print('[HotkeyService] 注销失败: $e');
-      }
-      _registeredHotkey = null;
-    }
-  }
-
   /// 释放资源
   Future<void> dispose() async {
-    await unregister();
     _isInitialized = false;
+    _currentConfig = null;
+    onHotkeyPressed = null;
   }
 
-  /// 快捷键转字符串 (用于日志)
-  String _hotkeyToString(HotKey hotkey) {
-    final parts = <String>[];
-    for (final modifier in hotkey.modifiers ?? []) {
-      parts.add(modifier.name);
-    }
+  /// 同步快捷键配置到 Fcitx5 插件
+  ///
+  /// 通过 Unix Socket 发送配置命令到 Fcitx5 插件
+  /// 格式: "config:hotkey:<key_spec>"
+  Future<void> syncToFcitx5(HotkeyConfig config) async {
+    try {
+      final keySpec = config.toFcitx5Format();
+      final command = 'config:hotkey:$keySpec';
 
-    // 获取键名
-    final key = hotkey.key;
-    if (key is PhysicalKeyboardKey) {
-      parts.add(key.debugName ?? 'Unknown');
-    } else if (key is LogicalKeyboardKey) {
-      parts.add(key.debugName ?? 'Unknown');
-    } else {
-      parts.add('Unknown');
-    }
+      // ignore: avoid_print
+      print('[HotkeyService] 同步配置到 Fcitx5: $command');
 
-    return parts.join('+');
+      await _sendConfigToFcitx5(command);
+
+      // ignore: avoid_print
+      print('[HotkeyService] ✅ 配置已同步到 Fcitx5');
+    } catch (e) {
+      // ignore: avoid_print
+      print('[HotkeyService] ⚠️ 同步配置到 Fcitx5 失败: $e');
+      // 不抛出异常，Fcitx5 可能未运行
+    }
+  }
+
+  /// 发送配置命令到 Fcitx5 插件
+  Future<void> _sendConfigToFcitx5(String command) async {
+    Socket? socket;
+    try {
+      final address = InternetAddress(_fcitxConfigSocketPath, type: InternetAddressType.unix);
+      socket = await Socket.connect(address, 0, timeout: const Duration(seconds: 2));
+
+      // 协议: 4字节长度 (小端) + UTF-8 命令
+      final commandBytes = Uint8List.fromList(command.codeUnits);
+      final lenBytes = ByteData(4);
+      lenBytes.setUint32(0, commandBytes.length, Endian.little);
+
+      socket.add(lenBytes.buffer.asUint8List());
+      socket.add(commandBytes);
+      await socket.flush();
+
+      // 等待确认 (可选，超时 1 秒)
+      await socket.first.timeout(const Duration(seconds: 1), onTimeout: () => Uint8List(0));
+    } finally {
+      await socket?.close();
+    }
   }
 }

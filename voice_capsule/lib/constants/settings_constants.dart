@@ -61,8 +61,13 @@ model:
 hotkey:
   # 触发语音输入的快捷键
   #
+  # 推荐配置:
+  #   key: altRight, modifiers: []     - 单独按右 Alt 键 (默认)
+  #   key: space, modifiers: [ctrl]    - Ctrl+Space
+  #   key: f12, modifiers: []          - 单独按 F12
+  #
   # 支持的主键:
-  #   修饰键: altRight, altLeft, ctrlRight, ctrlLeft, shiftRight, shiftLeft, metaRight, metaLeft
+  #   修饰键: altRight, altLeft (仅作为单独按键使用)
   #   功能键: f1-f12, space, escape/esc, tab, enter, backspace, capsLock
   #   方向键: up/arrowUp, down/arrowDown, left/arrowLeft, right/arrowRight
   #   编辑键: insert, delete, home, end, pageUp, pageDown

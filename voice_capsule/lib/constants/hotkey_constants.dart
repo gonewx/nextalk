@@ -1,165 +1,154 @@
-import 'package:flutter/services.dart';
-import 'package:hotkey_manager/hotkey_manager.dart';
-
 /// 快捷键常量
-/// Story 3-5: 全局快捷键监听
+/// Story 3-5: 全局快捷键配置 (重构版)
+///
+/// 提供配置键名到 Fcitx5 格式的映射
 class HotkeyConstants {
   HotkeyConstants._();
 
   // ===== 默认快捷键 =====
-  /// 默认主键: Right Alt (使用 PhysicalKeyboardKey)
-  static const PhysicalKeyboardKey defaultKey = PhysicalKeyboardKey.altRight;
+  /// 默认主键名称
+  static const String defaultKey = 'altRight';
 
-  /// 默认修饰键: 无
-  static const List<HotKeyModifier> defaultModifiers = [];
+  /// 默认修饰键列表
+  static const List<String> defaultModifiers = [];
 
-  // ===== 备用快捷键 (当默认快捷键被占用时使用) =====
-  /// 备用主键: Space
-  static const PhysicalKeyboardKey fallbackKey = PhysicalKeyboardKey.space;
-
-  /// 备用修饰键: Ctrl+Shift
-  static const List<HotKeyModifier> fallbackModifiers = [
-    HotKeyModifier.control,
-    HotKeyModifier.shift,
-  ];
-
-  // ===== 键位映射 =====
-  /// 支持的键位名称到 PhysicalKeyboardKey 映射
-  /// 用于配置文件解析
-  static final Map<String, PhysicalKeyboardKey> keyMap = {
-    // 修饰键
-    'alt': PhysicalKeyboardKey.altLeft,
-    'altLeft': PhysicalKeyboardKey.altLeft,
-    'altRight': PhysicalKeyboardKey.altRight,
-    'ctrl': PhysicalKeyboardKey.controlLeft,
-    'ctrlLeft': PhysicalKeyboardKey.controlLeft,
-    'ctrlRight': PhysicalKeyboardKey.controlRight,
-    'shift': PhysicalKeyboardKey.shiftLeft,
-    'shiftLeft': PhysicalKeyboardKey.shiftLeft,
-    'shiftRight': PhysicalKeyboardKey.shiftRight,
-    'meta': PhysicalKeyboardKey.metaLeft,
-    'metaLeft': PhysicalKeyboardKey.metaLeft,
-    'metaRight': PhysicalKeyboardKey.metaRight,
+  // ===== 键名到 Fcitx5 格式映射 =====
+  /// 配置文件中的键名到 Fcitx5 按键名称的映射
+  static const Map<String, String> keyToFcitx5 = {
+    // 修饰键 (作为主键使用时)
+    'alt': 'Alt_L',
+    'altLeft': 'Alt_L',
+    'altRight': 'Alt_R',
+    'ctrl': 'Control_L',
+    'ctrlLeft': 'Control_L',
+    'ctrlRight': 'Control_R',
+    'shift': 'Shift_L',
+    'shiftLeft': 'Shift_L',
+    'shiftRight': 'Shift_R',
+    'meta': 'Super_L',
+    'metaLeft': 'Super_L',
+    'metaRight': 'Super_R',
 
     // 功能键 F1-F12
-    'f1': PhysicalKeyboardKey.f1,
-    'f2': PhysicalKeyboardKey.f2,
-    'f3': PhysicalKeyboardKey.f3,
-    'f4': PhysicalKeyboardKey.f4,
-    'f5': PhysicalKeyboardKey.f5,
-    'f6': PhysicalKeyboardKey.f6,
-    'f7': PhysicalKeyboardKey.f7,
-    'f8': PhysicalKeyboardKey.f8,
-    'f9': PhysicalKeyboardKey.f9,
-    'f10': PhysicalKeyboardKey.f10,
-    'f11': PhysicalKeyboardKey.f11,
-    'f12': PhysicalKeyboardKey.f12,
+    'f1': 'F1',
+    'f2': 'F2',
+    'f3': 'F3',
+    'f4': 'F4',
+    'f5': 'F5',
+    'f6': 'F6',
+    'f7': 'F7',
+    'f8': 'F8',
+    'f9': 'F9',
+    'f10': 'F10',
+    'f11': 'F11',
+    'f12': 'F12',
 
     // 常用键
-    'space': PhysicalKeyboardKey.space,
-    'escape': PhysicalKeyboardKey.escape,
-    'esc': PhysicalKeyboardKey.escape,
-    'tab': PhysicalKeyboardKey.tab,
-    'enter': PhysicalKeyboardKey.enter,
-    'backspace': PhysicalKeyboardKey.backspace,
-    'capsLock': PhysicalKeyboardKey.capsLock,
+    'space': 'space',
+    'escape': 'Escape',
+    'esc': 'Escape',
+    'tab': 'Tab',
+    'enter': 'Return',
+    'backspace': 'BackSpace',
+    'capsLock': 'Caps_Lock',
 
     // 方向键
-    'arrowUp': PhysicalKeyboardKey.arrowUp,
-    'arrowDown': PhysicalKeyboardKey.arrowDown,
-    'arrowLeft': PhysicalKeyboardKey.arrowLeft,
-    'arrowRight': PhysicalKeyboardKey.arrowRight,
-    'up': PhysicalKeyboardKey.arrowUp,
-    'down': PhysicalKeyboardKey.arrowDown,
-    'left': PhysicalKeyboardKey.arrowLeft,
-    'right': PhysicalKeyboardKey.arrowRight,
+    'arrowUp': 'Up',
+    'arrowDown': 'Down',
+    'arrowLeft': 'Left',
+    'arrowRight': 'Right',
+    'up': 'Up',
+    'down': 'Down',
+    'left': 'Left',
+    'right': 'Right',
 
     // 编辑键
-    'insert': PhysicalKeyboardKey.insert,
-    'delete': PhysicalKeyboardKey.delete,
-    'home': PhysicalKeyboardKey.home,
-    'end': PhysicalKeyboardKey.end,
-    'pageUp': PhysicalKeyboardKey.pageUp,
-    'pageDown': PhysicalKeyboardKey.pageDown,
+    'insert': 'Insert',
+    'delete': 'Delete',
+    'home': 'Home',
+    'end': 'End',
+    'pageUp': 'Page_Up',
+    'pageDown': 'Page_Down',
 
     // 字母键 A-Z
-    'a': PhysicalKeyboardKey.keyA,
-    'b': PhysicalKeyboardKey.keyB,
-    'c': PhysicalKeyboardKey.keyC,
-    'd': PhysicalKeyboardKey.keyD,
-    'e': PhysicalKeyboardKey.keyE,
-    'f': PhysicalKeyboardKey.keyF,
-    'g': PhysicalKeyboardKey.keyG,
-    'h': PhysicalKeyboardKey.keyH,
-    'i': PhysicalKeyboardKey.keyI,
-    'j': PhysicalKeyboardKey.keyJ,
-    'k': PhysicalKeyboardKey.keyK,
-    'l': PhysicalKeyboardKey.keyL,
-    'm': PhysicalKeyboardKey.keyM,
-    'n': PhysicalKeyboardKey.keyN,
-    'o': PhysicalKeyboardKey.keyO,
-    'p': PhysicalKeyboardKey.keyP,
-    'q': PhysicalKeyboardKey.keyQ,
-    'r': PhysicalKeyboardKey.keyR,
-    's': PhysicalKeyboardKey.keyS,
-    't': PhysicalKeyboardKey.keyT,
-    'u': PhysicalKeyboardKey.keyU,
-    'v': PhysicalKeyboardKey.keyV,
-    'w': PhysicalKeyboardKey.keyW,
-    'x': PhysicalKeyboardKey.keyX,
-    'y': PhysicalKeyboardKey.keyY,
-    'z': PhysicalKeyboardKey.keyZ,
+    'a': 'a',
+    'b': 'b',
+    'c': 'c',
+    'd': 'd',
+    'e': 'e',
+    'f': 'f',
+    'g': 'g',
+    'h': 'h',
+    'i': 'i',
+    'j': 'j',
+    'k': 'k',
+    'l': 'l',
+    'm': 'm',
+    'n': 'n',
+    'o': 'o',
+    'p': 'p',
+    'q': 'q',
+    'r': 'r',
+    's': 's',
+    't': 't',
+    'u': 'u',
+    'v': 'v',
+    'w': 'w',
+    'x': 'x',
+    'y': 'y',
+    'z': 'z',
 
     // 数字键 0-9 (主键盘)
-    '0': PhysicalKeyboardKey.digit0,
-    '1': PhysicalKeyboardKey.digit1,
-    '2': PhysicalKeyboardKey.digit2,
-    '3': PhysicalKeyboardKey.digit3,
-    '4': PhysicalKeyboardKey.digit4,
-    '5': PhysicalKeyboardKey.digit5,
-    '6': PhysicalKeyboardKey.digit6,
-    '7': PhysicalKeyboardKey.digit7,
-    '8': PhysicalKeyboardKey.digit8,
-    '9': PhysicalKeyboardKey.digit9,
+    '0': '0',
+    '1': '1',
+    '2': '2',
+    '3': '3',
+    '4': '4',
+    '5': '5',
+    '6': '6',
+    '7': '7',
+    '8': '8',
+    '9': '9',
 
     // 小键盘数字键
-    'numpad0': PhysicalKeyboardKey.numpad0,
-    'numpad1': PhysicalKeyboardKey.numpad1,
-    'numpad2': PhysicalKeyboardKey.numpad2,
-    'numpad3': PhysicalKeyboardKey.numpad3,
-    'numpad4': PhysicalKeyboardKey.numpad4,
-    'numpad5': PhysicalKeyboardKey.numpad5,
-    'numpad6': PhysicalKeyboardKey.numpad6,
-    'numpad7': PhysicalKeyboardKey.numpad7,
-    'numpad8': PhysicalKeyboardKey.numpad8,
-    'numpad9': PhysicalKeyboardKey.numpad9,
-    'numpadEnter': PhysicalKeyboardKey.numpadEnter,
-    'numpadAdd': PhysicalKeyboardKey.numpadAdd,
-    'numpadSubtract': PhysicalKeyboardKey.numpadSubtract,
-    'numpadMultiply': PhysicalKeyboardKey.numpadMultiply,
-    'numpadDivide': PhysicalKeyboardKey.numpadDivide,
-    'numpadDecimal': PhysicalKeyboardKey.numpadDecimal,
+    'numpad0': 'KP_0',
+    'numpad1': 'KP_1',
+    'numpad2': 'KP_2',
+    'numpad3': 'KP_3',
+    'numpad4': 'KP_4',
+    'numpad5': 'KP_5',
+    'numpad6': 'KP_6',
+    'numpad7': 'KP_7',
+    'numpad8': 'KP_8',
+    'numpad9': 'KP_9',
+    'numpadEnter': 'KP_Enter',
+    'numpadAdd': 'KP_Add',
+    'numpadSubtract': 'KP_Subtract',
+    'numpadMultiply': 'KP_Multiply',
+    'numpadDivide': 'KP_Divide',
+    'numpadDecimal': 'KP_Decimal',
 
     // 符号键
-    'minus': PhysicalKeyboardKey.minus,
-    'equal': PhysicalKeyboardKey.equal,
-    'bracketLeft': PhysicalKeyboardKey.bracketLeft,
-    'bracketRight': PhysicalKeyboardKey.bracketRight,
-    'backslash': PhysicalKeyboardKey.backslash,
-    'semicolon': PhysicalKeyboardKey.semicolon,
-    'quote': PhysicalKeyboardKey.quote,
-    'backquote': PhysicalKeyboardKey.backquote,
-    'comma': PhysicalKeyboardKey.comma,
-    'period': PhysicalKeyboardKey.period,
-    'slash': PhysicalKeyboardKey.slash,
+    'minus': 'minus',
+    'equal': 'equal',
+    'bracketLeft': 'bracketleft',
+    'bracketRight': 'bracketright',
+    'backslash': 'backslash',
+    'semicolon': 'semicolon',
+    'quote': 'apostrophe',
+    'backquote': 'grave',
+    'comma': 'comma',
+    'period': 'period',
+    'slash': 'slash',
   };
 
-  /// 修饰键名称到 HotKeyModifier 映射
-  static const Map<String, HotKeyModifier> modifierMap = {
-    'ctrl': HotKeyModifier.control,
-    'control': HotKeyModifier.control,
-    'shift': HotKeyModifier.shift,
-    'alt': HotKeyModifier.alt,
-    'meta': HotKeyModifier.meta,
+  // ===== 修饰键到 Fcitx5 格式映射 =====
+  /// 修饰键名称到 Fcitx5 修饰键名称的映射
+  static const Map<String, String> modifierToFcitx5 = {
+    'ctrl': 'Control',
+    'control': 'Control',
+    'shift': 'Shift',
+    'alt': 'Alt',
+    'meta': 'Super',
   };
 }

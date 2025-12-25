@@ -7,11 +7,11 @@ GenericName=Voice Input
 GenericName[zh_CN]=语音输入
 Comment=Offline voice-to-text input for Linux
 Comment[zh_CN]=Linux 离线语音输入应用
-Exec=/opt/nextalk/nextalk
+Exec=env GDK_BACKEND=x11 /opt/nextalk/nextalk
 Icon=nextalk
 Terminal=false
 Categories=Utility;Accessibility;
 Keywords=voice;speech;input;dictation;
 Keywords[zh_CN]=语音;输入;听写;识别;
 StartupNotify=true
-StartupWMClass=nextalk
+StartupWMClass=com.gonewx.nextalk

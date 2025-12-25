@@ -9,7 +9,7 @@ import 'package:voice_capsule/ui/capsule_widget.dart';
 /// Story 3-6: 完整业务流集成测试
 ///
 /// 这些测试验证状态流转和 UI 绑定的正确性。
-/// 涉及原生服务 (PortAudio, Sherpa-onnx, keybinder) 的完整端到端测试
+/// 涉及原生服务 (PortAudio, Sherpa-onnx, Fcitx5) 的完整端到端测试
 /// 需要在真实 Linux 环境运行: flutter test -d linux
 void main() {
   group('Full Business Flow Tests', () {
