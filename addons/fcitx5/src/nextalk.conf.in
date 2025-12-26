@@ -1,7 +1,7 @@
 [Addon]
 Name=Nextalk
 Category=Module
-Library=nextalk
+Library=libnextalk
 Type=SharedLibrary
 OnDemand=False
 Configurable=False

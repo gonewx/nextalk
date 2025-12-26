@@ -150,15 +150,15 @@ clean_build() {
 check_build_artifacts() {
     info "Checking build artifacts..."
 
-    if [[ ! -f "$BUILD_DIR/nextalk.so" ]]; then
-        error "Build artifact not found: $BUILD_DIR/nextalk.so"
+    if [[ ! -f "$BUILD_DIR/libnextalk.so" ]]; then
+        error "Build artifact not found: $BUILD_DIR/libnextalk.so"
         echo ""
         echo -e "  ${YELLOW}Please build first:${NC} make build-addon"
         exit 1
     fi
 
-    if ! file "$BUILD_DIR/nextalk.so" | grep -q "shared object"; then
-        error "nextalk.so is not a valid ELF shared object"
+    if ! file "$BUILD_DIR/libnextalk.so" | grep -q "shared object"; then
+        error "libnextalk.so is not a valid ELF shared object"
         exit 1
     fi
 
@@ -169,7 +169,7 @@ check_build_artifacts() {
         exit 1
     fi
 
-    success "Build artifacts found: nextalk.so, nextalk.conf"
+    success "Build artifacts found: libnextalk.so, nextalk.conf"
 }
 
 # ==============================================================================
@@ -213,11 +213,11 @@ install_plugin() {
     mkdir -p "$CONFIG_DIR"
     
     # Copy files (Task 4.8)
-    cp "$BUILD_DIR/nextalk.so" "$PLUGIN_DIR/"
+    cp "$BUILD_DIR/libnextalk.so" "$PLUGIN_DIR/"
     cp "$BUILD_DIR/nextalk.conf" "$CONFIG_DIR/"
-    
+
     # Verify installation
-    if [[ -f "$PLUGIN_DIR/nextalk.so" ]] && [[ -f "$CONFIG_DIR/nextalk.conf" ]]; then
+    if [[ -f "$PLUGIN_DIR/libnextalk.so" ]] && [[ -f "$CONFIG_DIR/nextalk.conf" ]]; then
         success "Plugin installed successfully"
     else
         error "Installation verification failed"
@@ -239,7 +239,7 @@ show_summary() {
     echo "═══════════════════════════════════════════════════════════"
     echo ""
     echo "Installed files:"
-    echo "  Plugin: $PLUGIN_DIR/nextalk.so"
+    echo "  Plugin: $PLUGIN_DIR/libnextalk.so"
     echo "  Config: $CONFIG_DIR/nextalk.conf"
     echo ""
     echo "Next steps:"

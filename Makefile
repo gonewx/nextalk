@@ -72,14 +72,14 @@ install-addon-system: build-addon
 # 卸载 Fcitx5 插件 (用户级)
 uninstall-addon:
 	@echo "🗑️ 卸载 Fcitx5 插件 (用户级)..."
-	rm -f ~/.local/lib/fcitx5/nextalk.so
+	rm -f ~/.local/lib/fcitx5/libnextalk.so
 	rm -f ~/.local/share/fcitx5/addon/nextalk.conf
 	@echo "✅ Fcitx5 插件已卸载"
 
 # 卸载 Fcitx5 插件 (系统级，需要 sudo)
 uninstall-addon-system:
 	@echo "🗑️ 卸载 Fcitx5 插件 (系统级)..."
-	sudo rm -f $$(pkg-config --variable=libdir Fcitx5Core)/fcitx5/nextalk.so
+	sudo rm -f $$(pkg-config --variable=libdir Fcitx5Core)/fcitx5/libnextalk.so
 	sudo rm -f $$(pkg-config --variable=pkgdatadir fcitx5)/addon/nextalk.conf
 	@echo "✅ Fcitx5 插件已卸载"
 

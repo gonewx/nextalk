@@ -237,8 +237,8 @@ build_fcitx5_plugin() {
         fi
     ) || exit 1
 
-    if [[ ! -f "$addon_build_dir/nextalk.so" ]]; then
-        error "Plugin artifact not found: nextalk.so"
+    if [[ ! -f "$addon_build_dir/libnextalk.so" ]]; then
+        error "Plugin artifact not found: libnextalk.so"
         exit 1
     fi
 
@@ -292,8 +292,10 @@ assemble_common() {
 
     # Copy Fcitx5 plugin
     info "  Copying Fcitx5 plugin..."
-    cp "$addon_build_dir/nextalk.so" "$staging_dir/usr/lib/${lib_arch}/fcitx5/"
+    cp "$addon_build_dir/libnextalk.so" "$staging_dir/usr/lib/${lib_arch}/fcitx5/"
+    chmod 755 "$staging_dir/usr/lib/${lib_arch}/fcitx5/libnextalk.so"
     cp "$addon_build_dir/nextalk.conf" "$staging_dir/usr/share/fcitx5/addon/"
+    chmod 644 "$staging_dir/usr/share/fcitx5/addon/nextalk.conf"
 
     # Copy desktop entry (ensure world-readable)
     info "  Installing desktop entry..."
@@ -591,7 +593,7 @@ main() {
 
     # Build components
     local flutter_bundle="$VOICE_CAPSULE_DIR/build/linux/x64/release/bundle/voice_capsule"
-    local plugin_so="$ADDON_DIR/build/nextalk.so"
+    local plugin_so="$ADDON_DIR/build/libnextalk.so"
 
     if [[ "$do_rebuild" == "true" ]] || [[ ! -f "$flutter_bundle" ]]; then
         build_flutter

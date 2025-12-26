@@ -35,8 +35,8 @@ add_library(nextalk MODULE
     src/nextalk.cpp
 )
 
-# Fcitx5 expects addon library without "lib" prefix
-set_target_properties(nextalk PROPERTIES PREFIX "")
+# Keep default "lib" prefix for consistency with other Fcitx5 addons
+# Output: libnextalk.so
 
 target_link_libraries(nextalk
     Fcitx5::Core
@@ -60,6 +60,7 @@ configure_file(
 install(
     FILES "${CMAKE_CURRENT_BINARY_DIR}/nextalk.conf"
     DESTINATION "${FCITX_INSTALL_PKGDATADIR}/addon"
+    PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ
 )
 
 message(STATUS "Fcitx5 addon dir: ${FCITX_INSTALL_ADDONDIR}")
