@@ -17,6 +17,7 @@ typedef EngineSwitchCallback = Future<void> Function(EngineType newType);
 /// 管理应用配置，支持:
 /// - SharedPreferences 存储运行时配置 (模型类型)
 /// - YAML 文件存储高级配置 (自定义下载 URL)
+/// - 运行时引擎状态 (actualEngineType)
 class SettingsService {
   SettingsService._();
 
@@ -28,6 +29,10 @@ class SettingsService {
   // 缓存的 YAML 配置
   Map<String, dynamic>? _yamlConfig;
 
+  /// 实际运行的引擎类型 (运行时状态，可能因回退与配置不同)
+  /// 这是引擎状态的**单一来源**，所有组件都应从这里读取
+  EngineType? _actualEngineType;
+
   /// 模型切换回调 (由 main.dart 注入)
   ModelSwitchCallback? onModelSwitch;
 
@@ -36,6 +41,22 @@ class SettingsService {
 
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
+
+  /// 获取实际运行的引擎类型
+  /// 如果尚未设置，返回配置的引擎类型
+  EngineType get actualEngineType => _actualEngineType ?? engineType;
+
+  /// 设置实际运行的引擎类型
+  void setActualEngineType(EngineType type) {
+    _actualEngineType = type;
+    debugPrint('SettingsService: 实际引擎类型已设置为 $type');
+  }
+
+  /// 检查是否发生了引擎回退 (实际引擎与配置不同)
+  bool get hasEngineFallback {
+    if (_actualEngineType == null) return false;
+    return _actualEngineType != engineType;
+  }
 
   /// 初始化设置服务
   Future<void> initialize() async {

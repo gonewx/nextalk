@@ -42,15 +42,14 @@ class _InitWizardState extends State<InitWizard> {
   bool _windowSizeSet = false;
 
   /// 获取目标引擎类型
-  /// 优先级: widget.targetEngineType > SettingsService.engineType > 默认 SenseVoice
+  /// 优先级: widget.targetEngineType > SettingsService.actualEngineType
+  /// 注意：使用 actualEngineType 是因为它反映了用户实际使用/期望的引擎
   EngineType get _targetEngine {
     if (widget.targetEngineType != null) {
       return widget.targetEngineType!;
     }
-    if (SettingsService.instance.isInitialized) {
-      return SettingsService.instance.engineType;
-    }
-    return EngineType.sensevoice; // 默认 SenseVoice
+    // 使用 SettingsService 的实际引擎类型（单一来源）
+    return SettingsService.instance.actualEngineType;
   }
 
   @override

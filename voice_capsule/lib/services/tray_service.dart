@@ -65,9 +65,6 @@ class TrayService {
   /// Story 3-7: 当前托盘状态
   TrayStatus _currentStatus = TrayStatus.normal;
 
-  /// Story 2-7: 实际使用的引擎类型 (可能与配置不同)
-  EngineType? _actualEngineType;
-
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
 
@@ -77,23 +74,9 @@ class TrayService {
   /// Story 3-7: 当前托盘状态
   TrayStatus get currentStatus => _currentStatus;
 
-  /// Story 2-7: 获取实际使用的引擎类型
-  EngineType? get actualEngineType => _actualEngineType;
-
-  /// Story 2-7: 设置实际使用的引擎类型 (由 main.dart 在初始化时调用)
-  void setActualEngineType(EngineType type) {
-    _actualEngineType = type;
-  }
-
   /// 设置 ModelManager 引用 (由 main.dart 在初始化时调用)
   void setModelManager(ModelManager manager) {
     _modelManager = manager;
-  }
-
-  /// Story 2-7: 检查是否发生了引擎回退
-  bool get hasEngineFallback {
-    if (_actualEngineType == null) return false;
-    return _actualEngineType != SettingsService.instance.engineType;
   }
 
   /// Story 3-7: 更新托盘状态 (切换图标, AC19)
@@ -166,11 +149,19 @@ class TrayService {
   /// Story 2-7: 引擎切换子菜单 (AC6), 显示实际引擎 (AC7)
   Future<void> _buildMenu() async {
     final currentModelType = SettingsService.instance.modelType;
-    final configuredEngineType = SettingsService.instance.engineType;
     final lang = LanguageService.instance;
 
-    // Story 2-7: 获取实际使用的引擎 (可能因回退与配置不同)
-    final actualEngine = _actualEngineType ?? configuredEngineType;
+    // Story 2-7: 获取实际使用的引擎 (从 SettingsService 单一来源)
+    final actualEngine = SettingsService.instance.actualEngineType;
+
+    // DEBUG: 打印菜单构建时的状态
+    final zipInt8Checked = actualEngine == EngineType.zipformer && currentModelType == ModelType.int8;
+    final zipStdChecked = actualEngine == EngineType.zipformer && currentModelType == ModelType.standard;
+    final senseChecked = actualEngine == EngineType.sensevoice;
+    // ignore: avoid_print
+    print('[TrayService._buildMenu] actualEngine=$actualEngine, modelType=$currentModelType');
+    // ignore: avoid_print
+    print('[TrayService._buildMenu] zipInt8=$zipInt8Checked, zipStd=$zipStdChecked, sense=$senseChecked');
 
     final menu = Menu();
     await menu.buildFrom([
@@ -186,32 +177,27 @@ class TrayService {
       ),
       MenuSeparator(),
       // Story 2-7: 模型设置子菜单 (AC6, AC7)
-      // 简化设计：checkbox 表示当前实际使用的引擎
+      // 使用 MenuItemLabel + 标记符号代替 MenuItemCheckbox (workaround: system_tray Linux bug)
       SubMenu(
         label: lang.tr('tray_model_settings'),
         children: [
           // Zipformer 子菜单 (含版本选择)
           SubMenu(
-            label: lang.tr('tray_engine_zipformer'),
+            label: '${actualEngine == EngineType.zipformer ? "● " : ""}${lang.tr('tray_engine_zipformer')}',
             children: [
-              MenuItemCheckbox(
-                label: lang.tr('tray_model_int8'),
-                checked: actualEngine == EngineType.zipformer &&
-                    currentModelType == ModelType.int8,
+              MenuItemLabel(
+                label: '${zipInt8Checked ? "● " : ""}${lang.tr('tray_model_int8')}',
                 onClicked: (_) => _switchToZipformer(ModelType.int8),
               ),
-              MenuItemCheckbox(
-                label: lang.tr('tray_model_standard'),
-                checked: actualEngine == EngineType.zipformer &&
-                    currentModelType == ModelType.standard,
+              MenuItemLabel(
+                label: '${zipStdChecked ? "● " : ""}${lang.tr('tray_model_standard')}',
                 onClicked: (_) => _switchToZipformer(ModelType.standard),
               ),
             ],
           ),
           // SenseVoice 单项 (无版本选择)
-          MenuItemCheckbox(
-            label: lang.tr('tray_engine_sensevoice'),
-            checked: actualEngine == EngineType.sensevoice,
+          MenuItemLabel(
+            label: '${senseChecked ? "● " : ""}${lang.tr('tray_engine_sensevoice')}',
             onClicked: (_) => _switchEngine(EngineType.sensevoice),
           ),
         ],
@@ -221,14 +207,12 @@ class TrayService {
       SubMenu(
         label: lang.tr('tray_language'),
         children: [
-          MenuItemCheckbox(
-            label: '简体中文',
-            checked: lang.isZh,
+          MenuItemLabel(
+            label: '${lang.isZh ? "● " : ""}简体中文',
             onClicked: (_) => _switchLanguage('zh'),
           ),
-          MenuItemCheckbox(
-            label: 'English',
-            checked: !lang.isZh,
+          MenuItemLabel(
+            label: '${!lang.isZh ? "● " : ""}English',
             onClicked: (_) => _switchLanguage('en'),
           ),
         ],
@@ -256,6 +240,9 @@ class TrayService {
 
   /// 切换到 Zipformer 引擎并设置模型版本
   Future<void> _switchToZipformer(ModelType modelType) async {
+    // ignore: avoid_print
+    print('[TrayService._switchToZipformer] 目标 modelType=$modelType');
+
     // 检查 Zipformer 模型是否存在
     if (_modelManager != null && !_modelManager!.isEngineReady(EngineType.zipformer)) {
       // 模型不存在，显示初始化向导
@@ -264,26 +251,36 @@ class TrayService {
       return;
     }
 
-    // 使用实际引擎类型判断是否需要切换（可能因回退与配置不同）
-    final actualEngine = _actualEngineType ?? SettingsService.instance.engineType;
+    // 使用实际引擎类型判断是否需要切换（从 SettingsService 单一来源）
+    final actualEngine = SettingsService.instance.actualEngineType;
     final currentModelType = SettingsService.instance.modelType;
+    // ignore: avoid_print
+    print('[TrayService._switchToZipformer] 当前 actualEngine=$actualEngine, currentModelType=$currentModelType');
 
     // 如果实际使用的已经是 Zipformer 且版本相同，无需操作
     if (actualEngine == EngineType.zipformer &&
         currentModelType == modelType) {
+      // ignore: avoid_print
+      print('[TrayService._switchToZipformer] 无需切换，已是目标状态');
       return;
     }
 
     // 先切换模型版本
     if (currentModelType != modelType) {
+      // ignore: avoid_print
+      print('[TrayService._switchToZipformer] 切换 modelType: $currentModelType -> $modelType');
       await SettingsService.instance.switchModelType(modelType);
     }
 
     // 再切换引擎 (如果实际使用的不是 Zipformer)
     if (actualEngine != EngineType.zipformer) {
+      // ignore: avoid_print
+      print('[TrayService._switchToZipformer] 切换引擎: $actualEngine -> zipformer');
       await _switchEngine(EngineType.zipformer);
     } else {
       // 引擎不变但版本变了，重建菜单并发送通知
+      // ignore: avoid_print
+      print('[TrayService._switchToZipformer] 仅版本变化，重建菜单');
       await _buildMenu();
       try {
         await Process.run('notify-send', [
@@ -311,8 +308,8 @@ class TrayService {
       return;
     }
 
-    // 使用实际引擎类型判断是否需要切换（可能因回退与配置不同）
-    final actualEngine = _actualEngineType ?? SettingsService.instance.engineType;
+    // 使用实际引擎类型判断是否需要切换（从 SettingsService 单一来源）
+    final actualEngine = SettingsService.instance.actualEngineType;
     if (actualEngine == newType) {
       return; // 已经是目标引擎，无需切换
     }
@@ -333,10 +330,13 @@ class TrayService {
       debugPrint('TrayService: 发送切换通知失败: $e');
     }
 
+    // ignore: avoid_print
+    print('[TrayService._switchEngine] 切换前 actualEngine=${SettingsService.instance.actualEngineType}');
     final success = await SettingsService.instance.switchEngineType(newType);
+    // ignore: avoid_print
+    print('[TrayService._switchEngine] 切换后 actualEngine=${SettingsService.instance.actualEngineType}, success=$success');
     if (success) {
-      // 更新实际引擎类型 (Story 2-7: AC7)
-      _actualEngineType = newType;
+      // 注意：实际引擎类型由 onEngineSwitch 回调中更新 SettingsService.actualEngineType
 
       // 重新构建菜单以更新选中状态
       await _buildMenu();

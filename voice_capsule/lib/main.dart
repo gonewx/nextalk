@@ -73,19 +73,6 @@ ASREngine? _asrEngine;
 AudioInferencePipeline? _pipeline;
 FcitxClient? _fcitxClient;
 
-/// Story 2-7: 实际使用的引擎类型 (可能与配置不同，发生回退时)
-EngineType? _actualEngineType;
-
-/// Story 2-7: 获取实际使用的引擎类型 (AC7: 托盘菜单显示实际引擎)
-/// 返回 null 表示尚未初始化
-EngineType? getActualEngineType() => _actualEngineType;
-
-/// Story 2-7: 检查是否发生了引擎回退
-bool hasEngineFallback() {
-  if (_actualEngineType == null) return false;
-  return _actualEngineType != SettingsService.instance.engineType;
-}
-
 Future<void> main() async {
   // Story 3-7: 使用 runZonedGuarded 捕获未处理异常 (AC17)
   runZonedGuarded(() async {
@@ -161,10 +148,8 @@ Future<void> main() async {
       );
 
       _asrEngine = initResult.engine;
-      _actualEngineType = initResult.actualEngineType;
-
-      // Story 2-7: 更新托盘服务中的实际引擎类型 (AC7)
-      TrayService.instance.setActualEngineType(initResult.actualEngineType);
+      // Story 2-7: 更新实际引擎类型 (单一来源: SettingsService)
+      SettingsService.instance.setActualEngineType(initResult.actualEngineType);
 
       if (initResult.fallbackOccurred) {
         DiagnosticLogger.instance.warn(
@@ -181,8 +166,7 @@ Future<void> main() async {
       // 所有引擎都不可用，创建一个空壳引擎 (实际使用配置的类型)
       DiagnosticLogger.instance.warn('main', '${e.message}, 尝试的引擎: ${e.triedEngines}');
       _asrEngine = ASREngineFactory.create(_toASREngineType(configuredEngineType), enableDebugLog: false);
-      _actualEngineType = configuredEngineType;
-      TrayService.instance.setActualEngineType(configuredEngineType);
+      SettingsService.instance.setActualEngineType(configuredEngineType);
       // 注意：此时应用会在后续尝试使用引擎时显示下载引导
     }
 
@@ -288,7 +272,12 @@ Future<void> main() async {
 
         // 更新全局引擎引用
         _asrEngine = newEngine;
-        _actualEngineType = newEngineType;
+
+        // 更新实际引擎类型 (单一来源: SettingsService)
+        SettingsService.instance.setActualEngineType(newEngineType);
+
+        // 重建托盘菜单以更新选中状态
+        await TrayService.instance.rebuildMenu();
 
         // 切换成功，恢复托盘状态为正常
         await TrayService.instance.updateStatus(TrayStatus.normal);

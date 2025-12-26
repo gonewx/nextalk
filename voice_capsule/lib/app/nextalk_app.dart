@@ -74,11 +74,10 @@ class _NextalkAppState extends State<NextalkApp> {
     WindowService.instance.resetToNormalSize();
     WindowService.instance.hide();
 
-    // 更新托盘菜单的引擎状态
+    // 确定下载完成的引擎类型
     final downloadedEngine = _targetEngineType ?? SettingsService.instance.engineType;
-    TrayService.instance.setActualEngineType(downloadedEngine);
-    TrayService.instance.rebuildMenu();
 
+    // 先更新状态，避免异步操作后 widget 已销毁
     setState(() {
       _needsInit = false;
       _targetEngineType = null; // 清除目标引擎
@@ -86,6 +85,28 @@ class _NextalkAppState extends State<NextalkApp> {
 
     // ignore: avoid_print
     print('[NextalkApp] 初始化完成，窗口已隐藏，等待快捷键唤醒');
+
+    // 异步触发引擎重新初始化（会更新 SettingsService.actualEngineType 并重建托盘菜单）
+    _reinitializeEngineIfNeeded(downloadedEngine);
+  }
+
+  /// 异步重新初始化引擎（初始化向导完成后调用）
+  Future<void> _reinitializeEngineIfNeeded(EngineType downloadedEngine) async {
+    // 如果下载的引擎与当前配置不同，需要切换引擎
+    // 这会触发 onEngineSwitch 回调，重新初始化 ASR 引擎
+    if (downloadedEngine != SettingsService.instance.engineType) {
+      // ignore: avoid_print
+      print('[NextalkApp] 切换引擎配置: ${SettingsService.instance.engineType} -> $downloadedEngine');
+      await SettingsService.instance.switchEngineType(downloadedEngine);
+    } else {
+      // 引擎类型相同，但可能是首次下载或重新下载，仍需触发引擎重新初始化
+      // 直接调用 onEngineSwitch 回调（如果已注入）
+      if (SettingsService.instance.onEngineSwitch != null) {
+        // ignore: avoid_print
+        print('[NextalkApp] 触发引擎重新初始化: $downloadedEngine');
+        await SettingsService.instance.onEngineSwitch!(downloadedEngine);
+      }
+    }
   }
 
   /// 重新显示初始化向导（用于模型缺失时重新下载）
