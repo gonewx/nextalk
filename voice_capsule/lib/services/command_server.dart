@@ -37,10 +37,11 @@ class CommandServer {
 
   /// 启动服务器
   Future<void> start() async {
+    // 热重载安全：如果认为已经在运行，先停止再重新启动
     if (_isRunning) {
       // ignore: avoid_print
-      print('[CommandServer] Already running');
-      return;
+      print('[CommandServer] 检测到已运行状态，重新启动...');
+      await stop();
     }
 
     try {

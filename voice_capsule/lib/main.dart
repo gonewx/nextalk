@@ -34,6 +34,36 @@ ASREngineType _toASREngineType(EngineType type) {
   };
 }
 
+/// 预初始化 ASR 引擎
+///
+/// 在应用启动时预先初始化引擎，触发 onnxruntime JIT 编译，
+/// 避免第一次录音时因编译延迟导致丢失语音。
+Future<void> _preInitializeEngine(ModelManager modelManager) async {
+  if (_asrEngine == null || !_asrEngine!.isInitialized) {
+    // 根据引擎类型创建配置
+    ASRConfig config;
+    if (_asrEngine!.engineType == ASREngineType.zipformer) {
+      config = ZipformerConfig(
+        modelDir: modelManager.modelPath,
+        useInt8Model: SettingsService.instance.modelType == ModelType.int8,
+      );
+    } else {
+      config = SenseVoiceConfig(
+        modelDir: modelManager.getModelPathForEngine(EngineType.sensevoice),
+        vadModelPath: modelManager.vadModelFilePath,
+      );
+    }
+
+    // 预初始化引擎
+    final error = await _asrEngine!.initialize(config);
+    if (error == ASRError.none) {
+      DiagnosticLogger.instance.info('main', '✅ ASR 引擎预初始化完成');
+    } else {
+      DiagnosticLogger.instance.warn('main', '⚠️ ASR 引擎预初始化失败: $error');
+    }
+  }
+}
+
 /// 全局状态控制器 (用于 UI 更新)
 final _stateController = StreamController<CapsuleStateData>.broadcast();
 
@@ -112,6 +142,14 @@ Future<void> main() async {
     // 6. 创建服务实例 (即使模型未就绪也创建，便于后续初始化)
     _audioCapture = AudioCapture();
 
+    // 6.1 预热音频设备 (避免第一次录音时因设备初始化延迟导致丢失语音)
+    final warmupError = await _audioCapture!.warmup();
+    if (warmupError == AudioCaptureError.none) {
+      DiagnosticLogger.instance.info('main', '✅ 音频设备预热完成');
+    } else {
+      DiagnosticLogger.instance.warn('main', '⚠️ 音频设备预热失败: $warmupError');
+    }
+
     // Story 2-7: 使用 EngineInitializer 初始化引擎 (带回退逻辑)
     final engineInitializer = EngineInitializer(modelManager);
     final configuredEngineType = SettingsService.instance.engineType;
@@ -149,12 +187,21 @@ Future<void> main() async {
     }
 
     // 7. 创建音频推理流水线
+    // PTT 模式：VAD 检测停顿但不停止录音，文本跨停顿累积
     _pipeline = AudioInferencePipeline(
       audioCapture: _audioCapture!,
       asrEngine: _asrEngine!,
       modelManager: modelManager,
       enableDebugLog: true, // 开发阶段启用日志
+      vadConfig: const VadConfig(
+        autoStopOnEndpoint: false, // 不自动停止，等待用户松开按钮
+        autoReset: false, // 不重置，跨停顿累积文本
+      ),
     );
+
+    // 7.1 预初始化 ASR 引擎 (触发 onnxruntime JIT 编译，避免第一次录音延迟)
+    await _preInitializeEngine(modelManager);
+
 
     // 8. 创建 FcitxClient (延迟连接)
     _fcitxClient = FcitxClient();

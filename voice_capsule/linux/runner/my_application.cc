@@ -4,6 +4,10 @@
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/gdkwayland.h>
+#include <gtk-layer-shell/gtk-layer-shell.h>
+#endif
 
 #include "flutter/generated_plugin_registrant.h"
 
@@ -28,16 +32,35 @@ static void my_application_activate(GApplication* application) {
   // 设置无边框窗口
   gtk_window_set_decorated(window, FALSE);
 
-  // ⚠️ 尝试使用 UTILITY 类型提示 (Wayland workaround)
-  // UTILITY 窗口：不在任务栏显示，可以拖动，通常不抢焦点
+#ifdef GDK_WINDOWING_WAYLAND
+  // ⚠️ Wayland: 尝试使用 gtk-layer-shell 创建不抢焦点的 overlay
+  // 注意：Layer Shell 仅在 wlroots-based compositors (Sway, Hyprland) 上工作
+  // GNOME/Mutter 不支持 Layer Shell
+  if (GDK_IS_WAYLAND_DISPLAY(gdk_display_get_default()) &&
+      gtk_layer_is_supported()) {
+    gtk_layer_init_for_window(window);
+    // OVERLAY 层：显示在所有普通窗口之上
+    gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
+    // 不接收键盘输入 - 关键！这样原窗口保持焦点
+    gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
+    // 不占用屏幕空间
+    gtk_layer_set_exclusive_zone(window, -1);
+    g_print("[Nextalk] gtk-layer-shell initialized for Wayland\n");
+  } else {
+    // GNOME/Mutter 等不支持 Layer Shell 的 compositor
+    gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_UTILITY);
+    g_print("[Nextalk] Layer Shell not supported, using UTILITY window type\n");
+  }
+#else
+  // X11: 使用 UTILITY 类型
   gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_UTILITY);
+#endif
 
   // ⚠️ 关键：不在任务栏/Dock 显示图标
   gtk_window_set_skip_taskbar_hint(window, TRUE);
   gtk_window_set_skip_pager_hint(window, TRUE);
 
   // ⚠️ 关键：禁止接受焦点 - 防止抢占其他应用的输入焦点
-  // 这样 Fcitx5 的 InputContext 焦点会保持在用户正在输入的应用中
   gtk_window_set_accept_focus(window, FALSE);
   gtk_window_set_focus_on_map(window, FALSE);
 
@@ -64,7 +87,6 @@ static void my_application_activate(GApplication* application) {
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 
   // ⚠️ 关键修复: 设置 FlView 背景透明 (Flutter 官方修复方案)
-  // FlView 默认背景是黑色，必须显式设置为透明
   GdkRGBA background_color = {0.0, 0.0, 0.0, 0.0};
   fl_view_set_background_color(view, &background_color);
 

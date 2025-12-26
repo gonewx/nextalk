@@ -51,8 +51,8 @@ Nextalk Fcitx5 Plugin Installation Script v${VERSION}
 Usage: $(basename "$0") [OPTIONS]
 
 Options:
-  --user      Install to user directory (~/.local/) [default]
-  --system    Install to system directory (requires sudo)
+  --user      Install to user directory (~/.local/)
+  --system    Install to system directory (requires sudo) [default]
   --clean     Clean build directory and exit
   --verify    Verify plugin installation (restart Fcitx5 and check)
   --help      Show this help message
@@ -337,7 +337,7 @@ verify_plugin() {
 # Main
 # ==============================================================================
 main() {
-    local install_mode="--user"
+    local install_mode="--system"
     
     # Parse arguments (Task 4.1)
     while [[ $# -gt 0 ]]; do

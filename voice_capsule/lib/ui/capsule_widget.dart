@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 import '../constants/capsule_colors.dart';
 import '../constants/window_constants.dart';
-import '../services/window_service.dart';
 import '../state/capsule_state.dart';
 import 'capsule_text_preview.dart';
 import 'cursor_blink.dart';
@@ -50,11 +50,9 @@ class CapsuleWidget extends StatelessWidget {
     final showCursor = effectiveState.state == CapsuleState.listening;
     final displayText = isError ? effectiveState.displayMessage : text;
 
-    return GestureDetector(
-      // 拖拽移动支持 - 继承自 Story 3-1
-      // 使用 windowManager.startDragging() 而非手动坐标计算
-      // 原因: 避免与窗口管理器冲突，由底层 GTK 处理拖拽逻辑
-      onPanStart: (_) => WindowService.instance.startDragging(),
+    return DragToMoveArea(
+      // 使用 window_manager 提供的 DragToMoveArea 替代手动 GestureDetector
+      // 解决 Linux 上 gdk_device_get_source 断言失败警告
       child: Center(
         child: Container(
           constraints: const BoxConstraints(

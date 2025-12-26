@@ -42,9 +42,103 @@ class AudioCapture {
   Pointer<PaStreamParameters>? _inputParams;
   bool _isInitialized = false;
   bool _isCapturing = false;
+  bool _isWarmedUp = false; // 是否已预热
   AudioCaptureError _lastReadError = AudioCaptureError.none; // M2 修复: 记录最近的读取错误
 
   AudioCapture() : _bindings = PortAudioBindings();
+
+  /// 预热音频设备
+  ///
+  /// 在应用启动时调用，提前初始化 PortAudio 并打开音频流，
+  /// 避免用户第一次录音时因设备初始化延迟导致丢失语音。
+  ///
+  /// 返回值:
+  /// - [AudioCaptureError.none] 预热成功
+  /// - 其他错误码表示预热失败（但不影响后续使用）
+  Future<AudioCaptureError> warmup() async {
+    if (_isWarmedUp) {
+      return AudioCaptureError.none;
+    }
+
+    // ignore: avoid_print
+    print('[AudioCapture] 开始预热音频设备...');
+
+    // 1. 初始化 PortAudio (这会触发 ALSA 警告)
+    final initResult = _bindings.initialize();
+    if (initResult != paNoError) {
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ PortAudio 初始化失败: $initResult');
+      return AudioCaptureError.initializationFailed;
+    }
+    _isInitialized = true;
+
+    // 2. 获取默认输入设备
+    final deviceIndex = _bindings.getDefaultInputDevice();
+    if (deviceIndex == paNoDevice) {
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ 无可用输入设备');
+      // 不终止 PortAudio，保持初始化状态
+      _isWarmedUp = true;
+      return AudioCaptureError.noInputDevice;
+    }
+
+    // 3. 获取设备信息
+    final deviceInfo = _bindings.getDeviceInfo(deviceIndex);
+    if (deviceInfo == nullptr) {
+      _isWarmedUp = true;
+      return AudioCaptureError.deviceUnavailable;
+    }
+
+    // 4. 分配缓冲区
+    _buffer = calloc<Float>(AudioConfig.framesPerBuffer);
+
+    // 5. 配置输入参数
+    _inputParams = calloc<PaStreamParameters>();
+    _inputParams!.ref.device = deviceIndex;
+    _inputParams!.ref.channelCount = AudioConfig.channels;
+    _inputParams!.ref.sampleFormat = paFloat32;
+    _inputParams!.ref.suggestedLatency = deviceInfo.ref.defaultLowInputLatency;
+    _inputParams!.ref.hostApiSpecificStreamInfo = nullptr;
+
+    // 6. 打开音频流 (预热)
+    _streamPtr = calloc<Pointer<Void>>();
+    final openResult = _bindings.openStream(
+      _streamPtr!,
+      _inputParams!,
+      nullptr,
+      AudioConfig.sampleRate.toDouble(),
+      AudioConfig.framesPerBuffer,
+      paClipOff,
+      nullptr,
+      nullptr,
+    );
+
+    if (openResult != paNoError) {
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ 打开音频流失败: $openResult');
+      _isWarmedUp = true;
+      return AudioCaptureError.streamOpenFailed;
+    }
+
+    _stream = _streamPtr!.value;
+
+    // 7. 启动音频流，读取一帧数据让硬件准备好
+    final startResult = _bindings.startStream(_stream!);
+    if (startResult == paNoError) {
+      // 读取一帧数据丢弃 (让硬件准备好)
+      _bindings.readStream(_stream!, _buffer!, AudioConfig.framesPerBuffer);
+
+      // 停止流 (预热完成，等待真正使用)
+      _bindings.stopStream(_stream!);
+    }
+
+    _isWarmedUp = true;
+    _isCapturing = false;
+
+    // ignore: avoid_print
+    print('[AudioCapture] ✅ 音频设备预热完成');
+    return AudioCaptureError.none;
+  }
 
   /// Story 3-7: 检查音频设备状态 (不初始化流，仅检测)
   /// 用于在录音前预检测设备可用性
@@ -148,12 +242,25 @@ class AudioCapture {
       return AudioCaptureError.none;
     }
 
-    // 1. 初始化 PortAudio
-    final initResult = _bindings.initialize();
-    if (initResult != paNoError) {
-      return AudioCaptureError.initializationFailed;
+    // 如果已经预热，直接启动流
+    if (_isWarmedUp && _stream != null) {
+      final startResult = _bindings.startStream(_stream!);
+      if (startResult != paNoError) {
+        return AudioCaptureError.streamStartFailed;
+      }
+      _isCapturing = true;
+      return AudioCaptureError.none;
     }
-    _isInitialized = true;
+
+    // 未预热，执行完整初始化流程
+    // 1. 初始化 PortAudio
+    if (!_isInitialized) {
+      final initResult = _bindings.initialize();
+      if (initResult != paNoError) {
+        return AudioCaptureError.initializationFailed;
+      }
+      _isInitialized = true;
+    }
 
     // 2. 获取默认输入设备
     final deviceIndex = _bindings.getDefaultInputDevice();

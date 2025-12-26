@@ -46,6 +46,9 @@ class HotkeyController {
   StreamSubscription<EndpointEvent>? _endpointSubscription;
   StreamSubscription<String>? _resultSubscription;
   bool _isInitialized = false;
+  bool _isProcessing = false; // 防止快速按键竞态条件
+  DateTime? _lastHotkeyTime; // 防抖：记录上次按键时间
+  static const _debounceMs = 300; // 防抖间隔（毫秒）
 
   /// Story 3-7: 保存提交失败的文本 (AC15: 文本保护)
   String? _lastRecognizedText;
@@ -70,6 +73,9 @@ class HotkeyController {
 
   /// 显示窗口并开始录音
   Future<void> show() async {
+    // ignore: avoid_print
+    print('[HotkeyController] show() 调用，当前状态: $_state');
+
     if (_state == HotkeyState.idle) {
       await _startRecording();
     }
@@ -77,11 +83,21 @@ class HotkeyController {
 
   /// 隐藏窗口
   Future<void> hide() async {
+    // ignore: avoid_print
+    print('[HotkeyController] hide() 调用，当前状态: $_state');
+
     if (_state == HotkeyState.recording) {
       await _stopAndSubmit();
-    } else if (_state == HotkeyState.idle && WindowService.instance.isVisible) {
-      await WindowService.instance.hide();
-      _updateState(CapsuleStateData.idle());
+    } else if (_state == HotkeyState.submitting) {
+      // 正在提交中，等待完成后隐藏
+      // ignore: avoid_print
+      print('[HotkeyController] 正在提交中，忽略 hide');
+    } else {
+      // idle 状态，直接隐藏窗口
+      if (WindowService.instance.isVisible) {
+        await WindowService.instance.hide();
+        _updateState(CapsuleStateData.idle());
+      }
     }
   }
 
@@ -174,19 +190,32 @@ class HotkeyController {
   /// AC2: 按下 Right Alt 键时自动开始录音
   /// AC3: 正在录音时再次按下 Right Alt 立即停止录音
   Future<void> _onHotkeyPressed() async {
-    // ignore: avoid_print
-    print('[HotkeyController] 快捷键按下，当前状态: $_state');
+    // 防止快速按键导致的竞态条件
+    if (_isProcessing) {
+      // ignore: avoid_print
+      print('[HotkeyController] ⏳ 忽略按键，上一操作正在进行中');
+      return;
+    }
 
-    switch (_state) {
-      case HotkeyState.idle:
-        await _startRecording();
-        break;
-      case HotkeyState.recording:
-        await _stopAndSubmit();
-        break;
-      case HotkeyState.submitting:
-        // 正在提交中，忽略按键
-        break;
+    _isProcessing = true;
+
+    try {
+      // ignore: avoid_print
+      print('[HotkeyController] 快捷键按下，当前状态: $_state');
+
+      switch (_state) {
+        case HotkeyState.idle:
+          await _startRecording();
+          break;
+        case HotkeyState.recording:
+          await _stopAndSubmit();
+          break;
+        case HotkeyState.submitting:
+          // 正在提交中，忽略按键
+          break;
+      }
+    } finally {
+      _isProcessing = false;
     }
   }
 
@@ -288,7 +317,8 @@ class HotkeyController {
     }
   }
 
-  /// VAD 端点事件处理 (自动提交)
+  /// VAD 端点事件处理
+  /// PTT 模式：VAD 端点只作为视觉反馈，不触发自动提交
   /// Story 3-7: 增强设备丢失处理 (AC13)
   void _onEndpoint(EndpointEvent event) {
     // ignore: avoid_print
@@ -302,10 +332,9 @@ class HotkeyController {
       return;
     }
 
-    if (event.isVadTriggered && _state == HotkeyState.recording) {
-      // VAD 自动触发，执行提交流程
-      _submitFromVad(event.finalText);
-    }
+    // PTT 模式：VAD 端点不触发自动提交
+    // 只在用户释放按键时（hide 命令）才提交
+    // VAD 端点仅用于内部状态跟踪，不改变录音状态
   }
 
   /// Story 3-7: 处理设备丢失 (AC13)
@@ -450,6 +479,7 @@ class HotkeyController {
     await _resultSubscription?.cancel();
     HotkeyService.instance.onHotkeyPressed = null;
     _isInitialized = false;
+    _isProcessing = false;
     _state = HotkeyState.idle;
   }
 }

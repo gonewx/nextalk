@@ -19,6 +19,17 @@ apply_standard_settings(${BINARY_NAME})
 # Add preprocessor definitions for the application ID.
 add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 
+# ============================================
+# Nextalk: gtk-layer-shell for Wayland overlay
+# ============================================
+pkg_check_modules(GTK_LAYER_SHELL IMPORTED_TARGET gtk-layer-shell-0)
+if(GTK_LAYER_SHELL_FOUND)
+  message(STATUS "gtk-layer-shell found, enabling Wayland layer shell support")
+  target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK_LAYER_SHELL)
+else()
+  message(WARNING "gtk-layer-shell not found, Wayland overlay may steal focus")
+endif()
+
 # Add dependency libraries. Add any application-specific dependencies here.
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)

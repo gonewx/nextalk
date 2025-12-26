@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../constants/capsule_colors.dart';
 import '../services/language_service.dart';
+import 'gradient_text_flow.dart';
 
 /// 胶囊文本预览组件
 /// Story 3-2: 胶囊 UI 组件
@@ -109,6 +110,22 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
             ],
           ),
         ),
+      );
+    }
+
+    // 识别文本使用渐变文字流效果（非 hint、非 processing、非 error）
+    final useGradientFlow = !isHint && !widget.isProcessing && !widget.isError;
+
+    if (useGradientFlow && widget.text.isNotEmpty) {
+      return GradientTextFlowWithFade(
+        text: widget.text,
+        baseColor: CapsuleColors.textWhite,
+        maxFontSize: 18.0,
+        minFontSize: 11.0,
+        maxOpacity: 1.0,
+        minOpacity: 0.35,
+        visibleCharCount: 25,
+        fadeWidth: 20.0,
       );
     }
 

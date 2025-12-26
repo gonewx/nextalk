@@ -583,7 +583,13 @@ class AudioInferencePipeline {
       }
 
       // Story 2-6: VAD 端点检测
-      if (_asrEngine.isEndpoint() && !_vadTriggeredStop) {
+      final isEndpointDetected = _asrEngine.isEndpoint();
+      // 调试：只在有识别结果或端点检测时打印
+      if (enableDebugLog && (result.text.isNotEmpty || isEndpointDetected)) {
+        // ignore: avoid_print
+        print('[Pipeline] 识别: "${result.text}", endpoint: $isEndpointDetected');
+      }
+      if (isEndpointDetected && !_vadTriggeredStop) {
         await _handleEndpoint();
       }
     }
@@ -640,11 +646,19 @@ class AudioInferencePipeline {
   /// Story 2-6: 处理 VAD 端点检测
   Future<void> _handleEndpoint() async {
     try {
-      // 1. 调用 inputFinished() 确保最终解码
-      _asrEngine.inputFinished();
-      while (_asrEngine.isReady()) {
-        _asrEngine.decode();
+      // PTT 累积模式：不调用 inputFinished()，只获取当前结果
+      // inputFinished() 会使引擎进入"结束"状态，导致后续音频无法累积
+      final isPttAccumulateMode =
+          !_vadConfig.autoStopOnEndpoint && !_vadConfig.autoReset;
+
+      if (!isPttAccumulateMode) {
+        // 非 PTT 累积模式：调用 inputFinished() 确保最终解码
+        _asrEngine.inputFinished();
+        while (_asrEngine.isReady()) {
+          _asrEngine.decode();
+        }
       }
+
       final finalResult = _asrEngine.getResult();
 
       // 2. 计算录音时长
@@ -663,6 +677,11 @@ class AudioInferencePipeline {
         _endpointController.add(event);
       }
 
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[Pipeline] 🎯 VAD 端点 (PTT累积=$isPttAccumulateMode): "${finalResult.text}"');
+      }
+
       // 4. 根据配置决定后续行为
       if (_vadConfig.autoStopOnEndpoint) {
         _vadTriggeredStop = true; // 标记 VAD 触发，防止 stop() 重复发送事件
@@ -672,6 +691,7 @@ class AudioInferencePipeline {
         _lastEmittedText = '';
         _recordingStartTime = DateTime.now();
       }
+      // PTT 累积模式 (!autoStopOnEndpoint && !autoReset)：什么都不做，继续累积
     } catch (e) {
       // FFI 层或其他异常处理
       if (enableDebugLog) {

@@ -240,16 +240,26 @@ bool NextalkAddon::isConfiguredHotkey(const Key &key) const {
 void NextalkAddon::handleKeyEvent(KeyEvent &keyEvent) {
     const Key &key = keyEvent.key();
 
+    // 调试：记录所有按键事件
+    NEXTALK_DEBUG() << "KeyEvent: sym=" << key.sym()
+                    << " isRelease=" << keyEvent.isRelease()
+                    << " hotkeyPressed=" << hotkeyPressed_
+                    << " configuredKey=" << configuredKey_;
+
     // 检测是否是配置的快捷键
     if (!isConfiguredHotkey(key)) {
         return;
     }
 
     if (keyEvent.isRelease()) {
-        // 快捷键释放
-        hotkeyPressed_ = false;
+        // PTT 模式：快捷键释放时停止录音
+        if (hotkeyPressed_) {
+            hotkeyPressed_ = false;
+            NEXTALK_INFO() << "Hotkey released, sending hide command (PTT mode)";
+            sendCommandToFlutter("hide");
+        }
     } else {
-        // 快捷键按下 - 立即响应
+        // PTT 模式：快捷键按下时开始录音
         if (!hotkeyPressed_) {
             hotkeyPressed_ = true;
 
@@ -273,12 +283,8 @@ void NextalkAddon::handleKeyEvent(KeyEvent &keyEvent) {
                 NEXTALK_INFO() << "Hotkey pressed, no InputContext to lock";
             }
 
-            // 发送切换命令到 Flutter
-            sendCommandToFlutter("toggle");
-
-            // 立即重置按键状态，不依赖释放事件
-            // 修复：窗口隐藏后焦点转移，释放事件可能丢失导致状态卡死
-            hotkeyPressed_ = false;
+            // PTT 模式：发送 show 命令开始录音
+            sendCommandToFlutter("show");
         }
     }
 }

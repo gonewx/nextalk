@@ -41,6 +41,9 @@ class SenseVoiceEngine implements ASREngine {
   /// 最近一次识别结果
   ASRResult _lastResult = ASRResult.empty();
 
+  /// PTT 累积模式：累积所有段落的文本
+  String _accumulatedText = '';
+
   /// 是否检测到端点 (语音段结束)
   bool _hasEndpoint = false;
 
@@ -160,7 +163,89 @@ class SenseVoiceEngine implements ASREngine {
       print('[SenseVoiceEngine] VAD: ${config.vadModelPath}');
     }
 
+    // 预热 VAD：发送静音数据触发 onnxruntime JIT 编译
+    // 避免第一次录音时因 JIT 编译延迟导致丢失语音
+    _warmupVad();
+
     return ASRError.none;
+  }
+
+  /// 预热 VAD 模型
+  ///
+  /// 发送静音数据触发 onnxruntime 的 JIT 编译，
+  /// 避免第一次实际使用时因编译延迟导致丢失语音。
+  void _warmupVad() {
+    if (_vad == null) return;
+
+    final warmupSamples = 512 * 10; // 10 个 VAD 窗口的静音数据
+    final silenceBuffer = calloc<Float>(warmupSamples);
+
+    try {
+      // 填充静音数据 (全零)
+      for (var i = 0; i < warmupSamples; i++) {
+        silenceBuffer[i] = 0.0;
+      }
+
+      // 送入 VAD 预热
+      SherpaOnnxVadBindings.voiceActivityDetectorAcceptWaveform(
+          _vad!, silenceBuffer, warmupSamples);
+
+      // 重置 VAD 状态
+      SherpaOnnxVadBindings.voiceActivityDetectorReset(_vad!);
+
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[SenseVoiceEngine] ✅ VAD 预热完成');
+      }
+    } finally {
+      calloc.free(silenceBuffer);
+    }
+
+    // 同时预热离线识别模型
+    _warmupRecognizer();
+  }
+
+  /// 预热离线识别模型
+  ///
+  /// 发送一小段静音数据进行识别，触发 SenseVoice 模型的 JIT 编译。
+  void _warmupRecognizer() {
+    if (_recognizer == null) return;
+
+    // 创建一段 0.5 秒的静音数据 (16000 * 0.5 = 8000 samples)
+    final warmupSamples = 8000;
+    final silenceBuffer = calloc<Float>(warmupSamples);
+
+    try {
+      // 填充静音数据
+      for (var i = 0; i < warmupSamples; i++) {
+        silenceBuffer[i] = 0.0;
+      }
+
+      // 创建离线流并进行识别
+      final stream = SherpaOnnxOfflineBindings.createOfflineStream(_recognizer!);
+      if (stream != nullptr) {
+        // 送入静音数据
+        SherpaOnnxOfflineBindings.acceptWaveformOffline(
+          stream,
+          _config?.sampleRate ?? 16000,
+          silenceBuffer,
+          warmupSamples,
+        );
+
+        // 解码 (触发 JIT 编译)
+        SherpaOnnxOfflineBindings.decodeOfflineStream(_recognizer!, stream);
+
+        // 销毁流
+        SherpaOnnxOfflineBindings.destroyOfflineStream(stream);
+
+        if (enableDebugLog) {
+          // ignore: avoid_print
+          print('[SenseVoiceEngine] ✅ 离线识别模型预热完成');
+        }
+      }
+    } finally {
+      calloc.free(silenceBuffer);
+    }
   }
 
   /// 查找 SenseVoice 模型文件
@@ -548,7 +633,20 @@ class SenseVoiceEngine implements ASREngine {
         // 对语音段进行识别
         final result = _recognizeSegment(segment);
         if (result.isNotEmpty) {
-          _lastResult = result;
+          // PTT 累积模式：将新段落追加到累积文本
+          if (_accumulatedText.isNotEmpty) {
+            _accumulatedText += result.text;
+          } else {
+            _accumulatedText = result.text;
+          }
+          // 更新 _lastResult，使用累积的文本
+          _lastResult = ASRResult(
+            text: _accumulatedText,
+            lang: result.lang,
+            emotion: result.emotion,
+            tokens: result.tokens,
+            timestamps: result.timestamps,
+          );
         }
 
         // 销毁语音段
@@ -716,8 +814,9 @@ class SenseVoiceEngine implements ASREngine {
     // 重置 VAD
     SherpaOnnxVadBindings.voiceActivityDetectorReset(_vad!);
 
-    // 清空结果
+    // 清空结果和累积文本
     _lastResult = ASRResult.empty();
+    _accumulatedText = '';
     _hasEndpoint = false;
   }
 
@@ -755,6 +854,7 @@ class SenseVoiceEngine implements ASREngine {
     _lib = null;
     _config = null;
     _lastResult = ASRResult.empty();
+    _accumulatedText = '';
     _hasEndpoint = false;
   }
 }
