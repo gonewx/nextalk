@@ -1,20 +1,30 @@
 #!/usr/bin/env bash
 #
 # install_addon.sh - Nextalk Fcitx5 Plugin Installation Script
-# Version: 0.1.0
+# Version: 0.2.0
 #
-# This script compiles and installs the Nextalk Fcitx5 plugin.
+# This script installs the pre-built Nextalk Fcitx5 plugin.
 #
 set -euo pipefail
 
 # ==============================================================================
 # Version and Script Info
 # ==============================================================================
-VERSION="0.1.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 ADDON_DIR="$PROJECT_ROOT/addons/fcitx5"
 BUILD_DIR="$ADDON_DIR/build"
+VERSION_FILE="$PROJECT_ROOT/version.yaml"
+
+# 从 version.yaml 读取插件版本
+get_addon_version() {
+    if [[ -f "$VERSION_FILE" ]]; then
+        grep -E "^addon_version:" "$VERSION_FILE" | sed 's/addon_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/'
+    else
+        echo "0.1.0"
+    fi
+}
+VERSION="$(get_addon_version)"
 
 # ==============================================================================
 # Terminal Color Detection (Task 2.1, 2.2)
@@ -50,18 +60,21 @@ Nextalk Fcitx5 Plugin Installation Script v${VERSION}
 
 Usage: $(basename "$0") [OPTIONS]
 
+Prerequisites:
+  Run 'make build-addon' first to build the plugin.
+
 Options:
-  --user      Install to user directory (~/.local/)
-  --system    Install to system directory (requires sudo) [default]
+  --user      Install to user directory (~/.local/) [default]
+  --system    Install to system directory (requires sudo)
   --clean     Clean build directory and exit
   --verify    Verify plugin installation (restart Fcitx5 and check)
   --help      Show this help message
   --version   Show version number
 
 Examples:
-  $(basename "$0")           # Build and install to user directory
-  $(basename "$0") --user    # Same as above
-  sudo $(basename "$0") --system  # Install to system directory
+  make build-addon && $(basename "$0")           # Build then install to user directory
+  make build-addon && $(basename "$0") --user    # Same as above
+  make build-addon && sudo $(basename "$0") --system  # Build then install to system
   $(basename "$0") --clean   # Clean build directory only
   $(basename "$0") --verify  # Verify plugin is loaded correctly
 
@@ -126,7 +139,7 @@ check_dependencies() {
 }
 
 # ==============================================================================
-# Build Functions (Task 3)
+# Build Artifact Check Functions
 # ==============================================================================
 clean_build() {
     info "Cleaning build directory..."
@@ -134,56 +147,13 @@ clean_build() {
     success "Build directory cleaned"
 }
 
-build_plugin() {
-    info "Building Nextalk Fcitx5 plugin..."
+check_build_artifacts() {
+    info "Checking build artifacts..."
 
-    # Check source directory exists
-    if [[ ! -d "$ADDON_DIR" ]]; then
-        error "Plugin source not found at: $ADDON_DIR"
-        exit 1
-    fi
-
-    if [[ ! -f "$ADDON_DIR/CMakeLists.txt" ]]; then
-        error "CMakeLists.txt not found in: $ADDON_DIR"
-        exit 1
-    fi
-
-    # Clean and create build directory (Task 3.3)
-    rm -rf "$BUILD_DIR"
-    mkdir -p "$BUILD_DIR"
-
-    # Run cmake and make in subshell to preserve working directory (M2 fix)
-    (
-        cd "$BUILD_DIR" || exit 1
-
-        # Run cmake (Task 3.4)
-        info "Running cmake..."
-        if ! cmake .. -DCMAKE_CXX_FLAGS="-Wall -Wextra" 2>&1; then
-            error "CMake configuration failed"
-            if [[ -f "CMakeFiles/CMakeError.log" ]]; then
-                warn "Check error log: $BUILD_DIR/CMakeFiles/CMakeError.log"
-            fi
-            exit 1
-        fi
-        success "CMake configuration complete"
-
-        # Run make (Task 3.5)
-        info "Compiling..."
-        local nproc_count
-        nproc_count=$(nproc 2>/dev/null || echo 1)
-        if ! make -j"$nproc_count" 2>&1; then
-            error "Compilation failed"
-            if [[ -f "CMakeFiles/CMakeError.log" ]]; then
-                warn "Check error log: $BUILD_DIR/CMakeFiles/CMakeError.log"
-            fi
-            exit 1
-        fi
-        success "Compilation complete"
-    ) || exit 1
-
-    # Verify build artifacts (Task 3.6) - outside subshell
     if [[ ! -f "$BUILD_DIR/nextalk.so" ]]; then
-        error "Build artifact not found: nextalk.so"
+        error "Build artifact not found: $BUILD_DIR/nextalk.so"
+        echo ""
+        echo -e "  ${YELLOW}Please build first:${NC} make build-addon"
         exit 1
     fi
 
@@ -193,11 +163,13 @@ build_plugin() {
     fi
 
     if [[ ! -f "$BUILD_DIR/nextalk.conf" ]]; then
-        error "Build artifact not found: nextalk.conf"
+        error "Build artifact not found: $BUILD_DIR/nextalk.conf"
+        echo ""
+        echo -e "  ${YELLOW}Please build first:${NC} make build-addon"
         exit 1
     fi
 
-    success "Build artifacts verified: nextalk.so, nextalk.conf"
+    success "Build artifacts found: nextalk.so, nextalk.conf"
 }
 
 # ==============================================================================
@@ -337,7 +309,7 @@ verify_plugin() {
 # Main
 # ==============================================================================
 main() {
-    local install_mode="--system"
+    local install_mode="--user"
     
     # Parse arguments (Task 4.1)
     while [[ $# -gt 0 ]]; do
@@ -388,10 +360,10 @@ main() {
     echo "═══════════════════════════════════════════════════════════"
     echo ""
     
-    # Execute build and install
+    # Check and install
     check_dependencies
     echo ""
-    build_plugin
+    check_build_artifacts
     echo ""
     install_plugin "$install_mode"
     show_summary "$install_mode"

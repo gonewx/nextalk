@@ -1,5 +1,23 @@
 cmake_minimum_required(VERSION 3.16)
-project(fcitx5-nextalk VERSION 0.1.0)
+
+# 从 version.yaml 读取插件版本
+set(VERSION_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../version.yaml")
+if(EXISTS "${VERSION_FILE}")
+    file(STRINGS "${VERSION_FILE}" VERSION_LINE REGEX "^addon_version:")
+    if(VERSION_LINE)
+        string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" ADDON_VERSION "${VERSION_LINE}")
+        if(NOT ADDON_VERSION)
+            set(ADDON_VERSION "0.1.0")
+        endif()
+    else()
+        set(ADDON_VERSION "0.1.0")
+    endif()
+else()
+    set(ADDON_VERSION "0.1.0")
+endif()
+
+message(STATUS "Addon version: ${ADDON_VERSION}")
+project(fcitx5-nextalk VERSION ${ADDON_VERSION})
 
 # 查找 Fcitx5
 find_package(Fcitx5Core 5.0.0 REQUIRED)

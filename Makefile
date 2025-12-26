@@ -1,7 +1,7 @@
 # Nextalk - 项目级 Makefile
 # 离线语音输入应用 (Flutter + Fcitx5)
 
-.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon uninstall-addon run dev help
+.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon run dev help sync-version
 
 # 默认目标
 all: build
@@ -13,13 +13,22 @@ all: build
 # 构建所有组件
 build: build-flutter build-addon
 
+# 同步版本号 (从 version.yaml 到 pubspec.yaml)
+sync-version:
+	@APP_VER=$$(grep -E "^app_version:" version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/'); \
+	APP_BUILD=$$(grep -E "^app_build:" version.yaml | sed 's/app_build:[[:space:]]*\([0-9]*\)/\1/'); \
+	if [ -n "$$APP_VER" ] && [ -n "$$APP_BUILD" ]; then \
+		sed -i "s/^version:.*/version: $$APP_VER+$$APP_BUILD/" voice_capsule/pubspec.yaml; \
+		echo "📌 版本同步: $$APP_VER+$$APP_BUILD"; \
+	fi
+
 # 构建 Flutter 客户端 (Release)
-build-flutter:
+build-flutter: sync-version
 	@echo "🔨 构建 Flutter 客户端..."
 	cd voice_capsule && flutter build linux --release
 
 # 构建 Flutter 客户端 (Debug)
-build-flutter-debug:
+build-flutter-debug: sync-version
 	@echo "🔨 构建 Flutter 客户端 (Debug)..."
 	cd voice_capsule && flutter build linux --debug
 
@@ -50,10 +59,15 @@ analyze:
 # 安装/卸载目标
 # ============================================================
 
-# 安装 Fcitx5 插件
+# 安装 Fcitx5 插件 (用户级，不需要 sudo)
 install-addon: build-addon
 	@echo "📦 安装 Fcitx5 插件..."
 	./scripts/install_addon.sh
+
+# 安装 Fcitx5 插件 (系统级，需要 sudo)
+install-addon-system: build-addon
+	@echo "📦 安装 Fcitx5 插件 (系统级)..."
+	sudo ./scripts/install_addon.sh --system
 
 # 卸载 Fcitx5 插件
 uninstall-addon:
@@ -142,7 +156,8 @@ help:
 	@echo "  make analyze            - 运行 Flutter 代码分析"
 	@echo ""
 	@echo "安装命令:"
-	@echo "  make install-addon      - 安装 Fcitx5 插件"
+	@echo "  make install-addon      - 安装 Fcitx5 插件 (用户级)"
+	@echo "  make install-addon-system - 安装 Fcitx5 插件 (系统级，需 sudo)"
 	@echo "  make uninstall-addon    - 卸载 Fcitx5 插件"
 	@echo ""
 	@echo "运行命令:"
