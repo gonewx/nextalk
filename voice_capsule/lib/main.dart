@@ -263,6 +263,9 @@ Future<void> main() async {
       }
     };
 
+    // 设置 TrayService 的 ModelManager 引用 (用于切换引擎时检查模型状态)
+    TrayService.instance.setModelManager(modelManager);
+
     // 11. 设置模型切换回调 (热切换模型版本)
     SettingsService.instance.onModelSwitch = (newType) async {
       if (_pipeline != null) {

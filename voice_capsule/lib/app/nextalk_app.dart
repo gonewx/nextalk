@@ -48,6 +48,18 @@ class _NextalkAppState extends State<NextalkApp> {
     super.initState();
     // Story 3-7 AC1: 首次运行检测到模型缺失时显示初始化向导
     _needsInit = !widget.modelManager.isModelReady;
+
+    // 注册托盘服务回调：当用户尝试切换到没有模型的引擎时显示初始化向导
+    TrayService.instance.onShowInitWizard = (targetEngine) {
+      _showInitWizard();
+    };
+  }
+
+  @override
+  void dispose() {
+    // 清理回调
+    TrayService.instance.onShowInitWizard = null;
+    super.dispose();
   }
 
   /// 初始化向导完成回调

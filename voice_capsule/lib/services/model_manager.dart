@@ -712,7 +712,7 @@ models/$_modelName/
     }
   }
 
-  /// 获取引擎模型的下载 URL
+  /// 获取引擎模型的下载 URL (用于自动下载，会考虑自定义 URL)
   String getDownloadUrlForEngine(EngineType engineType) {
     final config = ModelConfigs.forEngine(engineType);
 
@@ -724,6 +724,11 @@ models/$_modelName/
       }
     }
     return config.defaultUrl;
+  }
+
+  /// 获取引擎模型的官方默认下载 URL (用于手动安装向导，始终显示官方地址)
+  String getDefaultDownloadUrlForEngine(EngineType engineType) {
+    return ModelConfigs.forEngine(engineType).defaultUrl;
   }
 
   /// 获取 VAD 模型下载 URL

@@ -139,6 +139,7 @@ class LanguageService {
       'tray_engine_switch_success': '引擎已切换为 {engine}',
       'tray_engine_switch_fallback': '切换失败，已回退到 {engine}',
       'tray_engine_actual': '当前使用',
+      'tray_model_not_found': '{engine} 模型未下载，请先下载模型',
       'tray_model_settings': '模型设置',
 
       // 错误消息 (AC7)
@@ -192,6 +193,7 @@ class LanguageService {
       'tray_engine_switch_success': 'Engine switched to {engine}',
       'tray_engine_switch_fallback': 'Switch failed, fallback to {engine}',
       'tray_engine_actual': 'In Use',
+      'tray_model_not_found': '{engine} model not downloaded, please download first',
       'tray_model_settings': 'Model Settings',
 
       // 错误消息 (AC8)

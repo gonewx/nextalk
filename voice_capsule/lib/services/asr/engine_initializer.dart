@@ -5,8 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../../constants/settings_constants.dart';
 import '../language_service.dart';
 import '../model_manager.dart';
-import '../settings_service.dart';
-import '../tray_service.dart';
 import 'asr_engine.dart';
 import 'asr_engine_factory.dart';
 
@@ -192,10 +190,10 @@ class EngineInitializer {
     }
   }
 
-  /// 通知回退发生 (更新托盘状态 + 发送通知)
+  /// 通知回退发生 (发送通知，但保持正常图标)
   Future<void> _notifyFallback(EngineType preferred, EngineType actual) async {
-    // 更新托盘状态为警告 (AC7: 状态指示器显示警告)
-    await TrayService.instance.updateStatus(TrayStatus.warning);
+    // 回退成功后保持正常图标 (只要有引擎可用就是正常状态)
+    // 只有在所有引擎都不可用时才显示警告
 
     // 发送桌面通知
     final lang = LanguageService.instance;

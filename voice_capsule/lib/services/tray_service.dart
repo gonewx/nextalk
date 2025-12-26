@@ -7,11 +7,15 @@ import '../constants/settings_constants.dart';
 import '../constants/tray_constants.dart';
 import 'hotkey_service.dart';
 import 'language_service.dart';
+import 'model_manager.dart';
 import 'settings_service.dart';
 import 'window_service.dart';
 
 /// 退出回调类型 - 用于注入 Pipeline 释放逻辑
 typedef ExitCallback = Future<void> Function();
+
+/// 显示初始化向导回调类型
+typedef ShowInitWizardCallback = void Function(EngineType targetEngine);
 
 /// Story 3-7: 托盘状态枚举 (用于图标切换, AC19)
 /// system_tray 不支持角标，使用不同图标文件模拟
@@ -52,6 +56,12 @@ class TrayService {
   /// Story 3-7: 重新连接 Fcitx5 回调 (AC16)
   Future<void> Function()? onReconnectFcitx;
 
+  /// 显示初始化向导回调 (当模型不存在时)
+  ShowInitWizardCallback? onShowInitWizard;
+
+  /// ModelManager 引用 (用于检查模型状态)
+  ModelManager? _modelManager;
+
   /// Story 3-7: 当前托盘状态
   TrayStatus _currentStatus = TrayStatus.normal;
 
@@ -73,6 +83,11 @@ class TrayService {
   /// Story 2-7: 设置实际使用的引擎类型 (由 main.dart 在初始化时调用)
   void setActualEngineType(EngineType type) {
     _actualEngineType = type;
+  }
+
+  /// 设置 ModelManager 引用 (由 main.dart 在初始化时调用)
+  void setModelManager(ModelManager manager) {
+    _modelManager = manager;
   }
 
   /// Story 2-7: 检查是否发生了引擎回退
@@ -154,9 +169,8 @@ class TrayService {
     final configuredEngineType = SettingsService.instance.engineType;
     final lang = LanguageService.instance;
 
-    // Story 2-7: 检查实际引擎与配置是否不同 (AC7)
+    // Story 2-7: 获取实际使用的引擎 (可能因回退与配置不同)
     final actualEngine = _actualEngineType ?? configuredEngineType;
-    final isFallback = hasEngineFallback;
 
     final menu = Menu();
     await menu.buildFrom([
@@ -172,31 +186,23 @@ class TrayService {
       ),
       MenuSeparator(),
       // Story 2-7: 模型设置子菜单 (AC6, AC7)
-      // 使用嵌套子菜单结构，避免混淆：
-      // - Zipformer 有版本选择 (int8/standard)
-      // - SenseVoice 无版本选择
+      // 简化设计：checkbox 表示当前实际使用的引擎
       SubMenu(
         label: lang.tr('tray_model_settings'),
         children: [
           // Zipformer 子菜单 (含版本选择)
           SubMenu(
-            label: _buildEngineMenuLabel(
-              EngineType.zipformer,
-              configuredEngineType,
-              actualEngine,
-              isFallback,
-              lang,
-            ),
+            label: lang.tr('tray_engine_zipformer'),
             children: [
               MenuItemCheckbox(
                 label: lang.tr('tray_model_int8'),
-                checked: configuredEngineType == EngineType.zipformer &&
+                checked: actualEngine == EngineType.zipformer &&
                     currentModelType == ModelType.int8,
                 onClicked: (_) => _switchToZipformer(ModelType.int8),
               ),
               MenuItemCheckbox(
                 label: lang.tr('tray_model_standard'),
-                checked: configuredEngineType == EngineType.zipformer &&
+                checked: actualEngine == EngineType.zipformer &&
                     currentModelType == ModelType.standard,
                 onClicked: (_) => _switchToZipformer(ModelType.standard),
               ),
@@ -204,14 +210,8 @@ class TrayService {
           ),
           // SenseVoice 单项 (无版本选择)
           MenuItemCheckbox(
-            label: _buildEngineMenuLabel(
-              EngineType.sensevoice,
-              configuredEngineType,
-              actualEngine,
-              isFallback,
-              lang,
-            ),
-            checked: configuredEngineType == EngineType.sensevoice,
+            label: lang.tr('tray_engine_sensevoice'),
+            checked: actualEngine == EngineType.sensevoice,
             onClicked: (_) => _switchEngine(EngineType.sensevoice),
           ),
         ],
@@ -254,41 +254,22 @@ class TrayService {
     debugPrint('TrayService: 语言已切换为 $languageCode');
   }
 
-  /// 构建引擎菜单标签 (含选中状态和回退标记)
-  String _buildEngineMenuLabel(
-    EngineType type,
-    EngineType configuredType,
-    EngineType actualType,
-    bool isFallback,
-    LanguageService lang,
-  ) {
-    final baseLabel = type == EngineType.zipformer
-        ? lang.tr('tray_engine_zipformer')
-        : lang.tr('tray_engine_sensevoice');
-
-    // 构建标签：基础名称 + 选中标记 + 回退标记
-    final parts = <String>[baseLabel];
-
-    // 如果是配置的引擎，添加选中标记
-    if (type == configuredType) {
-      parts.add('●');
-    }
-
-    // 如果发生回退且这是实际使用的引擎，添加回退标记
-    if (isFallback && type == actualType) {
-      parts.add('(${lang.tr("tray_engine_actual")})');
-    }
-
-    return parts.join(' ');
-  }
-
   /// 切换到 Zipformer 引擎并设置模型版本
   Future<void> _switchToZipformer(ModelType modelType) async {
-    final currentEngineType = SettingsService.instance.engineType;
+    // 检查 Zipformer 模型是否存在
+    if (_modelManager != null && !_modelManager!.isModelReadyForEngine(EngineType.zipformer)) {
+      // 模型不存在，显示初始化向导
+      debugPrint('TrayService: Zipformer 模型不存在，显示初始化向导');
+      _showInitWizardForEngine(EngineType.zipformer);
+      return;
+    }
+
+    // 使用实际引擎类型判断是否需要切换（可能因回退与配置不同）
+    final actualEngine = _actualEngineType ?? SettingsService.instance.engineType;
     final currentModelType = SettingsService.instance.modelType;
 
-    // 如果已经是 Zipformer 且版本相同，无需操作
-    if (currentEngineType == EngineType.zipformer &&
+    // 如果实际使用的已经是 Zipformer 且版本相同，无需操作
+    if (actualEngine == EngineType.zipformer &&
         currentModelType == modelType) {
       return;
     }
@@ -298,8 +279,8 @@ class TrayService {
       await SettingsService.instance.switchModelType(modelType);
     }
 
-    // 再切换引擎 (如果需要)
-    if (currentEngineType != EngineType.zipformer) {
+    // 再切换引擎 (如果实际使用的不是 Zipformer)
+    if (actualEngine != EngineType.zipformer) {
       await _switchEngine(EngineType.zipformer);
     } else {
       // 引擎不变但版本变了，重建菜单并发送通知
@@ -322,9 +303,23 @@ class TrayService {
   /// Story 2-7: 切换 ASR 引擎 (AC6)
   /// 注意：由于 onnxruntime 限制，引擎切换需要销毁并重建 Pipeline
   Future<void> _switchEngine(EngineType newType) async {
-    final currentType = SettingsService.instance.engineType;
-    if (currentType == newType) {
-      return; // 没有变化
+    // 检查目标引擎的模型是否存在
+    if (_modelManager != null) {
+      final isReady = newType == EngineType.sensevoice
+          ? _modelManager!.isSenseVoiceReady
+          : _modelManager!.isModelReadyForEngine(newType);
+      if (!isReady) {
+        // 模型不存在，显示初始化向导
+        debugPrint('TrayService: ${newType.name} 模型不存在，显示初始化向导');
+        _showInitWizardForEngine(newType);
+        return;
+      }
+    }
+
+    // 使用实际引擎类型判断是否需要切换（可能因回退与配置不同）
+    final actualEngine = _actualEngineType ?? SettingsService.instance.engineType;
+    if (actualEngine == newType) {
+      return; // 已经是目标引擎，无需切换
     }
 
     final lang = LanguageService.instance;
@@ -396,35 +391,28 @@ class TrayService {
     };
   }
 
-  /// 切换模型版本
-  /// 注意：由于 onnxruntime 限制，模型切换需要重启应用生效
-  Future<void> _switchModel(ModelType newType) async {
-    final currentType = SettingsService.instance.modelType;
-    if (currentType == newType) {
-      return; // 没有变化
+  /// 显示初始化向导以下载指定引擎的模型
+  void _showInitWizardForEngine(EngineType targetEngine) {
+    // 发送通知告知用户需要下载模型
+    final lang = LanguageService.instance;
+    final engineName = _getEngineDisplayName(targetEngine);
+    try {
+      Process.run('notify-send', [
+        '-a',
+        'Nextalk',
+        '-i',
+        'dialog-information',
+        'Nextalk',
+        lang.trWithParams('tray_model_not_found', {'engine': engineName}),
+      ]);
+    } catch (e) {
+      debugPrint('TrayService: 发送通知失败: $e');
     }
 
-    final success = await SettingsService.instance.switchModelType(newType);
-    if (success) {
-      // 重新构建菜单以更新选中状态
-      await _buildMenu();
-      debugPrint('TrayService: 模型切换成功: $newType');
-
-      // Story 3-8: 使用 notify-send 发送桌面通知，使用国际化文本 (AC10)
-      try {
-        await Process.run('notify-send', [
-          '-a',
-          'Nextalk',
-          '-i',
-          'dialog-information',
-          'Nextalk',
-          LanguageService.instance.tr('tray_model_switch_notice'),
-        ]);
-      } catch (e) {
-        debugPrint('TrayService: 发送通知失败: $e');
-      }
-    } else {
-      debugPrint('TrayService: 模型切换失败');
+    // 显示窗口并触发初始化向导
+    WindowService.instance.show();
+    if (onShowInitWizard != null) {
+      onShowInitWizard!(targetEngine);
     }
   }
 

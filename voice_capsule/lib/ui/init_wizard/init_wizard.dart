@@ -448,7 +448,7 @@ class _InitWizardState extends State<InitWizard> {
           onVerifyModel: _verifyModel,
           onSwitchToAuto: _switchToAuto,
           engineType: engineType,
-          modelUrl: widget.modelManager.getDownloadUrlForEngine(engineType),
+          modelUrl: widget.modelManager.getDefaultDownloadUrlForEngine(engineType),
           targetPath: ModelManager.modelDirectory,
           expectedStructure: widget.modelManager.getExpectedStructureForEngine(engineType),
           vadUrl: isSenseVoice ? widget.modelManager.vadDownloadUrl : null,
