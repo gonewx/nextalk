@@ -1,7 +1,7 @@
 # Nextalk - 项目级 Makefile
 # 离线语音输入应用 (Flutter + Fcitx5)
 
-.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon run dev help sync-version
+.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version
 
 # 默认目标
 all: build
@@ -69,11 +69,18 @@ install-addon-system: build-addon
 	@echo "📦 安装 Fcitx5 插件 (系统级)..."
 	sudo ./scripts/install_addon.sh --system
 
-# 卸载 Fcitx5 插件
+# 卸载 Fcitx5 插件 (用户级)
 uninstall-addon:
-	@echo "🗑️ 卸载 Fcitx5 插件..."
+	@echo "🗑️ 卸载 Fcitx5 插件 (用户级)..."
 	rm -f ~/.local/lib/fcitx5/nextalk.so
 	rm -f ~/.local/share/fcitx5/addon/nextalk.conf
+	@echo "✅ Fcitx5 插件已卸载"
+
+# 卸载 Fcitx5 插件 (系统级，需要 sudo)
+uninstall-addon-system:
+	@echo "🗑️ 卸载 Fcitx5 插件 (系统级)..."
+	sudo rm -f $$(pkg-config --variable=libdir Fcitx5Core)/fcitx5/nextalk.so
+	sudo rm -f $$(pkg-config --variable=pkgdatadir fcitx5)/addon/nextalk.conf
 	@echo "✅ Fcitx5 插件已卸载"
 
 # ============================================================
@@ -156,9 +163,10 @@ help:
 	@echo "  make analyze            - 运行 Flutter 代码分析"
 	@echo ""
 	@echo "安装命令:"
-	@echo "  make install-addon      - 安装 Fcitx5 插件 (用户级)"
+	@echo "  make install-addon        - 安装 Fcitx5 插件 (用户级)"
 	@echo "  make install-addon-system - 安装 Fcitx5 插件 (系统级，需 sudo)"
-	@echo "  make uninstall-addon    - 卸载 Fcitx5 插件"
+	@echo "  make uninstall-addon      - 卸载 Fcitx5 插件 (用户级)"
+	@echo "  make uninstall-addon-system - 卸载 Fcitx5 插件 (系统级，需 sudo)"
 	@echo ""
 	@echo "运行命令:"
 	@echo "  make run                - 开发模式运行"
