@@ -32,6 +32,7 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   xdg_desktop_portal: ^0.1.13
+  screen_retriever: ^0.2.0
 
 dev_dependencies:
   flutter_test:

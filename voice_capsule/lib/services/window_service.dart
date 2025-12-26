@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:screen_retriever/screen_retriever.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -189,6 +190,9 @@ class WindowService with WindowListener {
   }
 
   /// 恢复保存的位置 (含边界校验)
+  ///
+  /// 首次运行：屏幕下方居中 (距底部 80 像素)
+  /// 后续运行：恢复上次保存的位置
   Future<void> _restorePosition() async {
     if (_prefs == null) return;
 
@@ -203,7 +207,29 @@ class WindowService with WindowListener {
       }
     }
 
-    // 位置无效或未保存，回退到居中
+    // 首次运行或位置无效：显示在屏幕下方居中
+    await _setDefaultPosition();
+  }
+
+  /// 设置默认位置：屏幕下方居中
+  Future<void> _setDefaultPosition() async {
+    try {
+      // 获取主屏幕信息
+      final primaryDisplay = await screenRetriever.getPrimaryDisplay();
+      final screenWidth = primaryDisplay.size.width;
+      final screenHeight = primaryDisplay.size.height;
+
+      // 计算水平居中
+      final x = (screenWidth - WindowConstants.windowWidth) / 2;
+      // 计算下方位置 (距底部 80 像素)
+      final y = screenHeight - WindowConstants.windowHeight - 80;
+
+      await windowManager.setPosition(Offset(x, y));
+      return;
+    } catch (e) {
+      // 获取屏幕信息失败，回退到普通居中
+    }
+
     await windowManager.center();
   }
 
