@@ -318,5 +318,52 @@ void main() {
         expect(() => manager.openModelDirectoryForEngine, returnsNormally);
       });
     });
+
+    group('Unified Engine Ready Methods Tests', () {
+      late ModelManager manager;
+
+      setUp(() {
+        manager = ModelManager();
+      });
+
+      test('isEngineReady returns boolean for Zipformer', () {
+        final ready = manager.isEngineReady(EngineType.zipformer);
+        expect(ready, isA<bool>());
+      });
+
+      test('isEngineReady returns boolean for SenseVoice', () {
+        final ready = manager.isEngineReady(EngineType.sensevoice);
+        expect(ready, isA<bool>());
+      });
+
+      test('isEngineReady for SenseVoice equals isSenseVoiceReady', () {
+        // 统一方法应该与原有方法返回相同结果
+        expect(
+          manager.isEngineReady(EngineType.sensevoice),
+          equals(manager.isSenseVoiceReady),
+        );
+      });
+
+      test('isEngineReady for Zipformer equals isModelReadyForEngine', () {
+        expect(
+          manager.isEngineReady(EngineType.zipformer),
+          equals(manager.isModelReadyForEngine(EngineType.zipformer)),
+        );
+      });
+
+      test('hasAnyEngineReady returns boolean', () {
+        final ready = manager.hasAnyEngineReady;
+        expect(ready, isA<bool>());
+      });
+
+      test('hasAnyEngineReady is consistent with individual checks', () {
+        final anyReady = manager.hasAnyEngineReady;
+        final zipformerReady = manager.isEngineReady(EngineType.zipformer);
+        final sensevoiceReady = manager.isEngineReady(EngineType.sensevoice);
+
+        // hasAnyEngineReady 应该是两者的 OR 关系
+        expect(anyReady, equals(zipformerReady || sensevoiceReady));
+      });
+    });
   });
 }

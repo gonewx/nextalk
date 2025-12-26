@@ -257,7 +257,7 @@ class TrayService {
   /// 切换到 Zipformer 引擎并设置模型版本
   Future<void> _switchToZipformer(ModelType modelType) async {
     // 检查 Zipformer 模型是否存在
-    if (_modelManager != null && !_modelManager!.isModelReadyForEngine(EngineType.zipformer)) {
+    if (_modelManager != null && !_modelManager!.isEngineReady(EngineType.zipformer)) {
       // 模型不存在，显示初始化向导
       debugPrint('TrayService: Zipformer 模型不存在，显示初始化向导');
       _showInitWizardForEngine(EngineType.zipformer);
@@ -304,16 +304,11 @@ class TrayService {
   /// 注意：由于 onnxruntime 限制，引擎切换需要销毁并重建 Pipeline
   Future<void> _switchEngine(EngineType newType) async {
     // 检查目标引擎的模型是否存在
-    if (_modelManager != null) {
-      final isReady = newType == EngineType.sensevoice
-          ? _modelManager!.isSenseVoiceReady
-          : _modelManager!.isModelReadyForEngine(newType);
-      if (!isReady) {
-        // 模型不存在，显示初始化向导
-        debugPrint('TrayService: ${newType.name} 模型不存在，显示初始化向导');
-        _showInitWizardForEngine(newType);
-        return;
-      }
+    if (_modelManager != null && !_modelManager!.isEngineReady(newType)) {
+      // 模型不存在，显示初始化向导
+      debugPrint('TrayService: ${newType.name} 模型不存在，显示初始化向导');
+      _showInitWizardForEngine(newType);
+      return;
     }
 
     // 使用实际引擎类型判断是否需要切换（可能因回退与配置不同）

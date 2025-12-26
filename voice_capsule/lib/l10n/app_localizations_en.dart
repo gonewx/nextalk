@@ -111,7 +111,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get wizardAutoDownloadDesc =>
-      'Automatically download and install model (~400MB)';
+      'Automatically download and install model';
 
   @override
   String get wizardManualInstallDesc => 'Manually download and install model';
@@ -134,7 +134,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wizardFirstLaunch => 'Nextalk First Launch';
 
   @override
-  String get wizardModelSizeHint => 'Voice model download required (~150MB)';
+  String get wizardModelSizeHint => 'Voice model download required';
 
   @override
   String get wizardRecommended => '(Recommended)';

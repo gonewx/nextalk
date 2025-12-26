@@ -310,8 +310,11 @@ class AudioInferencePipeline {
     _recordingStartTime = DateTime.now();
     _vadTriggeredStop = false;
 
-    // 1. 检查模型就绪状态
-    if (!_modelManager.isModelReady) {
+    // 1. 检查当前引擎的模型就绪状态
+    final engineType = _asrEngine.engineType == ASREngineType.zipformer
+        ? EngineType.zipformer
+        : EngineType.sensevoice;
+    if (!_modelManager.isEngineReady(engineType)) {
       _setError(PipelineError.modelNotReady);
       return _lastError;
     }
@@ -327,7 +330,7 @@ class AudioInferencePipeline {
     final ASRConfig config;
     if (_asrEngine.engineType == ASREngineType.zipformer) {
       config = ZipformerConfig(
-        modelDir: _modelManager.modelPath,
+        modelDir: _modelManager.getModelPathForEngine(EngineType.zipformer),
         useInt8Model: useInt8,
         numThreads: 2,
         sampleRate: 16000,

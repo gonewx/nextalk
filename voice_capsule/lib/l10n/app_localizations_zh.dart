@@ -109,7 +109,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wizardTitle => '语音模型安装';
 
   @override
-  String get wizardAutoDownloadDesc => '自动下载安装模型 (约400MB)';
+  String get wizardAutoDownloadDesc => '自动下载安装模型';
 
   @override
   String get wizardManualInstallDesc => '手动下载并安装模型';
@@ -130,7 +130,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wizardFirstLaunch => 'Nextalk 首次启动';
 
   @override
-  String get wizardModelSizeHint => '需要下载语音识别模型 (~150MB)';
+  String get wizardModelSizeHint => '需要下载语音识别模型';
 
   @override
   String get wizardRecommended => '(推荐)';

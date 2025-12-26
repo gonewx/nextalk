@@ -131,7 +131,7 @@ Future<void> main() async {
 
     // 5. 检查/下载模型
     final modelManager = ModelManager();
-    if (!modelManager.isModelReady) {
+    if (!modelManager.hasAnyEngineReady) {
       // TODO: 显示下载进度 UI (Post-MVP)
       // ignore: avoid_print
       print('[main] 模型未就绪，请先运行模型下载');

@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../constants/settings_constants.dart';
 import '../l10n/app_localizations.dart';
 import '../services/hotkey_controller.dart';
 import '../services/language_service.dart';
 import '../services/model_manager.dart';
+import '../services/settings_service.dart';
 import '../services/tray_service.dart';
 import '../services/window_service.dart';
 import '../state/capsule_state.dart';
@@ -43,15 +45,19 @@ class _NextalkAppState extends State<NextalkApp> {
   /// 当前是否处于扩展窗口模式
   bool _isExpanded = false;
 
+  /// 初始化向导的目标引擎类型 (从托盘菜单触发时设置)
+  EngineType? _targetEngineType;
+
   @override
   void initState() {
     super.initState();
     // Story 3-7 AC1: 首次运行检测到模型缺失时显示初始化向导
-    _needsInit = !widget.modelManager.isModelReady;
+    // 使用 hasAnyEngineReady 检查是否有任何引擎可用 (支持回退机制)
+    _needsInit = !widget.modelManager.hasAnyEngineReady;
 
     // 注册托盘服务回调：当用户尝试切换到没有模型的引擎时显示初始化向导
     TrayService.instance.onShowInitWizard = (targetEngine) {
-      _showInitWizard();
+      _showInitWizard(targetEngine: targetEngine);
     };
   }
 
@@ -77,16 +83,18 @@ class _NextalkAppState extends State<NextalkApp> {
   }
 
   /// 重新显示初始化向导（用于模型缺失时重新下载）
-  void _showInitWizard() {
+  /// [targetEngine] 目标引擎类型，从托盘菜单触发时传入
+  void _showInitWizard({EngineType? targetEngine}) {
     setState(() {
       _needsInit = true;
+      _targetEngineType = targetEngine;
     });
     // 设置初始化向导窗口大小并显示
     WindowService.instance.setInitWizardSize();
     WindowService.instance.show();
 
     // ignore: avoid_print
-    print('[NextalkApp] 重新显示初始化向导');
+    print('[NextalkApp] 重新显示初始化向导, 目标引擎: $targetEngine');
   }
 
   @override
@@ -120,6 +128,7 @@ class _NextalkAppState extends State<NextalkApp> {
     return InitWizard(
       modelManager: widget.modelManager,
       onCompleted: _onInitCompleted,
+      targetEngineType: _targetEngineType,
     );
   }
 
@@ -189,6 +198,8 @@ class _NextalkAppState extends State<NextalkApp> {
       // 使用 post-frame callback 确保在布局完成后调整窗口
       WidgetsBinding.instance.addPostFrameCallback((_) {
         WindowService.instance.setExpandedMode(needsExpanded);
+        // 当显示错误操作按钮时，阻止快捷键自动隐藏窗口
+        WindowService.instance.preventAutoHide = needsExpanded;
       });
     }
   }
@@ -302,7 +313,9 @@ class _NextalkAppState extends State<NextalkApp> {
               // 直接显示初始化向导，不需要先隐藏窗口
               // 恢复托盘状态
               TrayService.instance.updateStatus(TrayStatus.normal);
-              _showInitWizard();
+              // 使用当前配置的引擎类型
+              final currentEngine = SettingsService.instance.engineType;
+              _showInitWizard(targetEngine: currentEngine);
             },
             isPrimary: true,
           ),
@@ -321,7 +334,9 @@ class _NextalkAppState extends State<NextalkApp> {
               await widget.modelManager.deleteModel();
               // 直接显示初始化向导
               TrayService.instance.updateStatus(TrayStatus.normal);
-              _showInitWizard();
+              // 使用当前配置的引擎类型
+              final currentEngine = SettingsService.instance.engineType;
+              _showInitWizard(targetEngine: currentEngine);
             },
             isPrimary: true,
           ),
@@ -338,7 +353,9 @@ class _NextalkAppState extends State<NextalkApp> {
             label: l10n?.actionRedownload ?? '重新下载',
             onPressed: () {
               TrayService.instance.updateStatus(TrayStatus.normal);
-              _showInitWizard();
+              // 使用当前配置的引擎类型
+              final currentEngine = SettingsService.instance.engineType;
+              _showInitWizard(targetEngine: currentEngine);
             },
             isPrimary: true,
           ),

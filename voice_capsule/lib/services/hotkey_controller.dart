@@ -96,6 +96,20 @@ class HotkeyController {
     // ignore: avoid_print
     print('[HotkeyController] hide() 调用，当前状态: $_state');
 
+    // 初始化向导模式下，不响应快捷键隐藏
+    if (WindowService.instance.isInInitWizardMode) {
+      // ignore: avoid_print
+      print('[HotkeyController] 初始化向导模式，忽略 hide');
+      return;
+    }
+
+    // 阻止自动隐藏模式下（如显示错误操作按钮时），不响应快捷键隐藏
+    if (WindowService.instance.preventAutoHide) {
+      // ignore: avoid_print
+      print('[HotkeyController] preventAutoHide 模式，忽略 hide');
+      return;
+    }
+
     if (_state == HotkeyState.recording) {
       await _stopAndSubmit();
     } else if (_state == HotkeyState.submitting) {

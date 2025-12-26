@@ -154,13 +154,7 @@ class EngineInitializer {
 
   /// 检查引擎模型是否就绪
   bool _isEngineModelReady(EngineType type) {
-    switch (type) {
-      case EngineType.zipformer:
-        return _modelManager.isModelReadyForEngine(EngineType.zipformer);
-      case EngineType.sensevoice:
-        // SenseVoice 需要模型 + VAD
-        return _modelManager.isSenseVoiceReady;
-    }
+    return _modelManager.isEngineReady(type);
   }
 
   /// 获取回退引擎类型
@@ -234,18 +228,18 @@ class EngineInitializer {
   /// 检查所有引擎模型状态
   Map<EngineType, bool> checkAllEnginesStatus() {
     return {
-      EngineType.zipformer: _modelManager.isModelReadyForEngine(EngineType.zipformer),
-      EngineType.sensevoice: _modelManager.isSenseVoiceReady,
+      EngineType.zipformer: _modelManager.isEngineReady(EngineType.zipformer),
+      EngineType.sensevoice: _modelManager.isEngineReady(EngineType.sensevoice),
     };
   }
 
   /// 获取第一个可用的引擎类型 (不创建实例)
   EngineType? getFirstAvailableEngine() {
     // 按默认优先级: SenseVoice → Zipformer
-    if (_modelManager.isSenseVoiceReady) {
+    if (_modelManager.isEngineReady(EngineType.sensevoice)) {
       return EngineType.sensevoice;
     }
-    if (_modelManager.isModelReadyForEngine(EngineType.zipformer)) {
+    if (_modelManager.isEngineReady(EngineType.zipformer)) {
       return EngineType.zipformer;
     }
     return null;

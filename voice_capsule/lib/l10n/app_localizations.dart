@@ -293,7 +293,7 @@ abstract class AppLocalizations {
   /// No description provided for @wizardAutoDownloadDesc.
   ///
   /// In zh, this message translates to:
-  /// **'自动下载安装模型 (约400MB)'**
+  /// **'自动下载安装模型'**
   String get wizardAutoDownloadDesc;
 
   /// No description provided for @wizardManualInstallDesc.
@@ -335,7 +335,7 @@ abstract class AppLocalizations {
   /// No description provided for @wizardModelSizeHint.
   ///
   /// In zh, this message translates to:
-  /// **'需要下载语音识别模型 (~150MB)'**
+  /// **'需要下载语音识别模型'**
   String get wizardModelSizeHint;
 
   /// No description provided for @wizardRecommended.

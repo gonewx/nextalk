@@ -698,6 +698,24 @@ models/$_modelName/
     return isModelReadyForEngine(EngineType.sensevoice) && isVadModelReady;
   }
 
+  /// 检查指定引擎是否完全就绪 (统一入口)
+  ///
+  /// - Zipformer: 只需要 ASR 模型
+  /// - SenseVoice: 需要 ASR 模型 + VAD 模型
+  bool isEngineReady(EngineType engineType) {
+    switch (engineType) {
+      case EngineType.zipformer:
+        return isModelReadyForEngine(EngineType.zipformer);
+      case EngineType.sensevoice:
+        return isSenseVoiceReady;
+    }
+  }
+
+  /// 检查是否有任何引擎可用 (用于判断是否需要显示初始化向导)
+  bool get hasAnyEngineReady {
+    return isSenseVoiceReady || isModelReadyForEngine(EngineType.zipformer);
+  }
+
   /// 在指定目录中查找模型文件
   bool _hasModelFileInDir(String dirPath, String prefix) {
     final dir = Directory(dirPath);

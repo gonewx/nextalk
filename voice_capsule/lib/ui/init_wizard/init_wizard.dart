@@ -20,6 +20,7 @@ class InitWizard extends StatefulWidget {
     super.key,
     required this.modelManager,
     required this.onCompleted,
+    this.targetEngineType,
   });
 
   /// 模型管理器
@@ -28,6 +29,10 @@ class InitWizard extends StatefulWidget {
   /// 初始化完成回调
   final VoidCallback onCompleted;
 
+  /// 目标引擎类型 (从托盘菜单切换引擎时传入)
+  /// 如果为 null，则使用 SettingsService 中的配置或默认值
+  final EngineType? targetEngineType;
+
   @override
   State<InitWizard> createState() => _InitWizardState();
 }
@@ -35,6 +40,18 @@ class InitWizard extends StatefulWidget {
 class _InitWizardState extends State<InitWizard> {
   InitStateData _state = InitStateData.checking();
   bool _windowSizeSet = false;
+
+  /// 获取目标引擎类型
+  /// 优先级: widget.targetEngineType > SettingsService.engineType > 默认 SenseVoice
+  EngineType get _targetEngine {
+    if (widget.targetEngineType != null) {
+      return widget.targetEngineType!;
+    }
+    if (SettingsService.instance.isInitialized) {
+      return SettingsService.instance.engineType;
+    }
+    return EngineType.sensevoice; // 默认 SenseVoice
+  }
 
   @override
   void initState() {
@@ -97,10 +114,8 @@ class _InitWizardState extends State<InitWizard> {
   /// 从校验阶段恢复（临时文件已完整）
   Future<void> _resumeFromVerification() async {
     try {
-      // 根据当前配置的引擎类型选择下载方法
-      final engineType = SettingsService.instance.isInitialized
-          ? SettingsService.instance.engineType
-          : EngineType.sensevoice; // 默认 SenseVoice
+      // 使用目标引擎类型
+      final engineType = _targetEngine;
 
       final ModelError error;
       if (engineType == EngineType.sensevoice) {
@@ -197,10 +212,8 @@ class _InitWizardState extends State<InitWizard> {
     if (!mounted) return;
 
     try {
-      // 根据当前配置的引擎类型选择下载方法
-      final engineType = SettingsService.instance.isInitialized
-          ? SettingsService.instance.engineType
-          : EngineType.sensevoice; // 默认 SenseVoice
+      // 使用目标引擎类型
+      final engineType = _targetEngine;
 
       final ModelError error;
       if (engineType == EngineType.sensevoice) {
@@ -273,6 +286,8 @@ class _InitWizardState extends State<InitWizard> {
 
   /// 切换到手动安装
   void _switchToManual() {
+    // 取消正在进行的下载
+    widget.modelManager.cancelDownload();
     setState(() {
       _state = InitStateData.manualGuide();
     });
@@ -325,10 +340,8 @@ class _InitWizardState extends State<InitWizard> {
       _state = InitStateData.verifying();
     });
 
-    // 获取当前引擎类型
-    final engineType = SettingsService.instance.isInitialized
-        ? SettingsService.instance.engineType
-        : EngineType.sensevoice;
+    // 使用目标引擎类型
+    final engineType = _targetEngine;
 
     // 检查 ASR 模型状态
     final asrStatus = widget.modelManager.checkModelStatusForEngine(engineType);
@@ -436,10 +449,8 @@ class _InitWizardState extends State<InitWizard> {
         );
 
       case InitPhase.manualGuide:
-        // Story 2-7: 根据当前引擎类型动态显示下载说明
-        final engineType = SettingsService.instance.isInitialized
-            ? SettingsService.instance.engineType
-            : EngineType.sensevoice;
+        // Story 2-7: 根据目标引擎类型动态显示下载说明
+        final engineType = _targetEngine;
         final isSenseVoice = engineType == EngineType.sensevoice;
 
         return ManualInstallGuide(

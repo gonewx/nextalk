@@ -53,7 +53,7 @@ class InitModeSelector extends StatelessWidget {
 
           // 说明文字
           Text(
-            l10n?.wizardModelSizeHint ?? '需要下载语音识别模型 (~150MB)',
+            l10n?.wizardModelSizeHint ?? '需要下载语音识别模型',
             style: TextStyle(
               color: CapsuleColors.textHint,
               fontSize: 14,

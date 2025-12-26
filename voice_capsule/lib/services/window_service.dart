@@ -35,6 +35,12 @@ class WindowService with WindowListener {
   /// 在 GNOME Wayland 下启用，避免焦点被抢
   bool _useOpacityMode = true;
 
+  /// 是否处于初始化向导模式 (此时快捷键释放不应隐藏窗口)
+  bool _isInInitWizardMode = false;
+
+  /// 是否阻止自动隐藏 (用于显示需要用户操作的 UI，如错误状态)
+  bool _preventAutoHide = false;
+
   final StreamController<void> _onMovedController =
       StreamController<void>.broadcast();
 
@@ -43,6 +49,13 @@ class WindowService with WindowListener {
 
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
+
+  /// 是否处于初始化向导模式 (此时快捷键释放不应隐藏窗口)
+  bool get isInInitWizardMode => _isInInitWizardMode;
+
+  /// 是否阻止自动隐藏 (用于显示需要用户操作的 UI，如错误状态)
+  bool get preventAutoHide => _preventAutoHide;
+  set preventAutoHide(bool value) => _preventAutoHide = value;
 
   /// 监听窗口移动结束事件 (用于保存位置)
   Stream<void> get onMoved => _onMovedController.stream;
@@ -141,11 +154,13 @@ class WindowService with WindowListener {
 
   /// Story 3-7: 重置为正常胶囊尺寸
   Future<void> resetToNormalSize() async {
+    _isInInitWizardMode = false;
     await setSize(WindowConstants.windowWidth, WindowConstants.windowHeight);
   }
 
   /// Story 3-7: 设置为初始化向导尺寸
   Future<void> setInitWizardSize() async {
+    _isInInitWizardMode = true;
     await setSize(
         WindowConstants.initWizardWidth, WindowConstants.initWizardHeight);
   }
