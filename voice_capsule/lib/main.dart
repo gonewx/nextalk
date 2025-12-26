@@ -157,7 +157,7 @@ Future<void> main() async {
     try {
       final initResult = await engineInitializer.initialize(
         preferredType: configuredEngineType,
-        enableDebugLog: true,
+        enableDebugLog: false,
       );
 
       _asrEngine = initResult.engine;
@@ -180,7 +180,7 @@ Future<void> main() async {
     } on EngineNotAvailableException catch (e) {
       // 所有引擎都不可用，创建一个空壳引擎 (实际使用配置的类型)
       DiagnosticLogger.instance.warn('main', '${e.message}, 尝试的引擎: ${e.triedEngines}');
-      _asrEngine = ASREngineFactory.create(_toASREngineType(configuredEngineType), enableDebugLog: true);
+      _asrEngine = ASREngineFactory.create(_toASREngineType(configuredEngineType), enableDebugLog: false);
       _actualEngineType = configuredEngineType;
       TrayService.instance.setActualEngineType(configuredEngineType);
       // 注意：此时应用会在后续尝试使用引擎时显示下载引导
@@ -192,7 +192,7 @@ Future<void> main() async {
       audioCapture: _audioCapture!,
       asrEngine: _asrEngine!,
       modelManager: modelManager,
-      enableDebugLog: true, // 开发阶段启用日志
+      enableDebugLog: false,
       vadConfig: const VadConfig(
         autoStopOnEndpoint: false, // 不自动停止，等待用户松开按钮
         autoReset: false, // 不重置，跨停顿累积文本
@@ -278,7 +278,7 @@ Future<void> main() async {
         DiagnosticLogger.instance.info('main', '切换 ASR 引擎: $newEngineType');
 
         // 创建新引擎实例
-        final newEngine = ASREngineFactory.create(_toASREngineType(newEngineType), enableDebugLog: true);
+        final newEngine = ASREngineFactory.create(_toASREngineType(newEngineType), enableDebugLog: false);
 
         // 切换引擎 (销毁旧引擎，使用新引擎)
         await _pipeline!.switchEngine(newEngine);

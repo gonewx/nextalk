@@ -11,9 +11,17 @@ import '../constants/window_constants.dart';
 ///
 /// 功能:
 /// - 初始化透明无边框窗口
-/// - 窗口显示/隐藏控制
+/// - 窗口显示/隐藏控制 (方案 B: 透明度切换，避免 map/unmap 导致焦点被抢)
 /// - 位置持久化 (SharedPreferences)
 /// - 拖拽移动支持
+///
+/// GNOME Wayland 焦点优化:
+/// 传统的 show()/hide() 会触发窗口 map/unmap，在 GNOME Smart 模式下
+/// 新 map 的窗口会自动获得焦点。为避免这个问题，我们采用"透明度切换"方案：
+/// - 窗口始终保持 mapped 状态
+/// - "隐藏"时设置透明度为 0
+/// - "显示"时设置透明度为 1
+/// 这样可以避免触发 GNOME 的焦点切换逻辑。
 class WindowService with WindowListener {
   WindowService._();
 
@@ -22,6 +30,10 @@ class WindowService with WindowListener {
   bool _isInitialized = false;
   bool _isVisible = false;
   SharedPreferences? _prefs;
+
+  /// 是否使用透明度模式 (方案 B)
+  /// 在 GNOME Wayland 下启用，避免焦点被抢
+  bool _useOpacityMode = true;
 
   final StreamController<void> _onMovedController =
       StreamController<void>.broadcast();
