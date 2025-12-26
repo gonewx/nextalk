@@ -6,7 +6,6 @@
 #endif
 #ifdef GDK_WINDOWING_WAYLAND
 #include <gdk/gdkwayland.h>
-#include <gtk-layer-shell/gtk-layer-shell.h>
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
@@ -32,29 +31,8 @@ static void my_application_activate(GApplication* application) {
   // 设置无边框窗口
   gtk_window_set_decorated(window, FALSE);
 
-#ifdef GDK_WINDOWING_WAYLAND
-  // ⚠️ Wayland: 尝试使用 gtk-layer-shell 创建不抢焦点的 overlay
-  // 注意：Layer Shell 仅在 wlroots-based compositors (Sway, Hyprland) 上工作
-  // GNOME/Mutter 不支持 Layer Shell
-  if (GDK_IS_WAYLAND_DISPLAY(gdk_display_get_default()) &&
-      gtk_layer_is_supported()) {
-    gtk_layer_init_for_window(window);
-    // OVERLAY 层：显示在所有普通窗口之上
-    gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
-    // 不接收键盘输入 - 关键！这样原窗口保持焦点
-    gtk_layer_set_keyboard_mode(window, GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
-    // 不占用屏幕空间
-    gtk_layer_set_exclusive_zone(window, -1);
-    g_print("[Nextalk] gtk-layer-shell initialized for Wayland\n");
-  } else {
-    // GNOME/Mutter 等不支持 Layer Shell 的 compositor
-    gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_UTILITY);
-    g_print("[Nextalk] Layer Shell not supported, using UTILITY window type\n");
-  }
-#else
-  // X11: 使用 UTILITY 类型
+  // 设置窗口类型为 UTILITY (在所有平台上统一使用)
   gtk_window_set_type_hint(window, GDK_WINDOW_TYPE_HINT_UTILITY);
-#endif
 
   // ⚠️ 关键：不在任务栏/Dock 显示图标
   gtk_window_set_skip_taskbar_hint(window, TRUE);
