@@ -50,6 +50,9 @@ class HotkeyController {
   DateTime? _lastHotkeyTime; // 防抖：记录上次按键时间
   static const _debounceMs = 300; // 防抖间隔（毫秒）
 
+  /// 提交流程中断标志：用于支持用户快速重按时打断正在进行的提交
+  bool _submitInterrupted = false;
+
   /// Story 3-7: 保存提交失败的文本 (AC15: 文本保护)
   String? _lastRecognizedText;
 
@@ -77,6 +80,13 @@ class HotkeyController {
     print('[HotkeyController] show() 调用，当前状态: $_state');
 
     if (_state == HotkeyState.idle) {
+      await _startRecording();
+    } else if (_state == HotkeyState.submitting) {
+      // 用户快速重按：打断正在进行的提交流程，优先开始新的录音
+      // ignore: avoid_print
+      print('[HotkeyController] 用户快速重按，打断提交流程');
+      _submitInterrupted = true;
+      // 立即开始新的录音（不等待 submitting 完成）
       await _startRecording();
     }
   }
@@ -250,30 +260,60 @@ class HotkeyController {
   /// AC3: 立即停止录音
   /// AC4: 提交文本到活动窗口
   /// AC5: 提交后主窗口瞬间隐藏
+  ///
+  /// 注意：此方法支持被 show() 中断
+  /// 如果用户在提交过程中快速重按，会设置 _submitInterrupted 标志，
+  /// 此时会跳过文本提交，让新的录音流程接管。
   Future<void> _stopAndSubmit() async {
     _state = HotkeyState.submitting;
+    _submitInterrupted = false; // 重置中断标志
 
     // 1. 更新 UI 状态为处理中
     _updateState(CapsuleStateData.processing());
 
     // 2. 停止录音，获取最终文本 (AC3)
+    // 注意：pipeline.stop() 会等待所有处理中的数据完成
     final finalText = await _pipeline!.stop();
 
     // ignore: avoid_print
     print('[HotkeyController] 📝 最终文本: "$finalText"');
 
-    // 3. 先隐藏窗口 (Wayland 焦点修复)
+    // 3. 检查是否被中断（用户快速重按）
+    if (_submitInterrupted) {
+      // ignore: avoid_print
+      print('[HotkeyController] ⚡ 提交被中断，用户开始新的录音');
+      // 不隐藏窗口，不提交文字，新的录音流程已经接管
+      // 但要保存文字以防丢失（如果有内容的话）
+      if (finalText.isNotEmpty) {
+        _lastRecognizedText = finalText;
+        // ignore: avoid_print
+        print('[HotkeyController] 💾 已保存被中断的文本: "$finalText"');
+      }
+      return;
+    }
+
+    // 4. 先隐藏窗口 (Wayland 焦点修复)
     // 在 Wayland 下，必须先隐藏窗口让原应用恢复焦点，
     // 否则 Fcitx5 的 commitString 无法生效
     await WindowService.instance.hide();
 
-    // 4. 等待焦点恢复 (关键！)
+    // 5. 等待焦点恢复 (关键！)
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // 5. 提交文本到 Fcitx5 (AC4)
+    // 6. 再次检查是否被中断（在等待焦点恢复期间可能被打断）
+    if (_submitInterrupted) {
+      // ignore: avoid_print
+      print('[HotkeyController] ⚡ 提交在焦点等待期间被中断');
+      if (finalText.isNotEmpty) {
+        _lastRecognizedText = finalText;
+      }
+      return;
+    }
+
+    // 7. 提交文本到 Fcitx5 (AC4)
     await _submitText(finalText);
 
-    // 6. 重置状态
+    // 8. 重置状态
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
   }
@@ -480,6 +520,7 @@ class HotkeyController {
     HotkeyService.instance.onHotkeyPressed = null;
     _isInitialized = false;
     _isProcessing = false;
+    _submitInterrupted = false;
     _state = HotkeyState.idle;
   }
 }
