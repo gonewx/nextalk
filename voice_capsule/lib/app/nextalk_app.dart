@@ -74,8 +74,14 @@ class _NextalkAppState extends State<NextalkApp> {
     WindowService.instance.resetToNormalSize();
     WindowService.instance.hide();
 
+    // 更新托盘菜单的引擎状态
+    final downloadedEngine = _targetEngineType ?? SettingsService.instance.engineType;
+    TrayService.instance.setActualEngineType(downloadedEngine);
+    TrayService.instance.rebuildMenu();
+
     setState(() {
       _needsInit = false;
+      _targetEngineType = null; // 清除目标引擎
     });
 
     // ignore: avoid_print
