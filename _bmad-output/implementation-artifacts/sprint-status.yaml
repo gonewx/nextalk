@@ -89,4 +89,5 @@ development_status:
   4-1-deb-build-script: done
   4-2-install-uninstall-scripts: done
   4-3-desktop-integration: done
+  4-4-docker-cross-distro-build: done
   epic-4-retrospective: optional

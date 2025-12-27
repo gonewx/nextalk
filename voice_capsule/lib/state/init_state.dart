@@ -138,7 +138,7 @@ class InitStateData {
         ModelError.none => '',
       };
 
-  /// 格式化下载大小 (如 "68MB / 150MB")
+  /// 格式化下载大小 (如 "68MB / R")
   String get formattedSize {
     if (totalBytes == 0) return '';
     final downloaded = (downloadedBytes / 1024 / 1024).toStringAsFixed(0);

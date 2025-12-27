@@ -1,0 +1,50 @@
+# Nextalk 跨发行版兼容编译环境
+# 基于 Ubuntu 22.04 以确保 GLib 符号兼容性 (GLib 2.72)
+# 编译产物可在 Ubuntu 24.04、Fedora 40/41、Debian 12 等系统上运行
+
+FROM ubuntu:22.04
+
+# 镜像元数据
+LABEL org.opencontainers.image.title="nextalk-builder"
+LABEL org.opencontainers.image.version="1.0.0"
+LABEL org.opencontainers.image.description="Nextalk 跨发行版编译环境 (Ubuntu 22.04 + Flutter 3.32.5 + Fcitx5 5.0.14)"
+LABEL org.opencontainers.image.source="https://github.com/user/nextalk"
+
+# 禁用安装过程中的交互提示
+ENV DEBIAN_FRONTEND=noninteractive
+
+# 安装 Flutter 编译和 Fcitx5 插件所需的系统依赖
+RUN apt-get update && apt-get install -y \
+    # 基础工具
+    curl git unzip xz-utils zip ca-certificates \
+    # C++ 编译工具链
+    build-essential clang cmake ninja-build pkg-config \
+    # Flutter Linux 桌面依赖
+    libgtk-3-dev liblzma-dev libstdc++-12-dev \
+    # System Tray 依赖 (ayatana-appindicator 或 appindicator)
+    libayatana-appindicator3-dev \
+    # Fcitx5 开发库 (5.0.14 稳定版)
+    libfcitx5core-dev libfcitx5utils-dev libfcitx5config-dev \
+    # PortAudio 开发库 (音频采集)
+    libportaudio2 portaudio19-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# 安装 Flutter 3.32.5 (直接克隆指定标签)
+RUN git clone https://github.com/flutter/flutter.git -b 3.32.5 --depth 1 /opt/flutter
+
+# 配置 Flutter 环境变量
+ENV PATH="/opt/flutter/bin:${PATH}"
+ENV PUB_CACHE="/opt/flutter/.pub-cache"
+
+# 预缓存 Flutter 依赖并验证环境
+RUN flutter precache --linux && \
+    flutter config --enable-linux-desktop && \
+    flutter doctor -v && \
+    # 允许非 root 用户写入 Flutter 缓存目录 (用于 --user 模式运行)
+    chmod -R a+w /opt/flutter
+
+# 设置工作目录
+WORKDIR /app
+
+# 默认命令
+CMD ["/bin/bash"]

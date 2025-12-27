@@ -1,7 +1,7 @@
 # Nextalk - 项目级 Makefile
 # 离线语音输入应用 (Flutter + Fcitx5)
 
-.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version
+.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version docker-build docker-build-flutter docker-build-addon docker-rebuild docker-build-image docker-clean
 
 # 默认目标
 all: build
@@ -130,6 +130,52 @@ package: build
 	./scripts/build-pkg.sh
 
 # ============================================================
+# Docker 跨发行版编译 (推荐用于发布)
+# ============================================================
+
+# Docker 编译所有组件 (跨发行版兼容)
+docker-build:
+	@echo "🐳 Docker 容器内编译..."
+	./scripts/docker-build.sh
+
+# Docker 只编译 Flutter
+docker-build-flutter:
+	@echo "🐳 Docker 编译 Flutter..."
+	./scripts/docker-build.sh --flutter-only
+
+# Docker 只编译插件
+docker-build-addon:
+	@echo "🐳 Docker 编译 Fcitx5 插件..."
+	./scripts/docker-build.sh --plugin-only
+
+# Docker 重新完整编译 (清理缓存后编译)
+docker-rebuild:
+	@echo "🐳 Docker 重新完整编译..."
+	./scripts/docker-build.sh --clean
+
+# 构建/重建 Docker 镜像
+docker-build-image:
+	@echo "🐳 构建 Docker 镜像..."
+	./scripts/docker-build.sh --rebuild-image
+
+# 清理 Docker 编译产物的权限问题
+docker-clean:
+	@echo "🧹 清理 Docker 编译产物..."
+	@if [ -d "voice_capsule/.dart_tool" ]; then \
+		sudo rm -rf voice_capsule/.dart_tool 2>/dev/null || rm -rf voice_capsule/.dart_tool; \
+	fi
+	@if [ -d "voice_capsule/build" ]; then \
+		sudo rm -rf voice_capsule/build 2>/dev/null || rm -rf voice_capsule/build; \
+	fi
+	@if [ -d "voice_capsule/linux/flutter/ephemeral" ]; then \
+		sudo rm -rf voice_capsule/linux/flutter/ephemeral 2>/dev/null || rm -rf voice_capsule/linux/flutter/ephemeral; \
+	fi
+	@if [ -d "addons/fcitx5/build" ]; then \
+		sudo rm -rf addons/fcitx5/build 2>/dev/null || rm -rf addons/fcitx5/build; \
+	fi
+	@echo "✅ Docker 编译产物已清理"
+
+# ============================================================
 # 依赖管理
 # ============================================================
 
@@ -156,6 +202,14 @@ help:
 	@echo "  make build-flutter      - 构建 Flutter 客户端 (Release)"
 	@echo "  make build-flutter-debug- 构建 Flutter 客户端 (Debug)"
 	@echo "  make build-addon        - 构建 Fcitx5 插件"
+	@echo ""
+	@echo "Docker 编译 (跨发行版兼容，推荐用于发布):"
+	@echo "  make docker-build       - Docker 增量编译"
+	@echo "  make docker-rebuild     - Docker 重新完整编译"
+	@echo "  make docker-build-flutter - Docker 只编译 Flutter"
+	@echo "  make docker-build-addon - Docker 只编译插件"
+	@echo "  make docker-build-image - 构建/重建 Docker 镜像"
+	@echo "  make docker-clean       - 清理 Docker 编译产物"
 	@echo ""
 	@echo "测试命令:"
 	@echo "  make test               - 运行所有测试"

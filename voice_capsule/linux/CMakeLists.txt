@@ -154,3 +154,20 @@ install(FILES "${LIBS_DIR}/libsherpa-onnx-c-api.so"
 install(FILES "${LIBS_DIR}/libonnxruntime.so"
         DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
         COMPONENT Runtime)
+
+# ============================================
+# Nextalk: PortAudio 库安装 (运行时依赖)
+# ============================================
+# 查找系统 libportaudio 并复制到 bundle
+find_library(PORTAUDIO_LIBRARY NAMES portaudio)
+if(PORTAUDIO_LIBRARY)
+  # 获取真实路径（解析符号链接）
+  get_filename_component(PORTAUDIO_REALPATH "${PORTAUDIO_LIBRARY}" REALPATH)
+  install(FILES "${PORTAUDIO_REALPATH}"
+          DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+          RENAME "libportaudio.so.2"
+          COMPONENT Runtime)
+  message(STATUS "PortAudio library: ${PORTAUDIO_REALPATH}")
+else()
+  message(WARNING "未找到 libportaudio，运行时可能缺少音频采集功能")
+endif()

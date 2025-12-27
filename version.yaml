@@ -3,7 +3,7 @@
 
 # Flutter 应用版本 (同步到 voice_capsule/pubspec.yaml)
 app_version: "0.1.2"
-app_build: 1
+app_build: 2
 
 # Fcitx5 插件版本
 addon_version: "0.2.0"

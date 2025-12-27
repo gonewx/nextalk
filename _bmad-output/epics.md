@@ -717,3 +717,32 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **Then** 图标安装到 `/usr/share/icons/hicolor/256x256/apps/nextalk.png`
 **And** 图标清晰，符合 freedesktop 规范
 
+---
+
+### Story 4.4: Docker 跨发行版兼容编译环境
+
+**As a** 开发者,
+**I want** 使用 Docker 容器化编译环境在 Ubuntu 22.04 中构建 Flutter 应用和 Fcitx5 插件,
+**So that** 编译产物可以在多个 Linux 发行版（Ubuntu 24.04、Fedora 40/41、Debian 12）上正常运行，无需担心 GLib 符号兼容性问题。
+
+**Acceptance Criteria:**
+
+**Given** 项目根目录
+**When** 存在 `docker/Dockerfile.build` 文件
+**Then** Dockerfile 基于 `ubuntu:22.04` 镜像
+**And** 安装 Flutter 3.32.5 和所有 Linux 桌面开发依赖
+**And** 安装 Fcitx5 开发库 (5.0.14 版本)
+
+**Given** Docker 镜像已构建
+**When** 执行 `scripts/docker-build.sh`
+**Then** 在容器内编译 Flutter 应用和 Fcitx5 插件
+**And** 编译产物输出到宿主机
+
+**Given** 使用 Docker 容器编译的产物
+**When** 检查 `.so` 文件的符号依赖
+**Then** 不包含 `g_once_init_enter_pointer` 符号 (GLib 2.80+ 专有)
+
+**Given** 容器编译的 Flutter 应用和 Fcitx5 插件
+**When** 在 Ubuntu 24.04、Fedora 40/41、Debian 12 上运行
+**Then** 应用正常启动并工作
+
