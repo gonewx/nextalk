@@ -250,7 +250,7 @@ build_fcitx5_plugin() {
 # ==============================================================================
 assemble_common() {
     local staging_dir="$1"
-    local lib_arch="$2"
+    local fcitx5_libdir="$2"  # Full path like /usr/lib/x86_64-linux-gnu or /usr/lib64
 
     info "Assembling package structure..."
 
@@ -260,7 +260,7 @@ assemble_common() {
     # Create directory structure
     mkdir -p "$staging_dir/opt/nextalk/lib"
     mkdir -p "$staging_dir/opt/nextalk/data"
-    mkdir -p "$staging_dir/usr/lib/${lib_arch}/fcitx5"
+    mkdir -p "$staging_dir${fcitx5_libdir}/fcitx5"
     mkdir -p "$staging_dir/usr/share/fcitx5/addon"
     mkdir -p "$staging_dir/usr/share/applications"
     mkdir -p "$staging_dir/usr/share/icons/hicolor/256x256/apps"
@@ -292,8 +292,8 @@ assemble_common() {
 
     # Copy Fcitx5 plugin
     info "  Copying Fcitx5 plugin..."
-    cp "$addon_build_dir/libnextalk.so" "$staging_dir/usr/lib/${lib_arch}/fcitx5/"
-    chmod 755 "$staging_dir/usr/lib/${lib_arch}/fcitx5/libnextalk.so"
+    cp "$addon_build_dir/libnextalk.so" "$staging_dir${fcitx5_libdir}/fcitx5/"
+    chmod 755 "$staging_dir${fcitx5_libdir}/fcitx5/libnextalk.so"
     cp "$addon_build_dir/nextalk.conf" "$staging_dir/usr/share/fcitx5/addon/"
     chmod 644 "$staging_dir/usr/share/fcitx5/addon/nextalk.conf"
 
@@ -333,12 +333,13 @@ build_deb() {
     rm -rf "$deb_staging"
     mkdir -p "$deb_staging"
 
-    # Get architecture
-    local arch
-    arch=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "x86_64-linux-gnu")
+    # Get architecture for library path
+    local multiarch
+    multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null || echo "x86_64-linux-gnu")
+    local fcitx5_libdir="/usr/lib/${multiarch}"
 
     # Assemble common files
-    assemble_common "$deb_staging" "$arch"
+    assemble_common "$deb_staging" "$fcitx5_libdir"
 
     # Add DEBIAN control files
     mkdir -p "$deb_staging/DEBIAN"
@@ -384,8 +385,9 @@ build_rpm() {
 
     local rpm_staging="$BUILD_DIR/rpm"
     local rpm_buildroot="$BUILD_DIR/rpm-buildroot"
+    local rpmbuild_dir="$BUILD_DIR/rpmbuild"
 
-    rm -rf "$rpm_staging" "$rpm_buildroot"
+    rm -rf "$rpm_staging" "$rpm_buildroot" "$rpmbuild_dir"
     mkdir -p "$rpm_staging"
     mkdir -p "$rpm_buildroot"
 
@@ -397,16 +399,16 @@ build_rpm() {
         *)       rpm_arch="$(uname -m)" ;;
     esac
 
-    # Library path for RPM (Fedora/RHEL style)
-    local lib_arch
-    if [[ "$rpm_arch" == "x86_64" ]]; then
-        lib_arch="x86_64-linux-gnu"  # Use same path for compatibility
-    else
-        lib_arch="${rpm_arch}-linux-gnu"
-    fi
+    # Library path for RPM (Fedora/RHEL convention)
+    # x86_64 and aarch64 use lib64, others use lib
+    local fcitx5_libdir
+    case "$rpm_arch" in
+        x86_64|aarch64) fcitx5_libdir="/usr/lib64" ;;
+        *)              fcitx5_libdir="/usr/lib" ;;
+    esac
 
     # Assemble common files into staging directory
-    assemble_common "$rpm_staging" "$lib_arch"
+    assemble_common "$rpm_staging" "$fcitx5_libdir"
 
     # Generate spec file from template
     local spec_file="$BUILD_DIR/nextalk.spec"
@@ -417,13 +419,12 @@ build_rpm() {
 
     sed -e "s/{{VERSION}}/${rpm_version}/g" \
         -e "s/{{RELEASE}}/${rpm_release}/g" \
-        -e "s|%{_libdir}|/usr/lib/${lib_arch}|g" \
+        -e "s|%{_libdir}|${fcitx5_libdir}|g" \
         "$PACKAGING_DIR/rpm/nextalk.spec.template" > "$spec_file"
 
     success "Spec file generated"
 
     # Setup RPM build directories
-    local rpmbuild_dir="$BUILD_DIR/rpmbuild"
     mkdir -p "$rpmbuild_dir"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
     # Copy staging to BUILD directory

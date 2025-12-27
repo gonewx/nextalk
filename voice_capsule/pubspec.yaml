@@ -1,7 +1,7 @@
 name: voice_capsule
 description: "Nextalk Voice Capsule - Linux 高性能离线语音输入应用的 Flutter 前端"
 publish_to: 'none' # 私有项目，不发布到 pub.dev
-version: 0.1.2+1
+version: 0.1.2+2
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

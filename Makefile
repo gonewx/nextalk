@@ -1,7 +1,7 @@
 # Nextalk - 项目级 Makefile
 # 离线语音输入应用 (Flutter + Fcitx5)
 
-.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version docker-build docker-build-flutter docker-build-addon docker-rebuild docker-build-image docker-clean
+.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version package package-deb package-rpm package-all docker-build docker-build-flutter docker-build-addon docker-rebuild docker-build-image docker-clean
 
 # 默认目标
 all: build
@@ -124,10 +124,25 @@ clean-addon:
 # 打包目标
 # ============================================================
 
-# 构建发布包
-package: build
+# 构建发布包 (DEB)
+package: sync-version build
 	@echo "📦 构建发布包..."
 	./scripts/build-pkg.sh
+
+# 构建 DEB 包
+package-deb: sync-version
+	@echo "📦 构建 DEB 包..."
+	./scripts/build-pkg.sh --deb
+
+# 构建 RPM 包
+package-rpm: sync-version
+	@echo "📦 构建 RPM 包..."
+	./scripts/build-pkg.sh --rpm
+
+# 构建所有包格式
+package-all: sync-version
+	@echo "📦 构建所有包格式..."
+	./scripts/build-pkg.sh --all
 
 # ============================================================
 # Docker 跨发行版编译 (推荐用于发布)
@@ -232,8 +247,14 @@ help:
 	@echo "  make clean-flutter      - 清理 Flutter 构建"
 	@echo "  make clean-addon        - 清理插件构建"
 	@echo ""
+	@echo "打包命令:"
+	@echo "  make package            - 构建 DEB 包"
+	@echo "  make package-deb        - 构建 DEB 包"
+	@echo "  make package-rpm        - 构建 RPM 包"
+	@echo "  make package-all        - 构建所有包格式"
+	@echo ""
 	@echo "其他命令:"
 	@echo "  make deps               - 获取 Flutter 依赖"
 	@echo "  make deps-upgrade       - 更新 Flutter 依赖"
-	@echo "  make package            - 构建发布包"
+	@echo "  make sync-version       - 同步版本号"
 	@echo "  make help               - 显示此帮助信息"

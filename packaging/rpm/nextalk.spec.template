@@ -13,6 +13,7 @@ AutoReqProv:    no
 Requires:       fcitx5 >= 5.0
 Requires:       gtk3 >= 3.24
 Requires:       glibc >= 2.31
+Requires:       libayatana-appindicator-gtk3
 Recommends:     pulseaudio
 
 %description
@@ -150,7 +151,7 @@ fi
 /opt/nextalk/nextalk
 /opt/nextalk/lib/*
 /opt/nextalk/data/*
-%{_libdir}/fcitx5/nextalk.so
+%{_libdir}/fcitx5/libnextalk.so
 %{_datadir}/fcitx5/addon/nextalk.conf
 %{_datadir}/applications/nextalk.desktop
 %{_datadir}/icons/hicolor/48x48/apps/nextalk.png
