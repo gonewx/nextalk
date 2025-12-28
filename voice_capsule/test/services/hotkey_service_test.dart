@@ -58,10 +58,14 @@ void main() {
     });
 
     group('快捷键配置解析', () {
-      test('默认快捷键应该是 altRight', () {
+      test('默认快捷键应该是 Ctrl+Alt+V', () {
         expect(
           HotkeyConstants.defaultKey,
-          equals('altRight'),
+          equals('v'),
+        );
+        expect(
+          HotkeyConstants.defaultModifiers,
+          equals(['ctrl', 'alt']),
         );
       });
 
@@ -103,18 +107,18 @@ void main() {
     group('HotkeyConfig', () {
       test('默认配置应该正确', () {
         final config = HotkeyConfig.defaultConfig;
-        expect(config.key, equals('altRight'));
-        expect(config.modifiers, isEmpty);
+        expect(config.key, equals('v'));
+        expect(config.modifiers, equals(['ctrl', 'alt']));
       });
 
       // SCP-002: 移除 toFcitx5Format 测试
       // 快捷键不再同步到 Fcitx5，由系统原生快捷键配置
       test('toDisplayString 应该正确转换显示格式', () {
         const config = HotkeyConfig(
-          key: 'altRight',
-          modifiers: [],
+          key: 'v',
+          modifiers: ['ctrl', 'alt'],
         );
-        expect(config.toDisplayString(), equals('Right Alt'));
+        expect(config.toDisplayString(), equals('Ctrl + Alt + V'));
       });
 
       test('toDisplayString 应该正确显示带修饰键的配置', () {

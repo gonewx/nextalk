@@ -18,10 +18,10 @@ class HotkeyConfig {
     required this.modifiers,
   });
 
-  /// 默认快捷键配置 (Right Alt)
+  /// 默认快捷键配置 (Ctrl+Alt+V)
   static const HotkeyConfig defaultConfig = HotkeyConfig(
-    key: 'altRight',
-    modifiers: [],
+    key: 'v',
+    modifiers: ['ctrl', 'alt'],
   );
 
   /// 转换为人类可读格式
@@ -54,6 +54,7 @@ class HotkeyConfig {
       'altRight' => 'Right Alt',
       'altLeft' => 'Left Alt',
       'space' => 'Space',
+      _ when key.length == 1 => key.toUpperCase(),
       _ => key,
     };
   }

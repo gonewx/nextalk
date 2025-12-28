@@ -13,7 +13,7 @@
 - **离线识别** - 基于 Sherpa-onnx 流式双语模型 (中/英)，数据不出本地
 - **极低延迟** - 端到端延迟 < 200ms，实时转录体验
 - **透明悬浮窗** - 无边框胶囊 UI，呼吸灯动画，不干扰工作流程
-- **Wayland 原生支持** - 快捷键监听和文本提交均支持 Wayland
+- **Wayland 原生支持** - 系统快捷键和文本提交均支持 Wayland
 - **焦点锁定** - 录音时切换窗口，文本仍提交到原窗口
 - **模型可选** - 支持 int8 (快速) / standard (高精度) 模型切换
 
@@ -35,15 +35,49 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 
 安装后 Fcitx5 会自动重启以加载插件。
 
+### 配置快捷键
+
+应用通过系统全局快捷键触发，需手动配置：
+
+**GNOME:**
+
+1. 设置 → 键盘 → 查看和自定义快捷键 → 自定义快捷键
+2. 点击"添加快捷键"
+3. 名称: `Nextalk 语音输入`
+4. 命令: `nextalk --toggle`
+5. 快捷键: 按下 `Ctrl+Alt+V` (推荐)
+
+**KDE Plasma:**
+
+1. 系统设置 → 快捷键 → 自定义快捷键
+2. 编辑 → 新建 → 全局快捷键 → 命令/URL
+3. 触发器: 设置为 `Ctrl+Alt+V`
+4. 动作: `nextalk --toggle`
+
 ### 使用
 
 1. **启动应用** - 从应用菜单启动 Nextalk，或运行 `nextalk`
-2. **按下快捷键** - 默认 `Right Alt`，悬浮窗出现并开始录音
+2. **按下快捷键** - 悬浮窗出现并开始录音
 3. **说话** - 实时看到识别的文字
 4. **再次按下快捷键** - 停止录音，文字自动输入到当前应用
-5. **或等待自动提交** - 停顿 ~1.5 秒后自动提交文字
+5. **或等待自动提交** - 停顿后自动提交文字
 
 > **首次运行**: 应用会自动下载语音识别模型 (~200MB)
+
+### 命令行参数
+
+| 参数 | 说明 |
+|------|------|
+| `--toggle` | 切换录音状态 (推荐用于快捷键) |
+| `--show` | 显示窗口并开始录音 |
+| `--hide` | 隐藏窗口并停止录音 |
+
+### 非 Fcitx5 环境
+
+如果未安装 Fcitx5，应用自动使用剪贴板模式：
+- 识别的文字会复制到系统剪贴板
+- UI 显示"已复制到剪贴板"提示
+- 手动粘贴 (`Ctrl+V`) 到目标应用
 
 ### 系统托盘
 
@@ -65,18 +99,9 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 
 ## 配置
 
-### 快捷键
-
-默认快捷键: `Right Alt`
-
-支持的按键组合示例:
-- `Alt_R` (默认)
-- `Control+Shift+Space`
-- `F12`
-
 ### 模型设置
 
-通过系统托盘菜单切换:
+通过系统托盘菜单切换：
 
 | 版本 | 说明 |
 |------|------|
@@ -91,6 +116,12 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 model:
   custom_url: ""    # 自定义模型下载地址
   type: int8        # 模型版本: int8 | standard
+
+hotkey:
+  key: v            # 主键 (仅供显示，实际由系统快捷键控制)
+  modifiers:        # 修饰键
+    - ctrl
+    - alt
 ```
 
 ## 从源码构建
@@ -104,7 +135,7 @@ sudo apt install fcitx5 fcitx5-dev libportaudio2 portaudio19-dev cmake build-ess
 # 安装 Flutter: https://flutter.dev/docs/get-started/install/linux
 ```
 
-### 构建
+### 本地构建
 
 ```bash
 # 使用 Makefile (推荐)
@@ -115,16 +146,36 @@ make build-flutter    # Flutter 客户端
 make build-addon      # Fcitx5 插件
 ```
 
+### Docker 构建 (跨发行版兼容)
+
+推荐使用 Docker 构建以确保跨发行版兼容性：
+
+```bash
+# 增量编译 (推荐)
+make docker-build
+
+# 重新完整编译
+make docker-rebuild
+
+# 只编译 Flutter
+make docker-build-flutter
+
+# 只编译插件
+make docker-build-addon
+```
+
 ### 安装插件
 
 ```bash
-make install-addon
+make install-addon          # 用户级安装
+make install-addon-system   # 系统级安装 (需要 sudo)
 ```
 
 ### 运行
 
 ```bash
-make run
+make run          # 开发模式
+make run-release  # Release 版本
 ```
 
 ### 构建安装包
@@ -157,13 +208,21 @@ sudo rpm -e nextalk
 
 ```
 nextalk/
-├── voice_capsule/    # Flutter 客户端 (UI + 语音识别)
-├── addons/fcitx5/    # Fcitx5 C++ 插件 (文本上屏)
-├── docs/             # 设计文档
-├── scripts/          # 构建脚本
-├── libs/             # 预编译动态库
-├── packaging/        # DEB/RPM 模板
-└── Makefile          # 构建入口
+├── voice_capsule/        # Flutter 客户端
+│   └── lib/
+│       ├── main.dart     # 入口
+│       ├── ffi/          # FFI 绑定 (sherpa, portaudio)
+│       ├── services/     # 业务逻辑
+│       │   ├── asr/      # ASR 引擎抽象层
+│       │   └── ...       # 其他服务
+│       ├── ui/           # Widget 组件
+│       └── l10n/         # 国际化
+├── addons/fcitx5/        # Fcitx5 C++ 插件
+├── docs/                 # 设计文档
+├── scripts/              # 构建脚本
+├── libs/                 # 预编译动态库
+├── packaging/            # DEB/RPM 模板
+└── Makefile              # 构建入口
 ```
 
 详细架构设计: [docs/architecture.md](docs/architecture.md)
@@ -181,17 +240,25 @@ make help       # 查看所有命令
 
 ### 快捷键不响应
 
-确保 Fcitx5 插件已正确安装:
+1. 确认已在系统设置中配置快捷键 (命令: `nextalk --toggle`)
+2. 确认 Nextalk 应用正在运行 (检查系统托盘)
+3. 测试命令行: `nextalk --toggle`
+
+### 文字无法输入到应用
+
+确保 Fcitx5 插件已正确安装：
 
 ```bash
-ls ~/.local/lib/fcitx5/nextalk.so
+ls ~/.local/lib/fcitx5/libnextalk.so
 ls ~/.local/share/fcitx5/addon/nextalk.conf
 fcitx5 -r  # 重启 Fcitx5
 ```
 
+如果不使用 Fcitx5，应用会自动使用剪贴板模式。
+
 ### 模型下载失败
 
-配置自定义下载地址或使用代理:
+配置自定义下载地址或使用代理：
 
 ```yaml
 # ~/.config/nextalk/settings.yaml

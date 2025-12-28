@@ -5,15 +5,15 @@ import 'package:voice_capsule/constants/hotkey_constants.dart';
 void main() {
   group('HotkeyConstants Tests', () {
     group('默认快捷键配置', () {
-      test('defaultKey 应该是 altRight', () {
+      test('defaultKey 应该是 v (Ctrl+Alt+V)', () {
         expect(
           HotkeyConstants.defaultKey,
-          equals('altRight'),
+          equals('v'),
         );
       });
 
-      test('defaultModifiers 应该为空列表', () {
-        expect(HotkeyConstants.defaultModifiers, isEmpty);
+      test('defaultModifiers 应该是 ctrl 和 alt', () {
+        expect(HotkeyConstants.defaultModifiers, equals(['ctrl', 'alt']));
       });
     });
 

@@ -6,11 +6,11 @@ class HotkeyConstants {
   HotkeyConstants._();
 
   // ===== 默认快捷键 =====
-  /// 默认主键名称
-  static const String defaultKey = 'altRight';
+  /// 默认主键名称 (Ctrl+Alt+V)
+  static const String defaultKey = 'v';
 
   /// 默认修饰键列表
-  static const List<String> defaultModifiers = [];
+  static const List<String> defaultModifiers = ['ctrl', 'alt'];
 
   // ===== 键名到 Fcitx5 格式映射 =====
   /// 配置文件中的键名到 Fcitx5 按键名称的映射
