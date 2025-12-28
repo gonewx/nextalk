@@ -1,0 +1,134 @@
+# 发布工作流
+# 打 tag 时构建 DEB/RPM 包并创建 GitHub Release
+
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create GitHub Release'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/nextalk-builder
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull builder image
+        run: |
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:u22 || {
+            echo "Builder image not found. Building locally..."
+            docker build -t ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:u22 -f docker/Dockerfile.build docker/
+          }
+
+      - name: Build Flutter app and Fcitx5 plugin
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/app" \
+            -w /app \
+            --user "$(id -u):$(id -g)" \
+            -e "HOME=/tmp/builder" \
+            -e "PUB_CACHE=/opt/flutter/.pub-cache" \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:u22 /bin/bash -c "
+              mkdir -p /tmp/builder && \
+              git config --global --add safe.directory /opt/flutter && \
+              git config --global --add safe.directory /app && \
+
+              # Sync version
+              APP_VER=\$(grep -E '^app_version:' version.yaml | sed 's/app_version:[[:space:]]*\"\?\\([0-9.]*\\)\"\?/\\1/') && \
+              APP_BUILD=\$(grep -E '^app_build:' version.yaml | sed 's/app_build:[[:space:]]*\\([0-9]*\\)/\\1/') && \
+              if [ -n \"\$APP_VER\" ] && [ -n \"\$APP_BUILD\" ]; then \
+                sed -i \"s/^version:.*/version: \$APP_VER+\$APP_BUILD/\" voice_capsule/pubspec.yaml && \
+                echo \"Version synced: \$APP_VER+\$APP_BUILD\"; \
+              fi && \
+
+              # Build Flutter
+              cd voice_capsule && \
+              rm -rf .dart_tool && \
+              flutter pub get && \
+              flutter build linux --release && \
+              cd .. && \
+
+              # Build Fcitx5 plugin
+              cd addons/fcitx5 && \
+              mkdir -p build && cd build && \
+              cmake .. -DCMAKE_BUILD_TYPE=Release && \
+              make -j\$(nproc)
+            "
+
+      - name: Install packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg dpkg-dev rpm imagemagick
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep "^version:" voice_capsule/pubspec.yaml | head -1 | awk '{print $2}')
+          # Convert + to - for package version
+          PKG_VERSION="${VERSION//+/-}"
+          echo "version=$PKG_VERSION" >> $GITHUB_OUTPUT
+          echo "Package version: $PKG_VERSION"
+
+      - name: Build DEB package
+        run: |
+          ./scripts/build-pkg.sh --deb
+
+      - name: Build RPM package
+        run: |
+          ./scripts/build-pkg.sh --rpm
+
+      - name: List artifacts
+        run: |
+          echo "=== Build Artifacts ==="
+          ls -lah dist/
+
+      - name: Upload DEB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextalk-deb
+          path: dist/*.deb
+          retention-days: 30
+
+      - name: Upload RPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextalk-rpm
+          path: dist/*.rpm
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*.deb
+            dist/*.rpm
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
