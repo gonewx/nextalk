@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/services.dart';
+
 import 'asr/asr_engine.dart';
 import 'audio_inference_pipeline.dart';
 import 'tray_service.dart';
@@ -334,8 +336,18 @@ class HotkeyController {
 
   /// 提交文本到 Fcitx5
   /// Story 3-7: 增强错误处理，保护提交失败的文本 (AC15)
+  /// SCP-002: 添加剪贴板 fallback
   Future<void> _submitText(String text) async {
     if (text.isEmpty) return;
+
+    // SCP-002: 检查 Fcitx5 是否可用
+    final fcitxAvailable = await _fcitxClient!.isAvailable();
+
+    if (!fcitxAvailable) {
+      // Fcitx5 不可用，使用剪贴板 fallback
+      await _copyToClipboard(text);
+      return;
+    }
 
     try {
       await _fcitxClient!.sendText(text);
@@ -343,7 +355,15 @@ class HotkeyController {
       // ignore: avoid_print
       print('[HotkeyController] ✅ 文本已提交');
     } on FcitxError catch (e) {
-      // Story 3-7: 保存文本，使用 FcitxError 细化消息
+      // SCP-002: 连接失败时使用剪贴板 fallback
+      if (e == FcitxError.connectionFailed ||
+          e == FcitxError.reconnectFailed ||
+          e == FcitxError.socketNotFound) {
+        await _copyToClipboard(text);
+        return;
+      }
+
+      // 其他错误：保存文本，显示错误
       _lastRecognizedText = text;
       // ignore: avoid_print
       print('[HotkeyController] ❌ 文本提交失败 (FcitxError): $e');
@@ -357,15 +377,39 @@ class HotkeyController {
       // 不自动隐藏，等待用户操作 (AC15)
       _state = HotkeyState.idle; // 允许用户重新触发
     } catch (e) {
-      // 其他异常
+      // 其他异常：使用剪贴板 fallback
+      await _copyToClipboard(text);
+    }
+  }
+
+  /// SCP-002: 复制文本到剪贴板并显示提示
+  Future<void> _copyToClipboard(String text) async {
+    try {
+      await Clipboard.setData(ClipboardData(text: text));
+      _lastRecognizedText = null; // 成功复制后清空
+
+      // ignore: avoid_print
+      print('[HotkeyController] 📋 文本已复制到剪贴板');
+
+      // 显示 "已复制到剪贴板，请粘贴" 提示
+      _updateState(CapsuleStateData.copiedToClipboard(text: text));
+
+      // 2秒后自动隐藏窗口
+      Future.delayed(const Duration(seconds: 2), () {
+        if (_state == HotkeyState.idle) {
+          WindowService.instance.hide();
+          _updateState(CapsuleStateData.idle());
+        }
+      });
+    } catch (e) {
+      // 剪贴板也失败，保存文本显示错误
       _lastRecognizedText = text;
       // ignore: avoid_print
-      print('[HotkeyController] ❌ 文本提交失败: $e');
+      print('[HotkeyController] ❌ 复制到剪贴板失败: $e');
       _updateState(CapsuleStateData.error(
         CapsuleErrorType.socketError,
         preservedText: text,
       ));
-      // 更新托盘图标为警告状态
       TrayService.instance.updateStatus(TrayStatus.warning);
       _state = HotkeyState.idle;
     }

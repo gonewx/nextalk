@@ -28,7 +28,7 @@ extension FcitxErrorExtension on FcitxError {
   String get localizedMessage {
     switch (this) {
       case FcitxError.socketNotFound:
-        return 'Fcitx5 未运行或插件未加载';
+        return '输入法插件未运行或未加载';
       case FcitxError.connectionFailed:
         return '连接被拒绝';
       case FcitxError.connectionTimeout:
@@ -38,13 +38,22 @@ extension FcitxErrorExtension on FcitxError {
       case FcitxError.messageTooLarge:
         return '消息过大 (超过 1MB)';
       case FcitxError.reconnectFailed:
-        return '重连失败，请检查 Fcitx5 状态';
+        return '重连失败，请检查输入法状态';
       case FcitxError.socketPermissionInsecure:
         return 'Socket 权限不安全';
     }
   }
 }
 
+/// FcitxClient - SCP-002 简化版
+///
+/// 职责：
+/// - 通过 Unix Socket 发送文本到 Fcitx5 插件
+/// - 连接管理和错误处理
+///
+/// SCP-002 变更：
+/// - 移除对 InputMethodDetector 的依赖
+/// - 只支持 Fcitx5（非 Fcitx5 环境由调用方处理剪贴板 fallback）
 class FcitxClient {
   Socket? _socket;
   StreamSubscription? _socketSubscription;
@@ -56,7 +65,7 @@ class FcitxClient {
   // 并发控制: 防止同时执行 connect/sendText/dispose
   Completer<void>? _connectCompleter;
 
-  // [FIX-H1] 操作锁: 防止并发 sendText 同时触发重连
+  // 操作锁: 防止并发 sendText 同时触发重连
   Future<void>? _sendLock;
 
   // 自定义 socket 路径 (用于测试)
@@ -74,12 +83,27 @@ class FcitxClient {
   FcitxConnectionState get state => _state;
   bool get isInDegradedMode => _inDegradedMode;
 
+  /// 获取 Socket 路径
+  /// SCP-002: 简化为只支持 Fcitx5
   String get _socketPath {
     final customPath = _customSocketPath;
     if (customPath != null) return customPath;
-    final xdgRuntimeDir = Platform.environment['XDG_RUNTIME_DIR'];
-    if (xdgRuntimeDir == null) throw FcitxError.socketNotFound;
-    return '$xdgRuntimeDir/nextalk-fcitx5.sock';
+
+    final runtimeDir = Platform.environment['XDG_RUNTIME_DIR'];
+    if (runtimeDir != null && runtimeDir.isNotEmpty) {
+      return '$runtimeDir/nextalk-fcitx5.sock';
+    }
+    return '/tmp/nextalk-fcitx5.sock';
+  }
+
+  /// 检查 Fcitx5 插件是否可用
+  Future<bool> isAvailable() async {
+    try {
+      final socketFile = File(_socketPath);
+      return await socketFile.exists();
+    } catch (e) {
+      return false;
+    }
   }
 
   /// 验证 Socket 文件权限是否安全 (0600)

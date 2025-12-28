@@ -1,6 +1,15 @@
 # Story 3.5: 全局快捷键监听 (Global Hotkey Listener)
 
-Status: done
+> **⚠️ SUPERSEDED by SCP-002 (2025-12-28)**
+>
+> 本文档描述的实现方案已被废弃。快捷键监听已从 Fcitx5 插件移除，改为使用系统原生快捷键方案：
+> - **新方案**: 系统原生快捷键 (GNOME Settings → Keyboard → Custom Shortcuts) + `nextalk --toggle` 命令行参数
+> - **移除内容**: Fcitx5 插件侧快捷键监听、焦点锁定机制、命令 Socket (`nextalk-cmd.sock`)、配置 Socket (`nextalk-fcitx5-cfg.sock`)
+> - **详情**: 参见 `_bmad-output/sprint-change-proposals/scp-002-simplified-architecture.md`
+>
+> 以下内容仅作为历史记录保留。
+
+Status: ~~done~~ **superseded**
 
 ## Prerequisites
 

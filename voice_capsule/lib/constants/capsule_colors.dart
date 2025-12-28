@@ -37,6 +37,9 @@ class CapsuleColors {
 
   /// 禁用色 - 无设备 [Story 3-3 状态机使用]
   static const Color disabled = Color(0xFF636E72);
+
+  /// SCP-002: 成功色 - 剪贴板复制成功
+  static const Color success = Color(0xFF2ECC71);
 }
 
 /// 胶囊 UI 文本样式

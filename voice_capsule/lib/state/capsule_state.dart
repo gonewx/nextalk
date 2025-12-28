@@ -4,6 +4,7 @@ import '../services/language_service.dart';
 /// 胶囊状态枚举
 /// Story 3-3: 状态机与动画系统
 /// Story 3-7: 新增初始化状态
+/// SCP-002: 新增剪贴板复制状态
 enum CapsuleState {
   /// 空闲/隐藏状态 - 窗口不可见
   idle,
@@ -31,6 +32,10 @@ enum CapsuleState {
   /// 模型解压中
   /// Story 3-7: 新增
   extracting,
+
+  /// SCP-002: 已复制到剪贴板
+  /// 视觉: 绿色勾 + "已复制到剪贴板，请粘贴"
+  copiedToClipboard,
 }
 
 /// 错误子类型
@@ -168,6 +173,10 @@ class CapsuleStateData {
 
   factory CapsuleStateData.processing({String text = ''}) =>
       CapsuleStateData(state: CapsuleState.processing, recognizedText: text);
+
+  /// SCP-002: 已复制到剪贴板状态
+  factory CapsuleStateData.copiedToClipboard({String text = ''}) =>
+      CapsuleStateData(state: CapsuleState.copiedToClipboard, recognizedText: text);
 
   /// Story 3-7: 扩展 error 工厂支持 fcitxError 和 preservedText
   factory CapsuleStateData.error(

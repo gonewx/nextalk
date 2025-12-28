@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 
 import 'app/nextalk_app.dart';
@@ -9,13 +10,13 @@ import 'services/asr/asr_engine_factory.dart';
 import 'services/asr/engine_initializer.dart';
 import 'services/audio_capture.dart';
 import 'services/audio_inference_pipeline.dart';
-import 'services/command_server.dart';
 import 'services/fcitx_client.dart';
 import 'services/hotkey_controller.dart';
 import 'services/hotkey_service.dart';
 import 'services/language_service.dart';
 import 'services/model_manager.dart';
 import 'services/settings_service.dart';
+import 'services/single_instance.dart';
 import 'services/tray_service.dart';
 import 'services/window_service.dart';
 import 'state/capsule_state.dart';
@@ -25,6 +26,7 @@ import 'utils/diagnostic_logger.dart';
 /// Story 3-6: 完整业务流串联
 /// Story 3-7: 全局错误边界与诊断日志
 /// Story 2-7: 支持多引擎 ASR
+/// SCP-002: 极简架构 - 系统快捷键 + --toggle 参数
 
 /// 将 EngineType 转换为 ASREngineType
 ASREngineType _toASREngineType(EngineType type) {
@@ -32,6 +34,53 @@ ASREngineType _toASREngineType(EngineType type) {
     EngineType.zipformer => ASREngineType.zipformer,
     EngineType.sensevoice => ASREngineType.sensevoice,
   };
+}
+
+/// 处理命令行参数
+///
+/// 支持的参数：
+/// --toggle: 切换窗口/录音状态
+/// --show: 显示窗口并开始录音
+/// --hide: 隐藏窗口并停止录音
+///
+/// 返回 true 表示应用应该继续运行，false 表示应该退出
+Future<bool> _handleCommandLineArgs(List<String> args) async {
+  if (args.isEmpty) {
+    return true; // 无参数，正常启动
+  }
+
+  final command = args[0];
+
+  // 检查是否是命令参数
+  if (command == '--toggle' || command == '--show' || command == '--hide') {
+    final cmdName = command.substring(2); // 移除 '--' 前缀
+
+    // 尝试发送命令给运行中的实例
+    final sent = await SingleInstance.instance.sendCommandToRunningInstance(cmdName);
+
+    if (sent) {
+      // 命令已发送，退出当前进程
+      // ignore: avoid_print
+      print('[main] 命令已发送到运行中的实例: $cmdName');
+      return false;
+    } else {
+      // 没有运行中的实例
+      if (command == '--toggle' || command == '--show') {
+        // 启动应用并显示窗口
+        // ignore: avoid_print
+        print('[main] 无运行实例，启动应用');
+        return true;
+      } else {
+        // --hide 但没有运行实例，直接退出
+        // ignore: avoid_print
+        print('[main] 无运行实例，忽略 hide 命令');
+        return false;
+      }
+    }
+  }
+
+  // 其他参数，正常启动
+  return true;
 }
 
 /// 预初始化 ASR 引擎
@@ -73,17 +122,31 @@ ASREngine? _asrEngine;
 AudioInferencePipeline? _pipeline;
 FcitxClient? _fcitxClient;
 
-Future<void> main() async {
+Future<void> main(List<String> args) async {
+  // SCP-002: 处理命令行参数 (--toggle, --show, --hide)
+  final shouldContinue = await _handleCommandLineArgs(args);
+  if (!shouldContinue) {
+    exit(0);
+  }
+
   // Story 3-7: 使用 runZonedGuarded 捕获未处理异常 (AC17)
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    // SCP-002: 单实例检测
+    final isMainInstance = await SingleInstance.instance.tryBecomeMainInstance();
+    if (!isMainInstance) {
+      // ignore: avoid_print
+      print('[main] 已有实例运行，退出');
+      exit(0);
+    }
 
     // 启动动画预热服务 (确保呼吸灯无延迟显示)
     AnimationTickerService.instance.start();
 
     // Story 3-7: 初始化诊断日志系统
     await DiagnosticLogger.instance.initialize();
-    DiagnosticLogger.instance.info('main', '应用启动');
+    DiagnosticLogger.instance.info('main', '应用启动 (SCP-002 极简架构)');
 
     // Story 3-7: 设置 Flutter 错误处理
     FlutterError.onError = (FlutterErrorDetails details) {
@@ -109,12 +172,8 @@ Future<void> main() async {
     // 3. 初始化托盘服务 (必须在 WindowService 和 SettingsService 之后)
     await TrayService.instance.initialize();
 
-    // 4. 初始化全局快捷键服务
+    // 4. 初始化全局快捷键服务 (SCP-002: 简化版，不再同步配置到 Fcitx5)
     await HotkeyService.instance.initialize();
-
-    // 4.1 启动命令服务器 (接收 Fcitx5 插件的快捷键命令，支持 Wayland)
-    await CommandServer.instance.start();
-    DiagnosticLogger.instance.info('main', '命令服务器启动完成');
 
     // 5. 检查/下载模型
     final modelManager = ModelManager();
@@ -197,9 +256,9 @@ Future<void> main() async {
       stateController: _stateController,
     );
 
-    // 9.1 设置命令服务器回调 (Wayland 快捷键支持)
-    CommandServer.instance.onCommand = (command) {
-      DiagnosticLogger.instance.info('main', '收到 Fcitx5 命令: $command');
+    // 9.1 设置单实例命令回调 (SCP-002: 系统快捷键 + --toggle 参数支持)
+    SingleInstance.instance.onCommand = (command) {
+      DiagnosticLogger.instance.info('main', '收到命令: $command');
       if (command == 'toggle') {
         // 触发与快捷键相同的动作
         HotkeyController.instance.toggle();
@@ -217,8 +276,8 @@ Future<void> main() async {
       // 停止动画预热服务
       AnimationTickerService.instance.stop();
 
-      // 停止命令服务器
-      await CommandServer.instance.dispose();
+      // 停止单实例服务
+      await SingleInstance.instance.dispose();
 
       // 释放控制器
       await HotkeyController.instance.dispose();

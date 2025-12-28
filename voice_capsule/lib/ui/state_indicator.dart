@@ -80,6 +80,10 @@ class StateIndicator extends StatelessWidget {
           color: CapsuleColors.warning,
           size: size,
         );
+
+      // SCP-002: 剪贴板复制成功状态
+      case CapsuleState.copiedToClipboard:
+        return _buildCopiedIndicator();
     }
   }
 
@@ -114,5 +118,22 @@ class StateIndicator extends StatelessWidget {
       case null:
         return CapsuleColors.warning;
     }
+  }
+
+  /// SCP-002: 构建剪贴板复制成功指示器
+  Widget _buildCopiedIndicator() {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: CapsuleColors.success,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(
+        Icons.check,
+        color: Colors.white,
+        size: size * 0.6,
+      ),
+    );
   }
 }

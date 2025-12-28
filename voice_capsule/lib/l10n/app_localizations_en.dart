@@ -33,7 +33,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trayExit => 'Exit';
 
   @override
-  String get trayModelSwitchNotice => 'Model switched, restart app to take effect';
+  String get trayModelSwitchNotice =>
+      'Model switched, restart app to take effect';
 
   @override
   String get trayAsrEngine => 'ASR Engine';
@@ -109,7 +110,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wizardTitle => 'Voice Model Installation';
 
   @override
-  String get wizardAutoDownloadDesc => 'Automatically download and install model';
+  String get wizardAutoDownloadDesc =>
+      'Automatically download and install model';
 
   @override
   String get wizardManualInstallDesc => 'Manually download and install model';
@@ -121,10 +123,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wizardManualMode => 'Manual Mode';
 
   @override
-  String get wizardModelVerifyFailed => 'No valid model detected, please confirm files are placed correctly';
+  String get wizardModelVerifyFailed =>
+      'No valid model detected, please confirm files are placed correctly';
 
   @override
-  String get wizardResumingDownload => 'Detected downloaded file, preparing to verify...';
+  String get wizardResumingDownload =>
+      'Detected downloaded file, preparing to verify...';
 
   @override
   String get wizardFirstLaunch => 'Nextalk First Launch';
@@ -190,7 +194,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errorModelLoadFailed => 'Model Loading Failed';
 
   @override
-  String get errorFcitxNotRunning => 'Fcitx5 Not Running, Please Start Input Method';
+  String get errorFcitxNotRunning =>
+      'Fcitx5 Not Running, Please Start Input Method';
 
   @override
   String get errorFcitxConnectFailed => 'Fcitx5 Connection Failed';
@@ -205,7 +210,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get errorFcitxMsgTooLarge => 'Message Too Large';
 
   @override
-  String get errorFcitxReconnectFailed => 'Fcitx5 Reconnect Failed, Check Service Status';
+  String get errorFcitxReconnectFailed =>
+      'Fcitx5 Reconnect Failed, Check Service Status';
 
   @override
   String get errorFcitxPermInsecure => 'Socket Permission Insecure';

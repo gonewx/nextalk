@@ -1,40 +1,29 @@
 import 'dart:async';
 import 'dart:ui';
 
-import 'package:screen_retriever/screen_retriever.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../constants/window_constants.dart';
+import 'flutter_window_backend.dart';
 
 /// 窗口管理服务
-/// Story 3-1: 透明胶囊窗口基础
+/// SCP-002: 简化版 - 只使用 Flutter 原生窗口
 ///
 /// 功能:
-/// - 初始化透明无边框窗口
-/// - 窗口显示/隐藏控制 (方案 B: 透明度切换，避免 map/unmap 导致焦点被抢)
-/// - 位置持久化 (SharedPreferences)
-/// - 拖拽移动支持
-///
-/// GNOME Wayland 焦点优化:
-/// 传统的 show()/hide() 会触发窗口 map/unmap，在 GNOME Smart 模式下
-/// 新 map 的窗口会自动获得焦点。为避免这个问题，我们采用"透明度切换"方案：
-/// - 窗口始终保持 mapped 状态
-/// - "隐藏"时设置透明度为 0
-/// - "显示"时设置透明度为 1
-/// 这样可以避免触发 GNOME 的焦点切换逻辑。
+/// - 透明无边框窗口管理
+/// - 位置记忆和恢复
+/// - 拖拽支持
 class WindowService with WindowListener {
   WindowService._();
 
   static final WindowService instance = WindowService._();
 
-  bool _isInitialized = false;
-  bool _isVisible = false;
-  SharedPreferences? _prefs;
+  /// Flutter 窗口后端
+  FlutterWindowBackend? _backend;
 
-  /// 是否使用透明度模式 (方案 B)
-  /// 在 GNOME Wayland 下启用，避免焦点被抢
-  bool _useOpacityMode = true;
+  bool _isInitialized = false;
+  SharedPreferences? _prefs;
 
   /// 是否处于初始化向导模式 (此时快捷键释放不应隐藏窗口)
   bool _isInInitWizardMode = false;
@@ -42,124 +31,82 @@ class WindowService with WindowListener {
   /// 是否阻止自动隐藏 (用于显示需要用户操作的 UI，如错误状态)
   bool _preventAutoHide = false;
 
-  final StreamController<void> _onMovedController =
-      StreamController<void>.broadcast();
+  // ============================================
+  // 公开属性
+  // ============================================
 
   /// 窗口是否可见
-  bool get isVisible => _isVisible;
+  bool get isVisible => _backend?.isVisible ?? false;
 
   /// 是否已初始化
   bool get isInitialized => _isInitialized;
 
-  /// 是否处于初始化向导模式 (此时快捷键释放不应隐藏窗口)
+  /// 是否处于初始化向导模式
   bool get isInInitWizardMode => _isInInitWizardMode;
 
-  /// 是否阻止自动隐藏 (用于显示需要用户操作的 UI，如错误状态)
+  /// 是否阻止自动隐藏
   bool get preventAutoHide => _preventAutoHide;
   set preventAutoHide(bool value) => _preventAutoHide = value;
 
-  /// 监听窗口移动结束事件 (用于保存位置)
-  Stream<void> get onMoved => _onMovedController.stream;
+  // ============================================
+  // 初始化
+  // ============================================
 
-  /// 初始化窗口 (在 main() 中调用)
+  /// 初始化窗口服务
   ///
   /// [showOnStartup] 是否在启动时显示窗口，默认 false (托盘驻留)
-  ///
-  /// 配置:
-  /// - 透明背景
-  /// - 无标题栏
-  /// - 固定尺寸 400x120
-  /// - 跳过任务栏
-  /// - 始终在最前
   Future<void> initialize({bool showOnStartup = false}) async {
     if (_isInitialized) return;
 
-    await windowManager.ensureInitialized();
-
     _prefs = await SharedPreferences.getInstance();
 
-    // 注册窗口事件监听
-    windowManager.addListener(this);
+    // 初始化 Flutter 窗口后端
+    _backend = FlutterWindowBackend();
+    await _backend!.initialize();
+    _log('Flutter window backend initialized');
 
-    const windowOptions = WindowOptions(
-      size: Size(WindowConstants.windowWidth, WindowConstants.windowHeight),
-      center: true,
-      skipTaskbar: true, // 不在任务栏显示
-      titleBarStyle: TitleBarStyle.hidden, // 无标题栏
-      alwaysOnTop: true, // 始终在最前
-    );
-
-    await windowManager.waitUntilReadyToShow(windowOptions, () async {
-      // 与参考项目保持一致：只做最基本的设置
-      await windowManager.setAsFrameless();
-      await _restorePosition();
-      await windowManager.show(inactive: true);
-      // 使用 inactive: true 避免抢夺焦点
-
-      // 根据参数决定是否保持显示
-      if (!showOnStartup) {
-        await windowManager.hide();
-        _isVisible = false;
-      } else {
-        _isVisible = true;
-      }
-    });
+    if (showOnStartup) {
+      await show();
+    } else {
+      await hide();
+    }
 
     _isInitialized = true;
   }
 
-  /// 显示窗口 (在记忆位置或屏幕中央)
+  // ============================================
+  // 窗口控制
+  // ============================================
+
+  /// 显示窗口
   Future<void> show() async {
-    if (!_isInitialized) {
-      throw StateError(
-          'WindowService not initialized. Call initialize() first.');
+    if (!_isInitialized || _backend == null) {
+      throw StateError('WindowService not initialized');
     }
 
-    if (_isVisible) return;
-
-    await windowManager.show(inactive: true);
-    // 关键：在 show 之后立即设置 skipTaskbar，确保窗口管理器应用此设置
-    await windowManager.setSkipTaskbar(true);
-    // 注意：使用 inactive: true 避免抢夺目标应用的焦点
-    // 这样 Fcitx5 的 InputContext 焦点会保持在用户正在输入的应用中
-    _isVisible = true;
-
-    // 关键修复：在窗口可见后再设置位置
-    // GTK/Wayland 在窗口隐藏时 setPosition() 可能被忽略
-    await Future.delayed(const Duration(milliseconds: 50));
-    await _restorePosition();
+    await _backend!.show();
   }
 
   /// 隐藏窗口
-  ///
-  /// 抛出 [StateError] 如果服务未初始化。
   Future<void> hide() async {
-    if (!_isInitialized) {
-      throw StateError(
-          'WindowService not initialized. Call initialize() first.');
-    }
-    if (!_isVisible) return;
+    if (!_isInitialized || _backend == null) return;
 
-    // 保存当前位置 - AC10
-    await savePosition();
-
-    await windowManager.hide();
-    _isVisible = false;
+    await _backend!.hide();
   }
 
-  /// Story 3-7: 设置窗口尺寸 (用于初始化向导)
+  /// 设置窗口尺寸 (用于初始化向导)
   Future<void> setSize(double width, double height) async {
-    if (!_isInitialized) return;
-    await windowManager.setSize(Size(width, height));
+    if (!_isInitialized || _backend == null) return;
+    await _backend!.setSize(width, height);
   }
 
-  /// Story 3-7: 重置为正常胶囊尺寸
+  /// 重置为正常胶囊尺寸
   Future<void> resetToNormalSize() async {
     _isInInitWizardMode = false;
     await setSize(WindowConstants.windowWidth, WindowConstants.windowHeight);
   }
 
-  /// Story 3-7: 设置为初始化向导尺寸
+  /// 设置为初始化向导尺寸
   Future<void> setInitWizardSize() async {
     _isInInitWizardMode = true;
     await setSize(
@@ -167,76 +114,36 @@ class WindowService with WindowListener {
   }
 
   /// 动态调整窗口高度以适应内容
-  /// [expanded] true 表示需要额外空间显示错误操作按钮
   Future<void> setExpandedMode(bool expanded) async {
-    if (!_isInitialized) return;
+    if (!_isInitialized || _backend == null) return;
     final targetHeight = expanded
         ? WindowConstants.windowHeightExpanded
         : WindowConstants.windowHeight;
-    await windowManager.setSize(Size(WindowConstants.windowWidth, targetHeight));
+    await _backend!.setSize(WindowConstants.windowWidth, targetHeight);
+  }
+
+  /// 设置状态 (兼容性占位)
+  Future<void> setState(String state) async {
+    if (!_isInitialized || _backend == null) return;
+    await _backend!.setState(state);
+  }
+
+  /// 设置文本 (兼容性占位)
+  Future<void> setText(String text) async {
+    if (!_isInitialized || _backend == null) return;
+    await _backend!.setText(text);
   }
 
   /// 保存当前位置
   Future<void> savePosition() async {
-    if (!_isInitialized || _prefs == null) return;
-
-    try {
-      final position = await windowManager.getPosition();
-      await _prefs!.setDouble(WindowConstants.positionXKey, position.dx);
-      await _prefs!.setDouble(WindowConstants.positionYKey, position.dy);
-    } catch (e) {
-      // 忽略保存失败 (例如窗口已关闭)
-    }
+    if (!_isInitialized || _backend == null) return;
+    await _backend!.savePosition();
   }
 
-  /// 恢复保存的位置 (含边界校验)
-  ///
-  /// 首次运行：屏幕下方居中 (距底部 80 像素)
-  /// 后续运行：恢复上次保存的位置
-  Future<void> _restorePosition() async {
-    if (_prefs == null) return;
-
-    final x = _prefs!.getDouble(WindowConstants.positionXKey);
-    final y = _prefs!.getDouble(WindowConstants.positionYKey);
-
-    if (x != null && y != null) {
-      // 使用 WindowConstants 中定义的边界校验
-      if (WindowConstants.isValidPosition(x, y)) {
-        await windowManager.setPosition(Offset(x, y));
-        return;
-      }
-    }
-
-    // 首次运行或位置无效：显示在屏幕下方居中
-    await _setDefaultPosition();
-  }
-
-  /// 设置默认位置：屏幕下方居中
-  Future<void> _setDefaultPosition() async {
-    try {
-      // 获取主屏幕信息
-      final primaryDisplay = await screenRetriever.getPrimaryDisplay();
-      final screenWidth = primaryDisplay.size.width;
-      final screenHeight = primaryDisplay.size.height;
-
-      // 计算水平居中
-      final x = (screenWidth - WindowConstants.windowWidth) / 2;
-      // 计算下方位置 (距底部 80 像素)
-      final y = screenHeight - WindowConstants.windowHeight - 80;
-
-      await windowManager.setPosition(Offset(x, y));
-      return;
-    } catch (e) {
-      // 获取屏幕信息失败，回退到普通居中
-    }
-
-    await windowManager.center();
-  }
-
-  /// 开始拖拽窗口 (在 GestureDetector.onPanStart 中调用)
+  /// 开始拖拽窗口
   Future<void> startDragging() async {
-    if (!_isInitialized) return;
-    await windowManager.startDragging();
+    if (!_isInitialized || _backend == null) return;
+    await _backend!.startDragging();
   }
 
   // ============================================
@@ -244,38 +151,17 @@ class WindowService with WindowListener {
   // ============================================
 
   @override
-  void onWindowMove() {
-    // 窗口移动中 (可用于实时更新 UI)
-  }
+  void onWindowMove() {}
 
   @override
   void onWindowMoved() {
-    // 窗口移动结束 - 保存位置
     savePosition();
-    _onMovedController.add(null);
   }
 
   @override
   void onWindowClose() {
-    // 窗口关闭前保存位置并清理资源
     savePosition();
-    _cleanup();
-  }
-
-  /// 内部清理方法 (避免重复清理)
-  void _cleanup() {
-    if (!_isInitialized) return;
-    windowManager.removeListener(this);
-    if (!_onMovedController.isClosed) {
-      _onMovedController.close();
-    }
-    _isInitialized = false;
-  }
-
-  /// 释放资源 (供外部调用，如应用生命周期管理)
-  void dispose() {
-    savePosition();
-    _cleanup();
+    dispose();
   }
 
   @override
@@ -316,4 +202,18 @@ class WindowService with WindowListener {
 
   @override
   void onWindowUndocked() {}
+
+  // ============================================
+  // 清理
+  // ============================================
+
+  void dispose() {
+    _backend?.dispose();
+    _isInitialized = false;
+  }
+
+  void _log(String message) {
+    // ignore: avoid_print
+    print('[WindowService] $message');
+  }
 }

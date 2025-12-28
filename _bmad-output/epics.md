@@ -4,6 +4,8 @@ inputDocuments:
   - docs/prd.md
   - docs/architecture.md
   - docs/front-end-spec.md
+lastUpdated: 2025-12-28
+scp002Applied: true
 ---
 
 # Nextalk - Epic Breakdown
@@ -503,38 +505,43 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 
 ### Story 3.5: 全局快捷键监听
 
+> **⚠️ SUPERSEDED by SCP-002**: 本 Story 的原实现方案已被废弃。快捷键监听改为使用系统原生快捷键 + `--toggle` 命令行参数方案。详见 `_bmad-output/sprint-change-proposals/scp-002-simplified-architecture.md`
+
 **As a** 用户,
 **I want** 通过快捷键快速唤醒语音输入,
 **So that** 无需鼠标操作，实现高效输入。
 
-**技术方案**: Fcitx5 插件侧原生快捷键监听 (支持 X11/Wayland)
+**技术方案**: ~~Fcitx5 插件侧原生快捷键监听~~ → **系统原生快捷键 + `nextalk --toggle`**
 
-**Acceptance Criteria:**
+**Acceptance Criteria (SCP-002 更新后):**
 
 **Given** 应用在后台运行
-**When** 按下 Right Alt 键
+**When** 用户通过系统快捷键触发 `nextalk --toggle`
 **Then** 主窗口瞬间出现
 **And** 自动开始录音
 **And** 状态切换为"聆听中"
 
 **Given** 正在录音
-**When** 再次按下 Right Alt 键
+**When** 再次触发快捷键
 **Then** 立即停止录音
 **And** 提交当前识别文本到活动窗口
 **And** 主窗口瞬间隐藏
 
-**Given** 配置文件存在
-**When** 设置自定义快捷键
-**Then** 使用新键位替代默认的 Right Alt
-**And** 支持运行时动态更新 (通过 Socket 命令)
+**Given** 应用已启动
+**When** 执行 `nextalk --toggle` / `--show` / `--hide`
+**Then** 通过单实例 Socket 发送命令到运行中的实例
 
-**Given** Wayland 环境下用户录音时切换窗口
-**When** 停止录音并提交文本
-**Then** 文本仍然提交到原来的窗口 (焦点锁定机制)
+~~**Given** 配置文件存在~~
+~~**When** 设置自定义快捷键~~
+~~**Then** 使用新键位替代默认的 Right Alt~~
 
-**Given** Fcitx5 插件监听快捷键
-**When** 检测到配置的快捷键按下
-**Then** 通过 Unix Socket (`nextalk-cmd.sock`) 向 Flutter 发送 toggle 命令
+~~**Given** Wayland 环境下用户录音时切换窗口~~
+~~**When** 停止录音并提交文本~~
+~~**Then** 文本仍然提交到原来的窗口 (焦点锁定机制)~~
+
+~~**Given** Fcitx5 插件监听快捷键~~
+~~**When** 检测到配置的快捷键按下~~
+~~**Then** 通过 Unix Socket (`nextalk-cmd.sock`) 向 Flutter 发送 toggle 命令~~
 
 ---
 
@@ -569,16 +576,19 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **Then** 窗口跟随鼠标移动
 **And** 松开后记录位置，下次出现在此位置
 
-**Given** Socket 连接断开
+**Given** Socket 连接断开 / Fcitx5 不可用
 **When** 尝试提交文字
-**Then** 状态指示器变为错误状态
-**And** 显示 "Fcitx5 未连接"
-**And** 3秒后自动隐藏或等待用户操作
+**Then** 自动复制文本到系统剪贴板 (SCP-002 剪贴板 fallback)
+**And** 状态指示器变为绿色勾选
+**And** 显示 "已复制到剪贴板，请粘贴"
+**And** 2秒后自动隐藏窗口
 
-**Given** Wayland 环境下用户在应用 A 触发录音后切换到应用 B
-**When** 停止录音并提交文字
-**Then** 文字提交到应用 A (焦点锁定机制)
-**And** 不会误提交到应用 B
+~~**Given** Wayland 环境下用户在应用 A 触发录音后切换到应用 B~~
+~~**When** 停止录音并提交文字~~
+~~**Then** 文字提交到应用 A (焦点锁定机制)~~
+~~**And** 不会误提交到应用 B~~
+
+> **SCP-002 变更**: 焦点锁定机制已移除，Wayland 环境下如切换窗口可能导致文本提交到当前焦点窗口。
 
 **Given** 终端应用 (如 gnome-terminal)
 **When** 提交文字

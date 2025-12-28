@@ -107,20 +107,22 @@ void main() {
         expect(config.modifiers, isEmpty);
       });
 
-      test('toFcitx5Format 应该正确转换无修饰键的配置', () {
+      // SCP-002: 移除 toFcitx5Format 测试
+      // 快捷键不再同步到 Fcitx5，由系统原生快捷键配置
+      test('toDisplayString 应该正确转换显示格式', () {
         const config = HotkeyConfig(
           key: 'altRight',
           modifiers: [],
         );
-        expect(config.toFcitx5Format(), equals('Alt_R'));
+        expect(config.toDisplayString(), equals('Right Alt'));
       });
 
-      test('toFcitx5Format 应该正确转换带修饰键的配置', () {
+      test('toDisplayString 应该正确显示带修饰键的配置', () {
         const config = HotkeyConfig(
           key: 'space',
           modifiers: ['ctrl', 'shift'],
         );
-        expect(config.toFcitx5Format(), equals('Control+Shift+space'));
+        expect(config.toDisplayString(), equals('Ctrl + Shift + Space'));
       });
     });
   });

@@ -3,6 +3,7 @@
 | 日期       | 版本 | 说明 | 作者 |
 | :---       | :--- | :--- | :--- |
 | 2025-12-21 | 1.1  | 完整架构设计 (Flutter/C++混合架构，模型动态下载) | 架构师 (Winston) |
+| 2025-12-28 | 2.0  | 极简架构重构 (SCP-002: 移除快捷键监听，使用系统原生快捷键) | 架构师 (Winston) |
 
 ## 1. 简介 (Introduction)
 
@@ -27,19 +28,26 @@ graph TD
         Sherpa -- "文本流" --> Logic
         Logic -- "状态更新" --> UI[透明胶囊窗口]
         Logic -- "文本 Socket" --> IPC_Text[文本发送]
-        Logic -- "配置 Socket" --> IPC_Cfg[配置发送]
-        CmdServer[命令服务器] -- "toggle 命令" --> Logic
+        SingleInstance[单实例管理] -- "--toggle 命令" --> Logic
         ModelMgr[模型管理器] -- "下载/校验" --> Storage[本地存储 (~/.local)]
     end
 
     subgraph "进程 B: Fcitx5 守护进程"
         IPC_Text -- "nextalk-fcitx5.sock" --> IPC_Server[Nextalk 插件]
-        IPC_Cfg -- "nextalk-fcitx5-cfg.sock" --> IPC_Server
-        IPC_Server -- "nextalk-cmd.sock" --> CmdServer
         IPC_Server -- "commitString" --> TargetApp[当前活动窗口]
-        Keyboard[键盘事件] -- "快捷键监听" --> IPC_Server
+    end
+
+    subgraph "系统快捷键"
+        SystemShortcut[GNOME/KDE 快捷键设置] -- "nextalk --toggle" --> SingleInstance
+    end
+
+    subgraph "Fallback 路径"
+        Logic -- "Fcitx5 不可用" --> Clipboard[系统剪贴板]
+        Clipboard -- "用户手动粘贴" --> TargetApp
     end
 ```
+
+> **SCP-002 变更说明**: 快捷键监听已从 Fcitx5 插件移除，改为使用系统原生快捷键配置（如 GNOME Settings → Keyboard → Custom Shortcuts）调用 `nextalk --toggle` 命令。
 
 ### 2.2 目录结构 (Monorepo)
 
@@ -92,70 +100,48 @@ nextalk/
 
 ### 4.1 Fcitx5 插件与协议
 
-**角色**: 双向通信枢纽。它不仅接收文本指令并注入到应用中，还负责监听全局快捷键并通知 Flutter 客户端。
+**角色**: 文本注入服务。接收 Flutter 客户端发送的文本，并通过 Fcitx5 的 `commitString` 接口注入到目标应用程序。
+
+> **SCP-002 简化**: 插件职责已简化为仅处理文本提交，移除了快捷键监听和配置同步功能。
 
 #### 4.1.1 Socket 架构
 
-插件使用三个 Unix Domain Socket 实现双向通信：
+插件使用单一 Unix Domain Socket 实现通信：
 
 | Socket 路径 | 方向 | 用途 | 协议 |
 | :--- | :--- | :--- | :--- |
 | `$XDG_RUNTIME_DIR/nextalk-fcitx5.sock` | Flutter → 插件 | 文本提交 | 长度前缀 + UTF-8 |
-| `$XDG_RUNTIME_DIR/nextalk-fcitx5-cfg.sock` | Flutter → 插件 | 配置命令 | 长度前缀 + 命令字符串 |
-| `$XDG_RUNTIME_DIR/nextalk-cmd.sock` | 插件 → Flutter | 控制命令 | 长度前缀 + 命令字符串 |
 
 *   **传输层**: Unix Domain Socket (Stream 模式)。
-*   **安全性**: 所有 Socket 文件权限必须设为 `0600` (仅所有者读写)。
-*   **协议定义** (通用):
+*   **安全性**: Socket 文件权限必须设为 `0600` (仅所有者读写)。
+*   **协议定义**:
 
 | 偏移量 | 类型 | 大小 | 描述 |
 | :--- | :--- | :--- | :--- |
 | 0 | `uint32` | 4 | **长度 (Length)** (小端序 Little Endian)。后续字符串的字节长度。 |
-| 4 | `bytes` | N | **载荷 (Payload)**。UTF-8 编码的文本或命令。 |
+| 4 | `bytes` | N | **载荷 (Payload)**。UTF-8 编码的文本。 |
 
-#### 4.1.2 快捷键监听 (Wayland 原生支持)
+#### 4.1.2 快捷键方案
 
-快捷键监听由 Fcitx5 插件实现，而非 Flutter 侧：
+**SCP-002 变更**: 快捷键监听已从 Fcitx5 插件移除，改为系统原生快捷键方案：
 
-*   **优势**: 原生 Wayland 支持，无需 X11/keybinder 依赖
-*   **实现方式**: 通过 Fcitx5 的 `InputContextKeyEvent` 事件监听
-*   **默认键位**: Right Alt (`Alt_R`)
-*   **配置命令**: `config:hotkey:<key_spec>` (如 `config:hotkey:Alt_R`、`config:hotkey:Control+Shift+Space`)
+*   **配置方式**: GNOME Settings → Keyboard → Custom Shortcuts
+*   **命令**: `nextalk --toggle`
+*   **支持的参数**: `--toggle` (切换录音), `--show` (显示窗口), `--hide` (隐藏窗口)
 
-**支持的按键:**
-- 修饰键: `Alt_L`, `Alt_R`, `Control_L`, `Control_R`, `Shift_L`, `Shift_R`, `Super_L`, `Super_R`
-- 功能键: `F1` - `F12`
-- 常用键: `Space`, `Escape`, `Tab`, `Return`, `BackSpace`, `Caps_Lock`
-- 字母键: `a` - `z`
-- 数字键: `0` - `9`
+**单实例管理**:
+*   应用启动时检测是否已有实例运行
+*   如有运行实例，通过 Unix Socket (`$XDG_RUNTIME_DIR/nextalk.sock`) 发送命令
+*   单实例 Socket 用于应用内部通信，与 Fcitx5 插件 Socket 独立
 
-#### 4.1.3 焦点锁定 (Wayland 支持)
+#### 4.1.3 剪贴板 Fallback
 
-解决 Wayland 下用户录音时切换窗口导致文本提交到错误应用的问题：
+当 Fcitx5 插件不可用时（非 Fcitx5 环境或插件未加载），系统自动启用剪贴板回退：
 
-```mermaid
-sequenceDiagram
-    participant User as 用户
-    participant Fcitx as Fcitx5 插件
-    participant Flutter as Flutter 客户端
-    participant App as 目标应用
-
-    User->>Fcitx: 按下快捷键 (在 App 中)
-    Fcitx->>Fcitx: 锁定当前 InputContext UUID
-    Fcitx->>Flutter: 发送 "toggle" 命令
-    Flutter->>Flutter: 开始录音
-    Note over User: 用户说话，可能切换窗口
-    User->>Fcitx: 再次按下快捷键
-    Fcitx->>Flutter: 发送 "toggle" 命令
-    Flutter->>Fcitx: 发送识别文本
-    Fcitx->>Fcitx: 使用锁定的 InputContext
-    Fcitx->>App: commitString (文本正确提交到原窗口)
-    Fcitx->>Fcitx: 清除锁定状态
-```
-
-*   **锁定时机**: 按下快捷键时锁定当前 `InputContext` 的 UUID
-*   **使用时机**: 提交文本时优先使用锁定的 `InputContext`
-*   **释放时机**: 文本提交后自动清除锁定状态
+1. 检测 Fcitx5 Socket 是否存在
+2. 如不存在，将识别文本复制到系统剪贴板
+3. UI 显示提示："已复制到剪贴板，请粘贴"
+4. 2秒后自动隐藏窗口
 
 #### 4.1.4 文本提交流程 (IME 周期模拟)
 
