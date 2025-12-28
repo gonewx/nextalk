@@ -159,5 +159,9 @@ fi
 %{_datadir}/icons/hicolor/256x256/apps/nextalk.png
 
 %changelog
-* Tue Dec 24 2025 Nextalk Team <lgq502@gmail.com> - 0.1.0-1
+* Sun Dec 28 2025 Nextalk Team <lgq502@gmail.com> - 0.1.4-1
+- Fix clipboard mode UI prompt interaction flow
+- Update documentation for Fedora tray icon issues
+
+* Wed Dec 24 2025 Nextalk Team <lgq502@gmail.com> - 0.1.0-1
 - Initial RPM package release

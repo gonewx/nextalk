@@ -170,7 +170,13 @@ Future<void> main(List<String> args) async {
     DiagnosticLogger.instance.info('main', '语言服务初始化完成');
 
     // 3. 初始化托盘服务 (必须在 WindowService 和 SettingsService 之后)
-    await TrayService.instance.initialize();
+    // 如果设置了 NEXTALK_NO_TRAY=1 环境变量，跳过托盘初始化 (解决某些环境下的段错误)
+    final noTray = Platform.environment['NEXTALK_NO_TRAY'] == '1';
+    if (noTray) {
+      DiagnosticLogger.instance.warn('main', '⚠️ NEXTALK_NO_TRAY=1，跳过托盘初始化');
+    } else {
+      await TrayService.instance.initialize();
+    }
 
     // 4. 初始化全局快捷键服务 (SCP-002: 简化版，不再同步配置到 Fcitx5)
     await HotkeyService.instance.initialize();

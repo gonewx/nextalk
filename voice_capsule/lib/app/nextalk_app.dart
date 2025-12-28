@@ -184,6 +184,9 @@ class _NextalkAppState extends State<NextalkApp> {
         final isErrorWithActions = state.state == CapsuleState.error &&
             _shouldShowErrorActions(state.errorType);
 
+        // SCP-002: 剪贴板复制成功状态（复制完成后才显示）
+        final isCopiedToClipboard = state.state == CapsuleState.copiedToClipboard;
+
         // 动态调整窗口大小：错误状态需要更多空间
         _updateWindowSize(isErrorWithActions);
 
@@ -204,6 +207,33 @@ class _NextalkAppState extends State<NextalkApp> {
                   hintText: hintText,
                   stateData: state,
                 ),
+                // SCP-002: 剪贴板复制成功提示（醒目样式）
+                if (isCopiedToClipboard)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xCC000000), // 80% 黑色背景
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(0xFF4CAF50), // 绿色边框
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        LanguageService.instance.tr('clipboard_paste_hint'),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: Color(0xFF81C784), // 浅绿色文字
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
                 // Story 3-7: 错误操作按钮 (只在空间足够时显示)
                 if (showActions)
                   Padding(

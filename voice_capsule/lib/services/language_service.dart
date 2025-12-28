@@ -169,6 +169,7 @@ class LanguageService {
       'notify_copied': '已复制到剪贴板',
       'notify_link_copied': '链接已复制到剪贴板',
       'notify_text_copied': '文本已复制到剪贴板',
+      'clipboard_paste_hint': '已复制到剪贴板，请粘贴',
 
       // 通用
       'listening': '正在聆听...',
@@ -223,6 +224,7 @@ class LanguageService {
       'notify_copied': 'Copied to Clipboard',
       'notify_link_copied': 'Link Copied to Clipboard',
       'notify_text_copied': 'Text Copied to Clipboard',
+      'clipboard_paste_hint': 'Copied to clipboard, please paste',
 
       // 通用
       'listening': 'Listening...',

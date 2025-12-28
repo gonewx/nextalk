@@ -48,7 +48,14 @@ class CapsuleWidget extends StatelessWidget {
     final isProcessing = effectiveState.state == CapsuleState.processing;
     final isError = effectiveState.state == CapsuleState.error;
     final showCursor = effectiveState.state == CapsuleState.listening;
-    final displayText = isError ? effectiveState.displayMessage : text;
+
+    // SCP-002: 胶囊内显示识别的文字（剪贴板模式时提示在胶囊外显示）
+    final String displayText;
+    if (isError) {
+      displayText = effectiveState.displayMessage;
+    } else {
+      displayText = text;
+    }
 
     return DragToMoveArea(
       // 使用 window_manager 提供的 DragToMoveArea 替代手动 GestureDetector

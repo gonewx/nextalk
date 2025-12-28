@@ -81,12 +81,14 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 
 ### 系统托盘
 
-应用在系统托盘驻留，右键菜单提供:
+应用支持系统托盘（在支持的桌面环境中），右键菜单提供:
 
 - 显示/隐藏窗口
 - 切换模型版本
 - 打开配置目录
 - 退出应用
+
+> **注意**: GNOME 桌面不显示托盘图标是正常的，应用仍可通过 `nextalk --toggle` 命令使用。
 
 ## 系统要求
 
@@ -237,6 +239,32 @@ make help       # 查看所有命令
 ```
 
 ## 常见问题
+
+### 系统托盘图标不显示 (GNOME/Fedora)
+
+GNOME 桌面默认不显示系统托盘图标，这是正常现象。应用仍可通过命令行正常使用：
+
+```bash
+nextalk --toggle  # 切换录音状态
+nextalk --show    # 开始录音
+nextalk --hide    # 停止录音
+```
+
+> **⚠️ 注意**: 不建议安装 AppIndicator 扩展，可能导致应用崩溃。如果已安装且出现崩溃，请参考下一节。
+
+### 应用启动时崩溃 (段错误)
+
+如果安装了 AppIndicator 扩展后应用崩溃，可禁用托盘功能：
+
+```bash
+NEXTALK_NO_TRAY=1 nextalk
+```
+
+配置系统快捷键时使用：
+
+```bash
+env NEXTALK_NO_TRAY=1 /opt/nextalk/nextalk --toggle
+```
 
 ### 快捷键不响应
 

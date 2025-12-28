@@ -62,6 +62,13 @@ class FcitxClient {
   bool _inDegradedMode = false;
   bool _isDisposed = false;
 
+  /// 剪贴板模式标志：当 Fcitx5 不可用时为 true
+  /// UI 层可以通过此属性判断是否需要显示剪贴板提示
+  bool _isClipboardMode = false;
+
+  /// 是否处于剪贴板模式（Fcitx5 不可用）
+  bool get isClipboardMode => _isClipboardMode;
+
   // 并发控制: 防止同时执行 connect/sendText/dispose
   Completer<void>? _connectCompleter;
 
@@ -104,6 +111,12 @@ class FcitxClient {
     } catch (e) {
       return false;
     }
+  }
+
+  /// 检查并更新剪贴板模式状态
+  /// 在应用启动时调用，确定是否需要使用剪贴板 fallback
+  Future<void> checkClipboardMode() async {
+    _isClipboardMode = !(await isAvailable());
   }
 
   /// 验证 Socket 文件权限是否安全 (0600)

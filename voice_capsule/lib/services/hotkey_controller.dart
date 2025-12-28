@@ -128,20 +128,34 @@ class HotkeyController {
   }
 
   /// Story 3-7: 重试提交保存的文本 (AC15)
+  /// SCP-002: 同样支持剪贴板模式
   Future<void> retrySubmit() async {
     if (_lastRecognizedText == null || _lastRecognizedText!.isEmpty) return;
 
+    final text = _lastRecognizedText!;
     _state = HotkeyState.submitting;
     _updateState(CapsuleStateData.processing());
 
-    await _submitText(_lastRecognizedText!);
+    // 检查 Fcitx5 是否可用
+    final fcitxAvailable = await _fcitxClient!.isAvailable();
 
-    // 如果提交成功，隐藏窗口
+    if (!fcitxAvailable) {
+      // 剪贴板模式
+      await _copyToClipboardWithPrompt(text);
+      TrayService.instance.updateStatus(TrayStatus.normal);
+      return;
+    }
+
+    // Fcitx5 模式：先隐藏窗口
+    await WindowService.instance.hide();
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    await _submitTextToFcitx(text);
+
+    // 如果提交成功，重置状态
     if (_lastRecognizedText == null) {
-      await WindowService.instance.hide();
       _state = HotkeyState.idle;
       _updateState(CapsuleStateData.idle());
-      // 恢复托盘图标为正常状态
       TrayService.instance.updateStatus(TrayStatus.normal);
     }
   }
@@ -280,6 +294,8 @@ class HotkeyController {
   /// 注意：此方法支持被 show() 中断
   /// 如果用户在提交过程中快速重按，会设置 _submitInterrupted 标志，
   /// 此时会跳过文本提交，让新的录音流程接管。
+  ///
+  /// SCP-002: 剪贴板模式时保持窗口显示，复制完成后显示提示
   Future<void> _stopAndSubmit() async {
     _state = HotkeyState.submitting;
     _submitInterrupted = false; // 重置中断标志
@@ -308,15 +324,26 @@ class HotkeyController {
       return;
     }
 
-    // 4. 先隐藏窗口 (Wayland 焦点修复)
+    // 4. SCP-002: 检查 Fcitx5 是否可用，决定提交方式
+    final fcitxAvailable = await _fcitxClient!.isAvailable();
+
+    if (!fcitxAvailable) {
+      // 剪贴板模式：保持窗口显示，直接复制
+      // ignore: avoid_print
+      print('[HotkeyController] 📋 Fcitx5 不可用，使用剪贴板模式');
+      await _copyToClipboardWithPrompt(finalText);
+      return;
+    }
+
+    // 5. Fcitx5 模式：先隐藏窗口 (Wayland 焦点修复)
     // 在 Wayland 下，必须先隐藏窗口让原应用恢复焦点，
     // 否则 Fcitx5 的 commitString 无法生效
     await WindowService.instance.hide();
 
-    // 5. 等待焦点恢复 (关键！)
+    // 6. 等待焦点恢复 (关键！)
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // 6. 再次检查是否被中断（在等待焦点恢复期间可能被打断）
+    // 7. 再次检查是否被中断（在等待焦点恢复期间可能被打断）
     if (_submitInterrupted) {
       // ignore: avoid_print
       print('[HotkeyController] ⚡ 提交在焦点等待期间被中断');
@@ -326,28 +353,18 @@ class HotkeyController {
       return;
     }
 
-    // 7. 提交文本到 Fcitx5 (AC4)
-    await _submitText(finalText);
+    // 8. 提交文本到 Fcitx5 (AC4)
+    await _submitTextToFcitx(finalText);
 
-    // 8. 重置状态
+    // 9. 重置状态
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
   }
 
-  /// 提交文本到 Fcitx5
+  /// 提交文本到 Fcitx5 (仅用于 Fcitx5 可用时)
   /// Story 3-7: 增强错误处理，保护提交失败的文本 (AC15)
-  /// SCP-002: 添加剪贴板 fallback
-  Future<void> _submitText(String text) async {
+  Future<void> _submitTextToFcitx(String text) async {
     if (text.isEmpty) return;
-
-    // SCP-002: 检查 Fcitx5 是否可用
-    final fcitxAvailable = await _fcitxClient!.isAvailable();
-
-    if (!fcitxAvailable) {
-      // Fcitx5 不可用，使用剪贴板 fallback
-      await _copyToClipboard(text);
-      return;
-    }
 
     try {
       await _fcitxClient!.sendText(text);
@@ -355,11 +372,13 @@ class HotkeyController {
       // ignore: avoid_print
       print('[HotkeyController] ✅ 文本已提交');
     } on FcitxError catch (e) {
-      // SCP-002: 连接失败时使用剪贴板 fallback
+      // 连接失败时使用剪贴板 fallback
       if (e == FcitxError.connectionFailed ||
           e == FcitxError.reconnectFailed ||
           e == FcitxError.socketNotFound) {
-        await _copyToClipboard(text);
+        // 重新显示窗口（已隐藏），使用剪贴板模式
+        await WindowService.instance.show();
+        await _copyToClipboardWithPrompt(text);
         return;
       }
 
@@ -367,6 +386,8 @@ class HotkeyController {
       _lastRecognizedText = text;
       // ignore: avoid_print
       print('[HotkeyController] ❌ 文本提交失败 (FcitxError): $e');
+      // 重新显示窗口显示错误
+      await WindowService.instance.show();
       _updateState(CapsuleStateData.error(
         CapsuleErrorType.socketError,
         fcitxError: e,
@@ -377,21 +398,32 @@ class HotkeyController {
       // 不自动隐藏，等待用户操作 (AC15)
       _state = HotkeyState.idle; // 允许用户重新触发
     } catch (e) {
-      // 其他异常：使用剪贴板 fallback
-      await _copyToClipboard(text);
+      // 其他异常：重新显示窗口，使用剪贴板 fallback
+      await WindowService.instance.show();
+      await _copyToClipboardWithPrompt(text);
     }
   }
 
-  /// SCP-002: 复制文本到剪贴板并显示提示
-  Future<void> _copyToClipboard(String text) async {
+  /// SCP-002: 剪贴板模式 - 保持窗口显示，复制文本并显示提示
+  /// 此方法在窗口**保持显示**的状态下调用，不需要重新显示窗口
+  Future<void> _copyToClipboardWithPrompt(String text) async {
+    if (text.isEmpty) {
+      // 没有文本，直接隐藏窗口
+      await WindowService.instance.hide();
+      _state = HotkeyState.idle;
+      _updateState(CapsuleStateData.idle());
+      return;
+    }
+
     try {
       await Clipboard.setData(ClipboardData(text: text));
       _lastRecognizedText = null; // 成功复制后清空
 
       // ignore: avoid_print
-      print('[HotkeyController] 📋 文本已复制到剪贴板');
+      print('[HotkeyController] 📋 文本已复制到剪贴板: "$text"');
 
-      // 显示 "已复制到剪贴板，请粘贴" 提示
+      // 窗口保持显示，更新状态显示提示
+      _state = HotkeyState.idle;
       _updateState(CapsuleStateData.copiedToClipboard(text: text));
 
       // 2秒后自动隐藏窗口
@@ -455,22 +487,32 @@ class HotkeyController {
   }
 
   /// VAD 触发的提交 (无需再次 stop)
+  /// SCP-002: 同样支持剪贴板模式
   Future<void> _submitFromVad(String finalText) async {
     _state = HotkeyState.submitting;
 
     // 1. 更新 UI 状态
     _updateState(CapsuleStateData.processing());
 
-    // 2. 先隐藏窗口 (Wayland 焦点修复)
+    // 2. 检查 Fcitx5 是否可用
+    final fcitxAvailable = await _fcitxClient!.isAvailable();
+
+    if (!fcitxAvailable) {
+      // 剪贴板模式：保持窗口显示
+      await _copyToClipboardWithPrompt(finalText);
+      return;
+    }
+
+    // 3. Fcitx5 模式：先隐藏窗口 (Wayland 焦点修复)
     await WindowService.instance.hide();
 
-    // 3. 等待焦点恢复
+    // 4. 等待焦点恢复
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // 4. 提交文本
-    await _submitText(finalText);
+    // 5. 提交文本
+    await _submitTextToFcitx(finalText);
 
-    // 5. 重置状态
+    // 6. 重置状态
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
   }
