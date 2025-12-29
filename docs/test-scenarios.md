@@ -1,146 +1,148 @@
-# 异常场景测试指南
+# Exception Scenario Testing Guide
 
-本文档记录 Nextalk 应用的异常场景及其模拟方法，用于测试托盘图标状态和错误处理。
+[简体中文](test-scenarios_zh.md) | English
 
-## 托盘状态说明
+This document records Nextalk application's exception scenarios and simulation methods for testing tray icon status and error handling.
 
-| 状态 | 图标文件 | 含义 |
-|------|----------|------|
-| `TrayStatus.normal` | `tray_icon.png` | 正常运行 |
-| `TrayStatus.warning` | `tray_icon_warning.png` | 可恢复问题 |
-| `TrayStatus.error` | `tray_icon_error.png` | 严重错误 |
+## Tray Status Description
+
+| Status | Icon File | Meaning |
+|--------|-----------|---------|
+| `TrayStatus.normal` | `tray_icon.png` | Normal operation |
+| `TrayStatus.warning` | `tray_icon_warning.png` | Recoverable issue |
+| `TrayStatus.error` | `tray_icon_error.png` | Serious error |
 
 ---
 
-## 🟡 Warning 场景（可恢复）
+## 🟡 Warning Scenarios (Recoverable)
 
-### 1. Fcitx5 连接断开
+### 1. Fcitx5 Connection Lost
 
-**错误类型**: `CapsuleErrorType.socketError` + `FcitxError.connectionFailed`
+**Error Type**: `CapsuleErrorType.socketError` + `FcitxError.connectionFailed`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 停止 fcitx5
+# Stop fcitx5
 killall fcitx5
 
-# 启动应用后，尝试语音输入
-# 或通过托盘菜单 -> "重新连接 Fcitx5"
+# Launch app, then try voice input
+# Or via tray menu -> "Reconnect Fcitx5"
 ```
 
-**恢复方法**:
+**Recovery Method**:
 ```bash
 fcitx5 &
-# 然后托盘菜单 -> "重新连接 Fcitx5"
+# Then tray menu -> "Reconnect Fcitx5"
 ```
 
 ---
 
-### 2. Fcitx5 未运行（Socket 不存在）
+### 2. Fcitx5 Not Running (Socket Doesn't Exist)
 
-**错误类型**: `CapsuleErrorType.socketError` + `FcitxError.socketNotFound`
+**Error Type**: `CapsuleErrorType.socketError` + `FcitxError.socketNotFound`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 确保 fcitx5 未运行
+# Ensure fcitx5 is not running
 killall fcitx5
 
-# 删除 socket 文件（如果存在）
+# Delete socket file (if exists)
 rm -f $XDG_RUNTIME_DIR/nextalk-fcitx5.sock
 
-# 启动应用
+# Launch app
 ```
 
 ---
 
-### 3. 音频设备被占用
+### 3. Audio Device Busy
 
-**错误类型**: `CapsuleErrorType.audioDeviceBusy`
+**Error Type**: `CapsuleErrorType.audioDeviceBusy`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 终端 1: 独占麦克风
+# Terminal 1: Exclusively occupy microphone
 arecord -f cd -D plughw:0,0 /dev/null
 
-# 终端 2: 启动应用并尝试录音
+# Terminal 2: Launch app and try recording
 ```
 
-**恢复方法**: 关闭占用麦克风的应用
+**Recovery Method**: Close application occupying microphone
 
 ---
 
-### 4. 音频设备断开
+### 4. Audio Device Disconnected
 
-**错误类型**: `CapsuleErrorType.audioDeviceLost`
+**Error Type**: `CapsuleErrorType.audioDeviceLost`
 
-**模拟方法**:
-- USB 麦克风: 在应用运行时拔掉
-- 蓝牙麦克风: 断开蓝牙连接
+**Simulation Method**:
+- USB microphone: Unplug while app is running
+- Bluetooth microphone: Disconnect Bluetooth connection
 
 ---
 
-## 🔴 Error 场景（严重/不可恢复）
+## 🔴 Error Scenarios (Serious/Unrecoverable)
 
-### 1. 模型不存在
+### 1. Model Not Found
 
-**错误类型**: `CapsuleErrorType.modelNotFound`
+**Error Type**: `CapsuleErrorType.modelNotFound`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 备份模型目录
+# Backup model directory
 mv ~/.local/share/nextalk/models ~/.local/share/nextalk/models.bak
 
-# 启动应用
+# Launch app
 ```
 
-**恢复方法**:
+**Recovery Method**:
 ```bash
 mv ~/.local/share/nextalk/models.bak ~/.local/share/nextalk/models
 ```
 
 ---
 
-### 2. 模型文件不完整
+### 2. Model Files Incomplete
 
-**错误类型**: `CapsuleErrorType.modelIncomplete`
+**Error Type**: `CapsuleErrorType.modelIncomplete`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 删除部分模型文件
+# Delete some model files
 rm ~/.local/share/nextalk/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en/tokens.txt
 ```
 
 ---
 
-### 3. 模型损坏
+### 3. Model Corrupted
 
-**错误类型**: `CapsuleErrorType.modelCorrupted`
+**Error Type**: `CapsuleErrorType.modelCorrupted`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 截断 onnx 文件使其损坏
+# Truncate onnx file to corrupt it
 MODEL_DIR=~/.local/share/nextalk/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en
 
-# 先备份
+# Backup first
 cp $MODEL_DIR/encoder-epoch-99-avg-1.onnx $MODEL_DIR/encoder-epoch-99-avg-1.onnx.bak
 
-# 截断文件
+# Truncate file
 truncate -s 1000 $MODEL_DIR/encoder-epoch-99-avg-1.onnx
 ```
 
-**恢复方法**:
+**Recovery Method**:
 ```bash
 mv $MODEL_DIR/encoder-epoch-99-avg-1.onnx.bak $MODEL_DIR/encoder-epoch-99-avg-1.onnx
 ```
 
 ---
 
-### 4. 模型加载失败
+### 4. Model Load Failed
 
-**错误类型**: `CapsuleErrorType.modelLoadFailed`
+**Error Type**: `CapsuleErrorType.modelLoadFailed`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 用无效内容替换模型文件
+# Replace model file with invalid content
 MODEL_DIR=~/.local/share/nextalk/models/sherpa-onnx-streaming-zipformer-bilingual-zh-en
 
 cp $MODEL_DIR/encoder-epoch-99-avg-1.onnx $MODEL_DIR/encoder-epoch-99-avg-1.onnx.bak
@@ -149,45 +151,45 @@ echo "invalid onnx content" > $MODEL_DIR/encoder-epoch-99-avg-1.onnx
 
 ---
 
-### 5. 无麦克风设备
+### 5. No Microphone Device
 
-**错误类型**: `CapsuleErrorType.audioNoDevice`
+**Error Type**: `CapsuleErrorType.audioNoDevice`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 方法 1: 禁用 PulseAudio 源
+# Method 1: Disable PulseAudio source
 pactl list sources short
 pactl suspend-source <source_name> 1
 
-# 方法 2: 在无音频设备的虚拟机/容器中运行
+# Method 2: Run in VM/container without audio device
 
-# 方法 3: 临时卸载音频驱动（需要 root，谨慎操作）
+# Method 3: Temporarily unload audio driver (requires root, use caution)
 sudo modprobe -r snd_hda_intel
 ```
 
 ---
 
-### 6. 麦克风权限拒绝
+### 6. Microphone Permission Denied
 
-**错误类型**: `CapsuleErrorType.audioPermissionDenied`
+**Error Type**: `CapsuleErrorType.audioPermissionDenied`
 
-**模拟方法**:
+**Simulation Method**:
 ```bash
-# 方法 1: 在 Flatpak 沙箱中运行（不授予音频权限）
+# Method 1: Run in Flatpak sandbox (without audio permission)
 
-# 方法 2: 修改音频设备权限
+# Method 2: Modify audio device permissions
 sudo chmod 000 /dev/snd/*
-# 恢复: sudo chmod 660 /dev/snd/*
+# Recovery: sudo chmod 660 /dev/snd/*
 
-# 方法 3: 将用户从 audio 组移除（需要重新登录）
+# Method 3: Remove user from audio group (requires re-login)
 sudo gpasswd -d $USER audio
 ```
 
 ---
 
-## 托盘状态映射建议
+## Tray Status Mapping Suggestion
 
-在检测到错误时，根据错误类型更新托盘状态：
+When detecting errors, update tray status based on error type:
 
 ```dart
 void updateTrayForError(CapsuleErrorType? type) {
@@ -197,14 +199,14 @@ void updateTrayForError(CapsuleErrorType? type) {
   }
 
   switch (type) {
-    // Warning: 可恢复问题
+    // Warning: Recoverable issues
     case CapsuleErrorType.socketError:
     case CapsuleErrorType.audioDeviceBusy:
     case CapsuleErrorType.audioDeviceLost:
       TrayService.instance.updateStatus(TrayStatus.warning);
       break;
 
-    // Error: 严重问题
+    // Error: Serious issues
     case CapsuleErrorType.modelNotFound:
     case CapsuleErrorType.modelIncomplete:
     case CapsuleErrorType.modelCorrupted:
@@ -224,12 +226,12 @@ void updateTrayForError(CapsuleErrorType? type) {
 
 ---
 
-## 测试检查清单
+## Testing Checklist
 
-- [ ] Warning 图标在 Fcitx5 断开时显示
-- [ ] Warning 图标在音频设备被占用时显示
-- [ ] Error 图标在模型缺失时显示
-- [ ] Error 图标在模型损坏时显示
-- [ ] Error 图标在无麦克风时显示
-- [ ] 问题恢复后图标恢复 Normal 状态
-- [ ] 托盘菜单"重新连接 Fcitx5"功能正常
+- [ ] Warning icon shows when Fcitx5 disconnected
+- [ ] Warning icon shows when audio device busy
+- [ ] Error icon shows when model missing
+- [ ] Error icon shows when model corrupted
+- [ ] Error icon shows when no microphone
+- [ ] Icon reverts to Normal after issue resolved
+- [ ] Tray menu "Reconnect Fcitx5" function works

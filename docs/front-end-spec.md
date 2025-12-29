@@ -1,144 +1,146 @@
 # UI/UX Specification: Nextalk
 
-| 日期       | 版本 | 说明 | 作者 |
-| :---       | :--- | :--- | :--- |
-| 2025-12-21 | 1.0  | 初始 UI/UX 规范 (基于 Flutter 验证版) | UX Expert (Sally) |
+[简体中文](front-end-spec_zh.md) | English
 
-## 1. 设计概述 (Introduction)
+| Date | Version | Description | Author |
+| :--- | :--- | :--- | :--- |
+| 2025-12-21 | 1.0 | Initial UI/UX spec (based on Flutter validation version) | UX Expert (Sally) |
 
-**Nextalk** 的设计哲学是 **"Invisible but Powerful" (隐形但强大)**。
-它不是一个需要用户长时间盯着的传统窗口，而是一个**召之即来、挥之即去**的桌面精灵。UI 必须极致轻量、对系统干扰最小，且在出现时提供令人愉悦的微交互动画。
+## 1. Introduction
 
-### 核心体验目标
-*   **零干扰**: 默认隐藏，不占用任务栏，仅在托盘驻留。
-*   **即时反馈**: 语音 -> 文字的转换必须有实时的视觉流动感。
-*   **状态清晰**: 用户能通过余光感知当前是“正在听”、“处理中”还是“已休眠”。
-*   **原生融合**: 窗口必须完美融入 Linux 桌面环境，无丑陋的系统边框。
+**Nextalk's** design philosophy is **"Invisible but Powerful"**.
+It's not a traditional window that users stare at for long periods, but a **desktop spirit that comes when called and leaves when dismissed**. The UI must be extremely lightweight, minimally intrusive to the system, and provide delightful micro-interaction animations when it appears.
 
-## 2. 视觉规范 (Visual Guidelines)
+### Core Experience Goals
+* **Zero Disruption**: Hidden by default, no taskbar occupation, only tray presence.
+* **Instant Feedback**: Voice -> text conversion must have real-time visual flow.
+* **Clear State**: Users can perceive "listening", "processing", or "sleeping" with peripheral vision.
+* **Native Integration**: Window must perfectly blend into Linux desktop environment, no ugly system borders.
 
-### 2.1 调色板 (Color Palette)
+## 2. Visual Guidelines
 
-我们采用 **Dark Mode Only** 策略，确保在各种壁纸上都有良好的对比度和科技感。
+### 2.1 Color Palette
 
-| 颜色名称 | Hex / RGBA | 用途 |
+We adopt a **Dark Mode Only** strategy, ensuring good contrast and tech feel across various wallpapers.
+
+| Color Name | Hex / RGBA | Usage |
 | :--- | :--- | :--- |
-| **Capsule Bg** | `rgba(25, 25, 25, 0.95)` | 胶囊主背景，深灰微透 |
-| **Accent Red** | `#FF4757` | **核心状态色** (录音中/呼吸灯) |
-| **Text White** | `#FFFFFF` | 主文字颜色 |
-| **Text Hint** | `#A4B0BE` | 提示文字 / 光标颜色 |
-| **Border Glow** | `rgba(255, 255, 255, 0.2)` | 内发光描边，提升玻璃质感 |
-| **Shadow** | `rgba(0, 0, 0, 0.3)` | 外部柔和阴影，提供悬浮感 |
+| **Capsule Bg** | `rgba(25, 25, 25, 0.95)` | Main capsule background, dark gray with slight transparency |
+| **Accent Red** | `#FF4757` | **Core status color** (recording/breathing light) |
+| **Text White** | `#FFFFFF` | Main text color |
+| **Text Hint** | `#A4B0BE` | Hint text / cursor color |
+| **Border Glow** | `rgba(255, 255, 255, 0.2)` | Inner glow border, enhances glass texture |
+| **Shadow** | `rgba(0, 0, 0, 0.3)` | Soft outer shadow, provides floating feel |
 
-### 2.2 排版 (Typography)
+### 2.2 Typography
 
-*   **Font Family**: 优先 `Segoe UI` (如有)，回退到系统默认无衬线字体 (Sans-serif)。
-*   **Size**: `18px` (主文字)。
-*   **Weight**: `500` (Medium)。
-*   **Line Height**: `1.0` (紧凑，确保垂直居中)。
+* **Font Family**: Prefer `Segoe UI` (if available), fallback to system default sans-serif.
+* **Size**: `18px` (main text).
+* **Weight**: `500` (Medium).
+* **Line Height**: `1.0` (compact, ensures vertical centering).
 
-### 2.3 尺寸与布局 (Dimensions)
+### 2.3 Dimensions
 
-*   **Window Size**: `400x120` (逻辑像素，包含阴影区域的安全画布)。
-*   **Capsule Size**:
-    *   Height: `60px` (固定)。
-    *   Min Width: `280px`。
-    *   Max Width: `380px` (自适应内容)。
-*   **Radius**: `40px` (完全圆角)。
-*   **Padding**: 左右各 `25px`。
+* **Window Size**: `400x120` (logical pixels, safe canvas including shadow area).
+* **Capsule Size**:
+    * Height: `60px` (fixed).
+    * Min Width: `280px`.
+    * Max Width: `380px` (content-adaptive).
+* **Radius**: `40px` (fully rounded).
+* **Padding**: `25px` left and right.
 
-## 3. 核心界面设计 (Core Screens)
+## 3. Core Screens
 
-### 3.1 主胶囊窗口 (Main Capsule)
+### 3.1 Main Capsule
 
-这是用户 99% 时间看到的界面。
+This is the interface users see 99% of the time.
 
-**状态 A: 聆听中 (Listening / Active)**
-*   **左侧**: 红色实心圆点 (`#FF4757`, 30x30)。
-    *   *动画*: **呼吸** (Scale 1.0 -> 1.1 -> 1.0) + **波纹扩散** (Opacity 0.6 -> 0, Scale 1.0 -> 3.0, Curve: EaseOutQuad)。
-*   **中间**: 实时识别出的文字流。
-    *   *样式*: 白色，单行，超长省略 (Ellipsis)。
-    *   *动态*: 文字随语音逐字出现，平滑滚动。
-*   **右侧**: 闪烁光标 (`#A4B0BE`, 2px宽)。
-    *   *动画*: 1秒周期 Fade In/Out。
+**State A: Listening (Active)**
+* **Left**: Red solid circle (`#FF4757`, 30x30).
+    * *Animation*: **Breathing** (Scale 1.0 -> 1.1 -> 1.0) + **Ripple expansion** (Opacity 0.6 -> 0, Scale 1.0 -> 3.0, Curve: EaseOutQuad).
+* **Middle**: Real-time recognized text stream.
+    * *Style*: White, single line, ellipsis for overflow.
+    * *Dynamic*: Text appears character by character with voice, smooth scrolling.
+* **Right**: Blinking cursor (`#A4B0BE`, 2px wide).
+    * *Animation*: 1-second period Fade In/Out.
 
-**状态 B: 处理/提交中 (Processing)**
-*   **左侧**: 红色圆点转为 **转圈 Loading** 或 **快速脉冲**。
-*   **中间**: 文字颜色变暗 (`0.8` opacity)，表示正在上屏。
+**State B: Processing (Submitting)**
+* **Left**: Red dot changes to **spinning loader** or **rapid pulse**.
+* **Middle**: Text color dims (`0.8` opacity), indicating submission in progress.
 
-**状态 C: 错误/无权限 (Error)**
-*   **左侧**: 变为 **黄色** (警告) 或 **灰色** (无设备)。
-*   **中间**: 显示错误提示 (如 "麦克风不可用")。
+**State C: Error (No Permission)**
+* **Left**: Changes to **yellow** (warning) or **gray** (no device).
+* **Middle**: Shows error message (e.g., "Microphone unavailable").
 
-### 3.2 首次运行/下载页 (First Run / Download)
+### 3.2 First Run / Download Page
 
-当本地没有检测到 Sherpa 模型时触发。
+Triggered when no Sherpa model detected locally.
 
-*   **布局**: 保持胶囊形态，但可能稍微变宽。
-*   **内容**:
-    *   文字: "正在初始化模型 (45%)..."
-    *   进度条: 在胶囊底部或文字下方显示一条细细的红色进度条 (`#FF4757`)。
-*   **交互**: 不可关闭，下载完成后自动切换到“聆听中”或隐藏。
+* **Layout**: Maintains capsule form, but may be slightly wider.
+* **Content**:
+    * Text: "Initializing model (45%)..."
+    * Progress bar: Thin red progress bar (`#FF4757`) at capsule bottom or below text.
+* **Interaction**: Cannot be closed, auto-switches to "Listening" or hides after download complete.
 
-### 3.3 系统托盘 (System Tray)
+### 3.3 System Tray
 
-*   **图标**: 一个简约的麦克风图标 (单色或红色点缀)。
-*   **菜单项**:
-    *   **Nextalk** (禁用，仅作为标题)
-    *   ---
-    *   **显示 / 隐藏** (Show / Hide)
-    *   **设置...** (Settings - Post MVP)
-    *   ---
-    *   **退出** (Quit)
+* **Icon**: A minimalist microphone icon (monochrome or red accent).
+* **Menu Items**:
+    * **Nextalk** (disabled, title only)
+    * ---
+    * **Show / Hide**
+    * **Settings...** (Post MVP)
+    * ---
+    * **Quit**
 
-## 4. 交互流程 (Interaction Flows)
+## 4. Interaction Flows
 
-### 4.1 唤醒与输入 (Wake & Speak)
-1.  用户按下 `Right Alt`。
-2.  胶囊窗口 **瞬间出现** (无渐变，强调极速响应) 在屏幕中央（或上次记忆位置）。
-3.  伴随一声极轻的 "Pop" 音效 (可选，Post MVP)。
-4.  左侧红灯开始呼吸，波纹开始扩散。
-5.  用户说话 -> 文字流实时上屏。
+### 4.1 Wake & Speak
+1. User presses configured hotkey (e.g., `Ctrl+Alt+V`).
+2. Capsule window **instantly appears** (no fade, emphasizes speed) at screen center (or last remembered position).
+3. Accompanied by a very light "Pop" sound effect (optional, Post MVP).
+4. Left red light starts breathing, ripples start expanding.
+5. User speaks -> text stream appears in real-time.
 
-### 4.2 自动完成 (Auto Commit)
-1.  VAD 检测到静音 (>1.5s)。
-2.  红灯停止呼吸。
-3.  文字通过 Socket 发送给 Fcitx5。
-4.  窗口 **瞬间消失**。
+### 4.2 Auto Commit
+1. VAD detects silence (>1.5s).
+2. Red light stops breathing.
+3. Text sent to Fcitx5 via Socket.
+4. Window **instantly disappears**.
 
-### 4.3 手动完成 (Manual Commit)
-1.  用户再次按下 `Right Alt`。
-2.  立即停止录音。
-3.  强制提交当前文字。
-4.  窗口消失。
+### 4.3 Manual Commit
+1. User presses hotkey again.
+2. Immediately stops recording.
+3. Force submit current text.
+4. Window disappears.
 
-### 4.4 拖拽移动 (Drag to Move)
-1.  用户按住胶囊窗口任意空白处。
-2.  窗口跟随鼠标移动。
-3.  松开后，记录当前位置，下次唤醒出现在此位置。
+### 4.4 Drag to Move
+1. User holds any blank area of capsule window.
+2. Window follows mouse movement.
+3. On release, records current position, next wake appears at this position.
 
-## 5. 动画参数规范 (Animation Specs)
+## 5. Animation Specs
 
-为了方便开发还原，这里列出具体的 Flutter 动画参数：
+For development accuracy, here are specific Flutter animation parameters:
 
-*   **Wave (波纹)**:
-    *   `Duration`: `1500ms`
-    *   `Curve`: `Curves.easeOutQuad` (爆发感)
-    *   `Scale`: `1.0` -> `3.0`
-    *   `Opacity`: `0.5` -> `0.0`
-    *   `Repeat`: Loop
-*   **Cursor (光标)**:
-    *   `Duration`: `800ms`
-    *   `Curve`: `Curves.easeInOut`
-    *   `Opacity`: `1.0` <-> `0.0`
-    *   `Repeat`: Reverse
-*   **Core Pulse (红点心跳)**:
-    *   `Formula`: `1.0 + 0.1 * sin(t)` (正弦波律动)
+* **Wave (Ripple)**:
+    * `Duration`: `1500ms`
+    * `Curve`: `Curves.easeOutQuad` (burst feel)
+    * `Scale`: `1.0` -> `3.0`
+    * `Opacity`: `0.5` -> `0.0`
+    * `Repeat`: Loop
+* **Cursor**:
+    * `Duration`: `800ms`
+    * `Curve`: `Curves.easeInOut`
+    * `Opacity`: `1.0` <-> `0.0`
+    * `Repeat`: Reverse
+* **Core Pulse (Red dot heartbeat)**:
+    * `Formula`: `1.0 + 0.1 * sin(t)` (sine wave rhythm)
 
-## 6. 异常处理 (Error Handling UX)
+## 6. Error Handling UX
 
-| 场景 | 视觉反馈 | 行为 |
+| Scenario | Visual Feedback | Behavior |
 | :--- | :--- | :--- |
-| **PortAudio Init 失败** | 左侧灯变灰，文字显示 "音频设备异常" | 禁止录音，3秒后自动隐藏 |
-| **Model 加载失败** | 文字显示 "模型损坏，请重启" | 保持显示，直到用户退出 |
-| **Socket 连接断开** | 文字显示 "Fcitx5 未连接" | 尝试重连，允许录音但不提交 |
+| **PortAudio Init Failure** | Left light turns gray, text shows "Audio device error" | Recording disabled, auto-hide after 3s |
+| **Model Load Failure** | Text shows "Model corrupted, please restart" | Stays visible until user exits |
+| **Socket Connection Lost** | Text shows "Fcitx5 not connected" | Attempts reconnect, allows recording but no submission |

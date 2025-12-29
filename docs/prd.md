@@ -1,99 +1,99 @@
 # Product Requirements Document (PRD): Nextalk
 
-## 1. 目标与背景 (Goals and Background Context)
+[简体中文](prd_zh.md) | English
 
-### 目标 (Goals)
-*   **打造 Linux 标杆级语音输入体验**：填补 Linux 桌面端缺乏高质量、现代化语音输入工具的空白。
-*   **实现“极致透明”的视觉效果**：利用 Flutter 渲染特性，提供无边框、无背景伪影、带呼吸灯动画的现代化悬浮窗 UI。
-*   **保障隐私与高性能**：集成 Sherpa-onnx 离线模型，确保数据不出本地，并实现 <200ms 的上屏延迟。
-*   **实现“即说即打”的流畅交互**：通过智能 VAD（端点检测）实现自动断句和文本上屏。
-*   **无缝集成 Fcitx5**：通过现有的轻量级 C++ 插件和 Unix Domain Socket，实现与输入法框架的稳定通信。
+## 1. Goals and Background Context
 
-### 背景 (Background Context)
-Linux 用户缺乏美观且实用的语音输入工具。本项目 **Nextalk** 利用 Sherpa-onnx 的离线能力和 Flutter 的优秀渲染能力，构建一个生产力工具。项目采用 Monorepo 结构，包含现有的 Fcitx5 C++ 插件（后端）和全新的 Flutter 客户端（前端）。
+### Goals
+* **Build a benchmark voice input experience for Linux**: Fill the gap of lacking high-quality, modern voice input tools on Linux desktop.
+* **Achieve "ultimate transparency" visual effect**: Utilize Flutter rendering capabilities to provide borderless, background-artifact-free, breathing-animation modern floating window UI.
+* **Ensure privacy and high performance**: Integrate Sherpa-onnx offline model, ensuring data never leaves local machine, achieving <200ms input latency.
+* **Enable "speak-to-type" fluid interaction**: Implement intelligent VAD (endpoint detection) for automatic sentence breaks and text submission.
+* **Seamless Fcitx5 integration**: Stable communication with input method framework via existing lightweight C++ plugin and Unix Domain Socket.
 
-### 变更日志 (Change Log)
-| 日期 | 版本 | 说明 | 作者 |
+### Background Context
+Linux users lack beautiful and practical voice input tools. This project **Nextalk** leverages Sherpa-onnx's offline capabilities and Flutter's excellent rendering capabilities to build a productivity tool. The project uses Monorepo structure, containing existing Fcitx5 C++ plugin (backend) and new Flutter client (frontend).
+
+### Change Log
+| Date | Version | Description | Author |
 | :--- | :--- | :--- | :--- |
-| 2025-12-21 | 1.0 | 正式版：锁定 Flutter+Sherpa 方案，确认 C++ 插件已就绪 | PM (John) |
-| 2025-12-28 | 1.1 | SCP-002: 快捷键方案改为系统原生快捷键，新增剪贴板 fallback | PM (John) |
+| 2025-12-21 | 1.0 | Official release: Lock Flutter+Sherpa solution, confirm C++ plugin ready | PM (John) |
+| 2025-12-28 | 1.1 | SCP-002: Hotkey scheme changed to system native shortcuts, added clipboard fallback | PM (John) |
 
-## 2. 需求 (Requirements)
+## 2. Requirements
 
-### 2.1 功能性需求 (Functional Requirements)
+### 2.1 Functional Requirements
 
-*   **FR1 [UI/交互]: 悬浮胶囊窗口**
-    *   应用启动后默认隐藏，托盘显示图标。
-    *   激活时显示无边框、真透明胶囊窗口。
-    *   **实时反馈**：用户说话时，文字逐字显示在预览区。
-*   **FR2 [核心]: 实时语音识别 (ASR)**
-    *   **模型**：`sherpa-onnx-streaming-zipformer-bilingual-zh-en` (流式双语)。
-    *   **采集**：通过 Dart FFI + PortAudio 采集 16k 单声道音频。
-*   **FR3 [核心]: 智能端点检测 (VAD)**
-    *   使用 Sherpa 内置 VAD (默认停顿 ~1.5s 触发)。
-    *   检测到静音后，自动提交预览区文本。
-*   **FR4 [集成]: 文本上屏**
-    *   客户端通过 Unix Domain Socket 连接 `$XDG_RUNTIME_DIR/nextalk-fcitx5.sock`。
-    *   协议：`[4字节长度 (LE)] + [UTF-8 文本]`。
-    *   **注意**：直接调用 Fcitx5 接口提交，**不需要** ydotool 回退机制。
-*   **FR5 [系统]: 托盘管理**
-    *   支持显示/隐藏/退出。
-*   **FR6 [系统]: 全局快捷键**
-    *   **默认键位**：`Right Alt` (通过系统快捷键配置)。
-    *   **逻辑**：按下唤醒/开始录音；再次按下停止/上屏/隐藏。
-    *   支持配置文件自定义，支持运行时动态更新。
-    *   **实现方式**: 系统原生快捷键 (如 GNOME Settings → Keyboard → Custom Shortcuts) + `nextalk --toggle` 命令行参数。
-    *   > **SCP-002 变更**: 原 Fcitx5 插件侧快捷键监听和焦点锁定机制已移除，改为更简单的系统原生快捷键方案。
-*   **FR7 [系统]: 剪贴板 Fallback** *(SCP-002 新增)*
-    *   当 Fcitx5 插件不可用时，自动将识别文本复制到系统剪贴板。
-    *   UI 显示提示："已复制到剪贴板，请粘贴"。
-    *   2秒后自动隐藏窗口。
+* **FR1 [UI/Interaction]: Floating Capsule Window**
+    * App hidden by default after launch, tray icon displayed.
+    * When activated, shows borderless, true-transparent capsule window.
+    * **Real-time Feedback**: Text appears character by character in preview area as user speaks.
+* **FR2 [Core]: Real-time Speech Recognition (ASR)**
+    * **Model**: `sherpa-onnx-streaming-zipformer-bilingual-zh-en` (streaming bilingual).
+    * **Capture**: 16k mono audio via Dart FFI + PortAudio.
+* **FR3 [Core]: Intelligent Endpoint Detection (VAD)**
+    * Uses Sherpa built-in VAD (default ~1.5s pause triggers).
+    * Auto-submit preview text when silence detected.
+* **FR4 [Integration]: Text Submission**
+    * Client connects to `$XDG_RUNTIME_DIR/nextalk-fcitx5.sock` via Unix Domain Socket.
+    * Protocol: `[4-byte length (LE)] + [UTF-8 text]`.
+    * **Note**: Direct Fcitx5 interface submission, **no need** for ydotool fallback.
+* **FR5 [System]: Tray Management**
+    * Support show/hide/exit.
+* **FR6 [System]: Global Hotkey**
+    * **Logic**: Press to wake/start recording; press again to stop/submit/hide.
+    * **Implementation**: System native shortcuts (e.g., GNOME Settings → Keyboard → Custom Shortcuts) + `nextalk --toggle` command.
+    * > **SCP-002 Change**: Original Fcitx5 plugin-side hotkey listening removed, replaced with simpler system native shortcut scheme.
+* **FR7 [System]: Clipboard Fallback** *(SCP-002 New)*
+    * Auto-copy recognized text to system clipboard when Fcitx5 plugin unavailable.
+    * UI shows prompt: "Copied to clipboard, please paste".
+    * Auto-hide window after 2 seconds.
 
-### 2.2 非功能性需求 (Non-Functional Requirements)
-*   **NFR1**: 端到端延迟 < 200ms。
-*   **NFR2**: 纯离线推理，无网络请求。
-*   **NFR3**: 兼容 Ubuntu 22.04+ (X11/Wayland 原生支持，快捷键和文本提交均支持 Wayland)。
-*   **NFR4**: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)。
+### 2.2 Non-Functional Requirements
+* **NFR1**: End-to-end latency < 200ms.
+* **NFR2**: Pure offline inference, no network requests.
+* **NFR3**: Compatible with Ubuntu 22.04+ (X11/Wayland native support, shortcuts and text submission both support Wayland).
+* **NFR4**: Window launch without black frame flicker (based on C++ Runner modification).
 
-## 3. 用户界面设计目标 (UI Goals)
+## 3. UI Design Goals
 
-*   **视觉**：极简胶囊，深色半透明背景，白色内发光描边。
-*   **尺寸**：400x120 (逻辑像素)，胶囊高度 60px。
-*   **动画**：
-    *   **波纹**：EaseOutQuad 曲线扩散。
-    *   **呼吸**：红点随波纹律动。
-    *   **光标**：1s 周期闪烁。
+* **Visual**: Minimalist capsule, dark semi-transparent background, white inner-glow border.
+* **Size**: 400x120 (logical pixels), capsule height 60px.
+* **Animations**:
+    * **Ripple**: EaseOutQuad curve expansion.
+    * **Breathing**: Red dot rhythms with ripple.
+    * **Cursor**: 1s period blink.
 
-## 4. 技术假设 (Technical Assumptions)
+## 4. Technical Assumptions
 
-*   **仓库结构**: Monorepo
-    *   `/addons`: 现有的 C++ Fcitx5 插件源码。
-    *   `/voice_capsule`: Flutter 客户端源码。
-*   **核心栈**:
-    *   Flutter (Dart) + Linux C++ Runner (Modified)
-    *   Sherpa-onnx (C-API) via Dart FFI
-    *   PortAudio via Dart FFI
-    *   Unix Domain Socket IPC
+* **Repository Structure**: Monorepo
+    * `/addons`: Existing C++ Fcitx5 plugin source.
+    * `/voice_capsule`: Flutter client source.
+* **Core Stack**:
+    * Flutter (Dart) + Linux C++ Runner (Modified)
+    * Sherpa-onnx (C-API) via Dart FFI
+    * PortAudio via Dart FFI
+    * Unix Domain Socket IPC
 
-## 5. Epic 列表与详情 (Epics)
+## 5. Epic List and Details
 
-### Epic 1: 插件集成与 IPC (The Bridge)
-**状态**: *大部分已完成，需清理和集成*
-*   **Story 1.1 [Integration]**: 将现有的 `addons/fcitx5` 代码迁入项目结构，配置 CMake 构建流程。
-*   **Story 1.2 [Refactor]**: 清理 C++ 代码，移除 `ydotool` 回退逻辑（根据最新需求）。
-*   **Story 1.3 [Dev]**: 实现 Dart 端的 Socket Client，验证与 C++ 插件的通信（发送 Hello World 并上屏）。
-*   **Story 1.4 [DevOps]**: 编写 `scripts/install_addon.sh`，实现插件的一键编译和安装。
+### Epic 1: Plugin Integration and IPC (The Bridge)
+**Status**: *Mostly complete, needs cleanup and integration*
+* **Story 1.1 [Integration]**: Migrate existing `addons/fcitx5` code into project structure, configure CMake build flow.
+* **Story 1.2 [Refactor]**: Clean up C++ code, remove `ydotool` fallback logic (per latest requirements).
+* **Story 1.3 [Dev]**: Implement Dart-side Socket Client, verify communication with C++ plugin (send Hello World and display).
+* **Story 1.4 [DevOps]**: Write `scripts/install_addon.sh` for one-click plugin compilation and installation.
 
-### Epic 2: 听觉与大脑 (The Brain)
-**状态**: *待开发*
-*   **Story 2.1 [Infra]**: 配置 Flutter Linux 构建环境，链接 `libsherpa-onnx-c-api.so` 和 `libportaudio.so`。
-*   **Story 2.2 [FFI]**: 编写 Dart FFI Bindings，映射 Sherpa 和 PortAudio 的 C 函数。
-*   **Story 2.3 [Dev]**: 实现音频采集流 -> Sherpa 推理流的数据管道。
-*   **Story 2.4 [Dev]**: 实现 VAD 事件监听与处理。
+### Epic 2: Hearing and Brain (The Brain)
+**Status**: *To be developed*
+* **Story 2.1 [Infra]**: Configure Flutter Linux build environment, link `libsherpa-onnx-c-api.so` and `libportaudio.so`.
+* **Story 2.2 [FFI]**: Write Dart FFI Bindings, map Sherpa and PortAudio C functions.
+* **Story 2.3 [Dev]**: Implement audio capture stream -> Sherpa inference stream data pipeline.
+* **Story 2.4 [Dev]**: Implement VAD event listening and handling.
 
-### Epic 3: 融合与交付 (The Product)
-**状态**: *待开发*
-*   **Story 3.1 [UI]**: 迁移已验证的 Flutter UI 代码到主工程。
-*   **Story 3.2 [Logic]**: 串联 `Right Alt` -> 录音 -> 识别 -> Socket 上屏 的完整业务流。
-*   **Story 3.3 [Sys]**: 实现全局快捷键监听 (Rust FFI 或 C++ Runner 扩展)。
-*   **Story 3.4 [Sys]**: 完善托盘与窗口显隐逻辑。
+### Epic 3: Fusion and Delivery (The Product)
+**Status**: *To be developed*
+* **Story 3.1 [UI]**: Migrate verified Flutter UI code to main project.
+* **Story 3.2 [Logic]**: Chain complete business flow: `Right Alt` -> recording -> recognition -> Socket submission.
+* **Story 3.3 [Sys]**: Implement global hotkey listening (Rust FFI or C++ Runner extension).
+* **Story 3.4 [Sys]**: Complete tray and window show/hide logic.

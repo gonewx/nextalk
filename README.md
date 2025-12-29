@@ -1,25 +1,27 @@
 # Nextalk
 
-**专为 Linux 设计的高性能离线语音输入应用**
+**High-performance offline voice input for Linux**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-orange.svg)]()
 [![Wayland: Supported](https://img.shields.io/badge/Wayland-Supported-green.svg)]()
 
-将语音实时转换为文本，通过 Fcitx5 输入法框架输入到任意应用程序。完全离线运行，保护您的隐私。
+[简体中文](README_zh.md) | English
 
-## 特性
+Convert speech to text in real-time, input to any application via the Fcitx5 input method framework. Runs completely offline to protect your privacy.
 
-- **离线识别** - 基于 Sherpa-onnx 流式双语模型 (中/英)，数据不出本地
-- **极低延迟** - 端到端延迟 < 200ms，实时转录体验
-- **透明悬浮窗** - 无边框胶囊 UI，呼吸灯动画，不干扰工作流程
-- **Wayland 原生支持** - 系统快捷键和文本提交均支持 Wayland
-- **焦点锁定** - 录音时切换窗口，文本仍提交到原窗口
-- **模型可选** - 支持 int8 (快速) / standard (高精度) 模型切换
+## Features
 
-## 快速开始
+- **Offline Recognition** - Based on Sherpa-onnx streaming bilingual model (Chinese/English), data never leaves your device
+- **Ultra-low Latency** - End-to-end latency < 200ms for real-time transcription
+- **Transparent Floating Window** - Borderless capsule UI with breathing animation, minimal workflow disruption
+- **Native Wayland Support** - System shortcuts and text submission both support Wayland
+- **Focus Lock** - Switch windows while recording, text still submits to the original window
+- **Model Options** - Switch between int8 (fast) / standard (high accuracy) models
 
-### 安装
+## Quick Start
+
+### Installation
 
 **Ubuntu/Debian:**
 
@@ -33,164 +35,162 @@ sudo dpkg -i nextalk_0.1.0-1_amd64.deb
 sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 ```
 
-安装后 Fcitx5 会自动重启以加载插件。
+Fcitx5 will automatically restart after installation to load the plugin.
 
-### 配置快捷键
+### Configure Hotkey
 
-应用通过系统全局快捷键触发，需手动配置：
+The app is triggered via system global hotkey, manual configuration required:
 
 **GNOME:**
 
-1. 设置 → 键盘 → 查看和自定义快捷键 → 自定义快捷键
-2. 点击"添加快捷键"
-3. 名称: `Nextalk 语音输入`
-4. 命令: `nextalk --toggle`
-5. 快捷键: 按下 `Ctrl+Alt+V` (推荐)
+1. Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts
+2. Click "Add Shortcut"
+3. Name: `Nextalk Voice Input`
+4. Command: `nextalk --toggle`
+5. Shortcut: Press `Ctrl+Alt+V` (recommended)
 
 **KDE Plasma:**
 
-1. 系统设置 → 快捷键 → 自定义快捷键
-2. 编辑 → 新建 → 全局快捷键 → 命令/URL
-3. 触发器: 设置为 `Ctrl+Alt+V`
-4. 动作: `nextalk --toggle`
+1. System Settings → Shortcuts → Custom Shortcuts
+2. Edit → New → Global Shortcut → Command/URL
+3. Trigger: Set to `Ctrl+Alt+V`
+4. Action: `nextalk --toggle`
 
-### 使用
+### Usage
 
-1. **启动应用** - 从应用菜单启动 Nextalk，或运行 `nextalk`
-2. **按下快捷键** - 悬浮窗出现并开始录音
-3. **说话** - 实时看到识别的文字
-4. **再次按下快捷键** - 停止录音，文字自动输入到当前应用
-5. **或等待自动提交** - 停顿后自动提交文字
+1. **Launch App** - Start Nextalk from app menu, or run `nextalk`
+2. **Press Hotkey** - Floating window appears and starts recording
+3. **Speak** - See recognized text in real-time
+4. **Press Hotkey Again** - Stop recording, text auto-inputs to current app
+5. **Or Wait for Auto-submit** - Text submits automatically after pause
 
-> **首次运行**: 应用会自动下载语音识别模型 (~200MB)
+> **First Run**: The app will automatically download the speech recognition model (~200MB)
 
-### 命令行参数
+### Command Line Options
 
-| 参数 | 说明 |
-|------|------|
-| `--toggle` | 切换录音状态 (推荐用于快捷键) |
-| `--show` | 显示窗口并开始录音 |
-| `--hide` | 隐藏窗口并停止录音 |
+| Option | Description |
+|--------|-------------|
+| `--toggle` | Toggle recording state (for system hotkey) |
 
-### 非 Fcitx5 环境
+### Non-Fcitx5 Environment
 
-如果未安装 Fcitx5，应用自动使用剪贴板模式：
-- 识别的文字会复制到系统剪贴板
-- UI 显示"已复制到剪贴板"提示
-- 手动粘贴 (`Ctrl+V`) 到目标应用
+If Fcitx5 is not installed, the app automatically uses clipboard mode:
+- Recognized text is copied to system clipboard
+- UI shows "Copied to clipboard" prompt
+- Manually paste (`Ctrl+V`) to target application
 
-### 系统托盘
+### System Tray
 
-应用支持系统托盘（在支持的桌面环境中），右键菜单提供:
+The app supports system tray (on supported desktop environments), right-click menu provides:
 
-- 显示/隐藏窗口
-- 切换模型版本
-- 打开配置目录
-- 退出应用
+- Show/Hide window
+- Switch model version
+- Open config directory
+- Exit app
 
-> **注意**: GNOME 桌面不显示托盘图标是正常的，应用仍可通过 `nextalk --toggle` 命令使用。
+> **Note**: It's normal that GNOME desktop doesn't show tray icon, the app can still be used via `nextalk --toggle` command.
 
-## 系统要求
+## System Requirements
 
-| 组件 | 要求 |
-|------|------|
-| **操作系统** | Linux (Ubuntu 22.04+ 推荐) |
-| **显示服务** | X11 或 Wayland |
-| **音频系统** | ALSA 或 PulseAudio |
-| **输入法** | Fcitx5 |
+| Component | Requirement |
+|-----------|-------------|
+| **OS** | Linux (Ubuntu 22.04+ recommended) |
+| **Display Server** | X11 or Wayland |
+| **Audio System** | ALSA or PulseAudio |
+| **Input Method** | Fcitx5 |
 
-## 配置
+## Configuration
 
-### 模型设置
+### Model Settings
 
-通过系统托盘菜单切换：
+Switch via system tray menu:
 
-| 版本 | 说明 |
-|------|------|
-| `int8` | 量化版本，速度快，内存占用小 (默认) |
-| `standard` | 标准版本，识别精度更高 |
+| Version | Description |
+|---------|-------------|
+| `int8` | Quantized version, faster, smaller memory footprint (default) |
+| `standard` | Standard version, higher recognition accuracy |
 
-### 配置文件
+### Config File
 
-高级配置: `~/.config/nextalk/settings.yaml`
+Advanced configuration: `~/.config/nextalk/settings.yaml`
 
 ```yaml
 model:
-  custom_url: ""    # 自定义模型下载地址
-  type: int8        # 模型版本: int8 | standard
+  custom_url: ""    # Custom model download URL
+  type: int8        # Model version: int8 | standard
 
 hotkey:
-  key: v            # 主键 (仅供显示，实际由系统快捷键控制)
-  modifiers:        # 修饰键
+  key: v            # Main key (display only, actual key controlled by system shortcut)
+  modifiers:        # Modifier keys
     - ctrl
     - alt
 ```
 
-## 从源码构建
+## Build from Source
 
-### 前置条件
+### Prerequisites
 
 ```bash
 # Ubuntu/Debian
 sudo apt install fcitx5 fcitx5-dev libportaudio2 portaudio19-dev cmake build-essential
 
-# 安装 Flutter: https://flutter.dev/docs/get-started/install/linux
+# Install Flutter: https://flutter.dev/docs/get-started/install/linux
 ```
 
-### 本地构建
+### Local Build
 
 ```bash
-# 使用 Makefile (推荐)
+# Using Makefile (recommended)
 make build
 
-# 或分步构建
-make build-flutter    # Flutter 客户端
-make build-addon      # Fcitx5 插件
+# Or build separately
+make build-flutter    # Flutter client
+make build-addon      # Fcitx5 plugin
 ```
 
-### Docker 构建 (跨发行版兼容)
+### Docker Build (Cross-distro Compatible)
 
-推荐使用 Docker 构建以确保跨发行版兼容性：
+Recommended to use Docker build for cross-distribution compatibility:
 
 ```bash
-# 增量编译 (推荐)
+# Incremental build (recommended)
 make docker-build
 
-# 重新完整编译
+# Full rebuild
 make docker-rebuild
 
-# 只编译 Flutter
+# Flutter only
 make docker-build-flutter
 
-# 只编译插件
+# Plugin only
 make docker-build-addon
 ```
 
-### 安装插件
+### Install Plugin
 
 ```bash
-make install-addon          # 用户级安装
-make install-addon-system   # 系统级安装 (需要 sudo)
+make install-addon          # User-level installation
+make install-addon-system   # System-level installation (requires sudo)
 ```
 
-### 运行
+### Run
 
 ```bash
-make run          # 开发模式
-make run-release  # Release 版本
+make run          # Development mode
+make run-release  # Release version
 ```
 
-### 构建安装包
+### Build Packages
 
 ```bash
-./scripts/build-pkg.sh --deb   # DEB 包
-./scripts/build-pkg.sh --rpm   # RPM 包
-./scripts/build-pkg.sh --all   # 全部格式
+./scripts/build-pkg.sh --deb   # DEB package
+./scripts/build-pkg.sh --rpm   # RPM package
+./scripts/build-pkg.sh --all   # All formats
 ```
 
-输出位于 `dist/` 目录。
+Output in `dist/` directory.
 
-## 卸载
+## Uninstall
 
 **Ubuntu/Debian:**
 
@@ -204,89 +204,87 @@ sudo dpkg -r nextalk
 sudo rpm -e nextalk
 ```
 
-用户数据保留在 `~/.local/share/nextalk/`，如需完全清理请手动删除。
+User data is preserved at `~/.local/share/nextalk/`, delete manually for complete cleanup.
 
-## 项目结构
+## Project Structure
 
 ```
 nextalk/
-├── voice_capsule/        # Flutter 客户端
+├── voice_capsule/        # Flutter client
 │   └── lib/
-│       ├── main.dart     # 入口
-│       ├── ffi/          # FFI 绑定 (sherpa, portaudio)
-│       ├── services/     # 业务逻辑
-│       │   ├── asr/      # ASR 引擎抽象层
-│       │   └── ...       # 其他服务
-│       ├── ui/           # Widget 组件
-│       └── l10n/         # 国际化
-├── addons/fcitx5/        # Fcitx5 C++ 插件
-├── docs/                 # 设计文档
-├── scripts/              # 构建脚本
-├── libs/                 # 预编译动态库
-├── packaging/            # DEB/RPM 模板
-└── Makefile              # 构建入口
+│       ├── main.dart     # Entry point
+│       ├── ffi/          # FFI bindings (sherpa, portaudio)
+│       ├── services/     # Business logic
+│       │   ├── asr/      # ASR engine abstraction
+│       │   └── ...       # Other services
+│       ├── ui/           # Widget components
+│       └── l10n/         # Internationalization
+├── addons/fcitx5/        # Fcitx5 C++ plugin
+├── docs/                 # Design documents
+├── scripts/              # Build scripts
+├── libs/                 # Precompiled dynamic libraries
+├── packaging/            # DEB/RPM templates
+└── Makefile              # Build entry
 ```
 
-详细架构设计: [docs/architecture.md](docs/architecture.md)
+Detailed architecture: [docs/architecture.md](docs/architecture.md)
 
-## 开发
+## Development
 
 ```bash
-make test       # 运行测试
-make analyze    # 代码分析
-make clean      # 清理构建
-make help       # 查看所有命令
+make test       # Run tests
+make analyze    # Code analysis
+make clean      # Clean build
+make help       # Show all commands
 ```
 
-## 常见问题
+## FAQ
 
-### 系统托盘图标不显示 (GNOME/Fedora)
+### System Tray Icon Not Showing (GNOME/Fedora)
 
-GNOME 桌面默认不显示系统托盘图标，这是正常现象。应用仍可通过命令行正常使用：
+GNOME desktop doesn't show system tray icons by default, this is normal. The app can still be used via command line:
 
 ```bash
-nextalk --toggle  # 切换录音状态
-nextalk --show    # 开始录音
-nextalk --hide    # 停止录音
+nextalk --toggle  # Toggle recording state
 ```
 
-> **⚠️ 注意**: 不建议安装 AppIndicator 扩展，可能导致应用崩溃。如果已安装且出现崩溃，请参考下一节。
+> **⚠️ Note**: Installing AppIndicator extension is not recommended, may cause app crashes. If already installed and experiencing crashes, see next section.
 
-### 应用启动时崩溃 (段错误)
+### App Crashes on Startup (Segfault)
 
-如果安装了 AppIndicator 扩展后应用崩溃，可禁用托盘功能：
+If app crashes after installing AppIndicator extension, disable tray functionality:
 
 ```bash
 NEXTALK_NO_TRAY=1 nextalk
 ```
 
-配置系统快捷键时使用：
+When configuring system shortcut:
 
 ```bash
 env NEXTALK_NO_TRAY=1 /opt/nextalk/nextalk --toggle
 ```
 
-### 快捷键不响应
+### Hotkey Not Responding
 
-1. 确认已在系统设置中配置快捷键 (命令: `nextalk --toggle`)
-2. 确认 Nextalk 应用正在运行 (检查系统托盘)
-3. 测试命令行: `nextalk --toggle`
+1. Confirm hotkey is configured in system settings (command: `nextalk --toggle`)
+2. Confirm Nextalk app is running (check system tray)
+3. Test command line: `nextalk --toggle`
 
-### 文字无法输入到应用
+### Text Not Inputting to App
 
-确保 Fcitx5 插件已正确安装：
+Ensure Fcitx5 plugin is correctly installed:
 
 ```bash
 ls ~/.local/lib/fcitx5/libnextalk.so
 ls ~/.local/share/fcitx5/addon/nextalk.conf
-fcitx5 -r  # 重启 Fcitx5
+fcitx5 -r  # Restart Fcitx5
 ```
 
-如果不使用 Fcitx5，应用会自动使用剪贴板模式。
+If not using Fcitx5, the app will automatically use clipboard mode.
 
-### 模型下载失败
+### Model Download Failed
 
-配置自定义下载地址或使用代理：
+Configure custom download URL or use proxy:
 
 ```yaml
 # ~/.config/nextalk/settings.yaml
@@ -294,32 +292,32 @@ model:
   custom_url: "https://your-mirror/model.tar.bz2"
 ```
 
-### 音频设备问题
+### Audio Device Issues
 
 ```bash
-pactl list sources  # 检查麦克风设备
+pactl list sources  # Check microphone devices
 ```
 
-## 贡献
+## Contributing
 
-欢迎贡献代码、报告问题或提出建议！
+Contributions, bug reports, and suggestions are welcome!
 
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送分支 (`git push origin feature/amazing-feature`)
-5. 创建 Pull Request
+1. Fork this repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push branch (`git push origin feature/amazing-feature`)
+5. Create Pull Request
 
-## 致谢
+## Acknowledgments
 
-- [Sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - 高性能离线语音识别引擎
-- [Fcitx5](https://github.com/fcitx/fcitx5) - 现代化输入法框架
-- [Flutter](https://flutter.dev) - 跨平台 UI 框架
+- [Sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - High-performance offline speech recognition engine
+- [Fcitx5](https://github.com/fcitx/fcitx5) - Modern input method framework
+- [Flutter](https://flutter.dev) - Cross-platform UI framework
 
-## 许可证
+## License
 
 [MIT License](LICENSE)
 
 ---
 
-**问题反馈**: [GitHub Issues](../../issues)
+**Issue Feedback**: [GitHub Issues](../../issues)

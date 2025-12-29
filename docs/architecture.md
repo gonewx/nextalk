@@ -1,297 +1,298 @@
-# 架构文档: Nextalk
+# Architecture Document: Nextalk
 
-| 日期       | 版本 | 说明 | 作者 |
-| :---       | :--- | :--- | :--- |
-| 2025-12-21 | 1.1  | 完整架构设计 (Flutter/C++混合架构，模型动态下载) | 架构师 (Winston) |
-| 2025-12-28 | 2.0  | 极简架构重构 (SCP-002: 移除快捷键监听，使用系统原生快捷键) | 架构师 (Winston) |
+[简体中文](architecture_zh.md) | English
 
-## 1. 简介 (Introduction)
+| Date | Version | Description | Author |
+| :--- | :--- | :--- | :--- |
+| 2025-12-21 | 1.1 | Complete architecture design (Flutter/C++ hybrid, dynamic model download) | Architect (Winston) |
+| 2025-12-28 | 2.0 | Minimal architecture refactor (SCP-002: Remove hotkey listener, use system native shortcuts) | Architect (Winston) |
 
-**Nextalk** 是一款专为 Linux 设计的高性能语音输入应用，采用混合架构 (Hybrid Architecture)。它结合了现代化的 **Flutter** 前端（负责 UI、流程编排和 AI 推理）与原生的 **C++** 引擎（Fcitx5 插件）来提供系统级输入能力。
+## 1. Introduction
 
-系统设计为 **Monorepo (单体仓库)**，包含两个通过 IPC 通信的独立进程：
-1.  **Voice Capsule (客户端)**: 一个独立的 Flutter 桌面应用，负责 UI 显示、音频采集、模型管理和语音识别。
-2.  **Nextalk Addon (服务端)**: 一个轻量级的 Fcitx5 插件，负责接收指令并将文本注入到目标应用程序。
+**Nextalk** is a high-performance voice input application designed specifically for Linux, using a Hybrid Architecture. It combines a modern **Flutter** frontend (responsible for UI, orchestration, and AI inference) with a native **C++** engine (Fcitx5 plugin) to provide system-level input capabilities.
 
-## 2. 高层架构 (High Level Architecture)
+The system is designed as a **Monorepo**, containing two independent processes communicating via IPC:
+1. **Voice Capsule (Client)**: A standalone Flutter desktop application responsible for UI display, audio capture, model management, and speech recognition.
+2. **Nextalk Addon (Server)**: A lightweight Fcitx5 plugin responsible for receiving commands and injecting text into target applications.
 
-### 2.1 系统上下文图
+## 2. High Level Architecture
+
+### 2.1 System Context Diagram
 
 ```mermaid
 graph TD
-    User[用户语音] --> Mic[麦克风]
-    Mic --> Audio[PortAudio (C语言库)]
+    User[User Voice] --> Mic[Microphone]
+    Mic --> Audio[PortAudio (C Library)]
 
-    subgraph "进程 A: Voice Capsule (Flutter)"
-        Audio -- "FFI (零拷贝)" --> Logic[Dart 业务逻辑]
-        Logic -- "FFI (零拷贝)" --> Sherpa[Sherpa-onnx (AI 引擎)]
-        Sherpa -- "文本流" --> Logic
-        Logic -- "状态更新" --> UI[透明胶囊窗口]
-        Logic -- "文本 Socket" --> IPC_Text[文本发送]
-        SingleInstance[单实例管理] -- "--toggle 命令" --> Logic
-        ModelMgr[模型管理器] -- "下载/校验" --> Storage[本地存储 (~/.local)]
+    subgraph "Process A: Voice Capsule (Flutter)"
+        Audio -- "FFI (Zero-copy)" --> Logic[Dart Business Logic]
+        Logic -- "FFI (Zero-copy)" --> Sherpa[Sherpa-onnx (AI Engine)]
+        Sherpa -- "Text Stream" --> Logic
+        Logic -- "State Update" --> UI[Transparent Capsule Window]
+        Logic -- "Text Socket" --> IPC_Text[Text Send]
+        SingleInstance[Single Instance Manager] -- "--toggle command" --> Logic
+        ModelMgr[Model Manager] -- "Download/Verify" --> Storage[Local Storage (~/.local)]
     end
 
-    subgraph "进程 B: Fcitx5 守护进程"
-        IPC_Text -- "nextalk-fcitx5.sock" --> IPC_Server[Nextalk 插件]
-        IPC_Server -- "commitString" --> TargetApp[当前活动窗口]
+    subgraph "Process B: Fcitx5 Daemon"
+        IPC_Text -- "nextalk-fcitx5.sock" --> IPC_Server[Nextalk Plugin]
+        IPC_Server -- "commitString" --> TargetApp[Current Active Window]
     end
 
-    subgraph "系统快捷键"
-        SystemShortcut[GNOME/KDE 快捷键设置] -- "nextalk --toggle" --> SingleInstance
+    subgraph "System Shortcuts"
+        SystemShortcut[GNOME/KDE Shortcut Settings] -- "nextalk --toggle" --> SingleInstance
     end
 
-    subgraph "Fallback 路径"
-        Logic -- "Fcitx5 不可用" --> Clipboard[系统剪贴板]
-        Clipboard -- "用户手动粘贴" --> TargetApp
+    subgraph "Fallback Path"
+        Logic -- "Fcitx5 Unavailable" --> Clipboard[System Clipboard]
+        Clipboard -- "User Manual Paste" --> TargetApp
     end
 ```
 
-> **SCP-002 变更说明**: 快捷键监听已从 Fcitx5 插件移除，改为使用系统原生快捷键配置（如 GNOME Settings → Keyboard → Custom Shortcuts）调用 `nextalk --toggle` 命令。
+> **SCP-002 Change Note**: Hotkey listening has been removed from the Fcitx5 plugin, replaced with system native shortcut configuration (e.g., GNOME Settings → Keyboard → Custom Shortcuts) calling `nextalk --toggle` command.
 
-### 2.2 目录结构 (Monorepo)
+### 2.2 Directory Structure (Monorepo)
 
-项目采用严格的 Monorepo 结构，分离前后端代码与外部依赖。
+The project uses a strict Monorepo structure, separating frontend/backend code and external dependencies.
 
 ```text
 nextalk/
-├── docs/                     # 设计文档 (PRD, 架构文档)
-├── scripts/                  # DevOps 脚本 (安装插件, 编译辅助)
-├── libs/                     # 外部预编译动态库 (.so)
+├── docs/                     # Design documents (PRD, Architecture)
+├── scripts/                  # DevOps scripts (install plugin, build helpers)
+├── libs/                     # External precompiled dynamic libraries (.so)
 │   ├── libsherpa-onnx-c-api.so
 │   └── libonnxruntime.so
-├── addons/                   # [后端] Fcitx5 C++ 插件
+├── addons/                   # [Backend] Fcitx5 C++ plugin
 │   └── fcitx5/
 │       ├── CMakeLists.txt
-│       └── src/              # 原生 C++ 实现 (nextalk.cpp)
-└── voice_capsule/            # [前端] Flutter 客户端
+│       └── src/              # Native C++ implementation (nextalk.cpp)
+└── voice_capsule/            # [Frontend] Flutter client
     ├── pubspec.yaml
-    ├── linux/                # Linux 构建配置 (需修改 CMakeLists.txt)
-    ├── assets/               # 仅包含图标、字体等轻量资源 (不含模型)
+    ├── linux/                # Linux build config (CMakeLists.txt modification needed)
+    ├── assets/               # Only icons, fonts and lightweight resources (no models)
     └── lib/
-        ├── main.dart         # UI 入口
-        ├── ffi/              # 原生绑定层 ("大脑"的神经连接)
+        ├── main.dart         # UI entry
+        ├── ffi/              # Native binding layer ("brain" neural connections)
         │   ├── sherpa_ffi.dart
         │   └── portaudio_ffi.dart
-        ├── constants/        # 常量定义
-        │   ├── settings_constants.dart  # 设置服务常量与模型类型枚举
-        │   └── tray_constants.dart      # 系统托盘菜单常量
-        ├── services/         # 业务逻辑
+        ├── constants/        # Constant definitions
+        │   ├── settings_constants.dart  # Settings service constants and model type enums
+        │   └── tray_constants.dart      # System tray menu constants
+        ├── services/         # Business logic
         │   ├── sherpa_service.dart
-        │   ├── model_manager.dart   # 模型下载与管理
-        │   ├── settings_service.dart # 配置管理服务
-        │   ├── tray_service.dart    # 系统托盘服务
+        │   ├── model_manager.dart   # Model download and management
+        │   ├── settings_service.dart # Configuration management service
+        │   ├── tray_service.dart    # System tray service
         │   └── fcitx_client.dart
-        └── ui/               # Widget 组件定义
+        └── ui/               # Widget component definitions
 ```
 
-## 3. 技术栈 (Technology Stack)
+## 3. Technology Stack
 
-| 组件 | 技术 | 版本 | 选型理由 |
+| Component | Technology | Version | Selection Rationale |
 | :--- | :--- | :--- | :--- |
-| **前端 UI** | Flutter (Dart) | 3.x+ | 提供 Linux 上最佳的真透明、无边框渲染能力。 |
-| **ASR 引擎** | Sherpa-onnx | 最新版 | 高性能、离线、支持流式识别，提供标准 C-API。 |
-| **音频采集** | PortAudio | v19 | Linux 跨平台音频 I/O 的行业标准 (兼容 ALSA/Pulse)。 |
-| **语言绑定** | `dart:ffi` | Native | 与 C 库进行零开销互操作。 |
-| **进程通信** | Unix Domain Socket | 标准 | 简单、安全、低延迟的本地通信方案。 |
-| **后端插件** | C++ | C++17 | 开发 Fcitx5 原生插件的硬性要求。 |
+| **Frontend UI** | Flutter (Dart) | 3.x+ | Best true-transparent, borderless rendering on Linux. |
+| **ASR Engine** | Sherpa-onnx | Latest | High-performance, offline, streaming support, standard C-API. |
+| **Audio Capture** | PortAudio | v19 | Industry standard for cross-platform audio I/O on Linux (ALSA/Pulse compatible). |
+| **Language Binding** | `dart:ffi` | Native | Zero-overhead interop with C libraries. |
+| **IPC** | Unix Domain Socket | Standard | Simple, secure, low-latency local communication. |
+| **Backend Plugin** | C++ | C++17 | Hard requirement for Fcitx5 native plugins. |
 
-## 4. 核心组件设计 (Core Component Design)
+## 4. Core Component Design
 
-### 4.1 Fcitx5 插件与协议
+### 4.1 Fcitx5 Plugin and Protocol
 
-**角色**: 文本注入服务。接收 Flutter 客户端发送的文本，并通过 Fcitx5 的 `commitString` 接口注入到目标应用程序。
+**Role**: Text injection service. Receives text from Flutter client and injects into target application via Fcitx5's `commitString` interface.
 
-> **SCP-002 简化**: 插件职责已简化为仅处理文本提交，移除了快捷键监听和配置同步功能。
+> **SCP-002 Simplification**: Plugin responsibilities simplified to text submission only, hotkey listening and config sync removed.
 
-#### 4.1.1 Socket 架构
+#### 4.1.1 Socket Architecture
 
-插件使用单一 Unix Domain Socket 实现通信：
+Plugin uses a single Unix Domain Socket for communication:
 
-| Socket 路径 | 方向 | 用途 | 协议 |
+| Socket Path | Direction | Purpose | Protocol |
 | :--- | :--- | :--- | :--- |
-| `$XDG_RUNTIME_DIR/nextalk-fcitx5.sock` | Flutter → 插件 | 文本提交 | 长度前缀 + UTF-8 |
+| `$XDG_RUNTIME_DIR/nextalk-fcitx5.sock` | Flutter → Plugin | Text submission | Length-prefix + UTF-8 |
 
-*   **传输层**: Unix Domain Socket (Stream 模式)。
-*   **安全性**: Socket 文件权限必须设为 `0600` (仅所有者读写)。
-*   **协议定义**:
+* **Transport Layer**: Unix Domain Socket (Stream mode).
+* **Security**: Socket file permissions must be `0600` (owner read/write only).
+* **Protocol Definition**:
 
-| 偏移量 | 类型 | 大小 | 描述 |
+| Offset | Type | Size | Description |
 | :--- | :--- | :--- | :--- |
-| 0 | `uint32` | 4 | **长度 (Length)** (小端序 Little Endian)。后续字符串的字节长度。 |
-| 4 | `bytes` | N | **载荷 (Payload)**。UTF-8 编码的文本。 |
+| 0 | `uint32` | 4 | **Length** (Little Endian). Byte length of following string. |
+| 4 | `bytes` | N | **Payload**. UTF-8 encoded text. |
 
-#### 4.1.2 快捷键方案
+#### 4.1.2 Hotkey Scheme
 
-**SCP-002 变更**: 快捷键监听已从 Fcitx5 插件移除，改为系统原生快捷键方案：
+**SCP-002 Change**: Hotkey listening removed from Fcitx5 plugin, replaced with system native shortcut scheme:
 
-*   **配置方式**: GNOME Settings → Keyboard → Custom Shortcuts
-*   **命令**: `nextalk --toggle`
-*   **支持的参数**: `--toggle` (切换录音), `--show` (显示窗口), `--hide` (隐藏窗口)
+* **Configuration**: GNOME Settings → Keyboard → Custom Shortcuts (or equivalent in KDE/other DEs)
+* **Command**: `nextalk --toggle`
 
-**单实例管理**:
-*   应用启动时检测是否已有实例运行
-*   如有运行实例，通过 Unix Socket (`$XDG_RUNTIME_DIR/nextalk.sock`) 发送命令
-*   单实例 Socket 用于应用内部通信，与 Fcitx5 插件 Socket 独立
+**Single Instance Management**:
+* App checks for existing instance on startup
+* If running, sends command via Unix Socket (`$XDG_RUNTIME_DIR/nextalk.sock`)
+* Single instance socket for internal app communication, independent from Fcitx5 plugin socket
 
-#### 4.1.3 剪贴板 Fallback
+#### 4.1.3 Clipboard Fallback
 
-当 Fcitx5 插件不可用时（非 Fcitx5 环境或插件未加载），系统自动启用剪贴板回退：
+When Fcitx5 plugin is unavailable (non-Fcitx5 environment or plugin not loaded), system auto-enables clipboard fallback:
 
-1. 检测 Fcitx5 Socket 是否存在
-2. 如不存在，将识别文本复制到系统剪贴板
-3. UI 显示提示："已复制到剪贴板，请粘贴"
-4. 2秒后自动隐藏窗口
+1. Check if Fcitx5 Socket exists
+2. If not, copy recognized text to system clipboard
+3. UI shows prompt: "Copied to clipboard, please paste"
+4. Auto-hide window after 2 seconds
 
-#### 4.1.4 文本提交流程 (IME 周期模拟)
+#### 4.1.4 Text Submission Flow (IME Cycle Simulation)
 
-为确保终端等应用正确处理输入，`commitText` 模拟完整的 IME 周期：
+To ensure terminals and similar apps correctly handle input, `commitText` simulates complete IME cycle:
 
-1. **设置 Preedit**: 告诉应用"正在输入"
-2. **提交文本**: 调用 `commitString()`
-3. **清空 Preedit**: 完成输入周期
+1. **Set Preedit**: Tell app "currently inputting"
+2. **Commit Text**: Call `commitString()`
+3. **Clear Preedit**: Complete input cycle
 
-### 4.2 音频与 AI 流水线 (零拷贝 FFI)
+### 4.2 Audio and AI Pipeline (Zero-copy FFI)
 
-为了满足 **NFR1 (延迟 < 200ms)**，音频流水线必须最大限度减少内存拷贝。
+To meet **NFR1 (Latency < 200ms)**, audio pipeline must minimize memory copies.
 
-1.  **内存分配**: Dart 使用 `calloc` 分配一块堆外内存缓冲区 (`Pointer<Float>`)。
-2.  **采集**: Dart 将此指针传递给 PortAudio 的 `Pa_ReadStream`。C 代码直接将 PCM 数据写入该内存地址。
-3.  **推理**: Dart 将**同一个指针**传递给 Sherpa 的 `AcceptWaveform`。在流处理期间，Dart/C 边界之间没有数据拷贝发生。
-4.  **结果**: 只有当 Sherpa 返回识别出的文本结果时，才将文本字符串复制到 Dart 托管内存中供 UI 显示。
+1. **Memory Allocation**: Dart allocates off-heap buffer (`Pointer<Float>`) using `calloc`.
+2. **Capture**: Dart passes this pointer to PortAudio's `Pa_ReadStream`. C code writes PCM data directly to this memory address.
+3. **Inference**: Dart passes **same pointer** to Sherpa's `AcceptWaveform`. During streaming, no data copy occurs between Dart/C boundary.
+4. **Result**: Only when Sherpa returns recognized text is the string copied to Dart managed memory for UI display.
 
-**并发模型**:
-*   **Main Isolate (主线程)**: 音频读取和推理调用虽然是阻塞的，但速度极快 (处理 100ms 音频块通常 <10ms)。为了简化架构，MVP 阶段运行在主 Isolate 中。
-*   **Fallback (兜底)**: 如果在低端硬件上出现 UI 掉帧，则将该流水线移至 `Isolate.spawn` 后台运行。
+**Concurrency Model**:
+* **Main Isolate**: Audio reading and inference calls are blocking but extremely fast (processing 100ms audio chunk typically <10ms). For simplicity, MVP runs in main Isolate.
+* **Fallback**: If UI frame drops occur on low-end hardware, move pipeline to `Isolate.spawn` background.
 
-### 4.3 FFI 接口定义
+### 4.3 FFI Interface Definition
 
-Dart FFI 绑定必须镜像 Sherpa-onnx 的 C-API。
+Dart FFI bindings must mirror Sherpa-onnx's C-API.
 
 ```dart
-// 绑定结构概念示例
+// Binding structure concept example
 typedef AcceptWaveformC = Void Function(Pointer<Void> stream, Int32 sampleRate, Pointer<Float> buffer, Int32 n);
 typedef AcceptWaveformDart = void Function(Pointer<Void> stream, int sampleRate, Pointer<Float> buffer, int n);
 
 class SherpaService {
   late DynamicLibrary _lib;
   late AcceptWaveformDart _acceptWaveform;
-  
+
   void feedAudio(Pointer<Float> data, int samples) {
     _acceptWaveform(_stream, 16000, data, samples);
   }
 }
 ```
 
-### 4.4 模型管理 (Model Management)
+### 4.4 Model Management
 
-为了减小安装包体积，模型文件采用 **"首次运行下载" (Download-on-Demand)** 策略。
+To reduce installation package size, model files use **"Download-on-Demand"** strategy.
 
-1.  **存储路径**: 遵循 XDG Base Directory 规范。
-    *   路径: `$XDG_DATA_HOME/nextalk/models` (默认 `~/.local/share/nextalk/models`)
-2.  **启动流程**:
-    *   App 启动 -> 检查模型文件完整性。
-    *   **缺失**: 跳转至 `DownloadPage`，下载并解压模型包。
-    *   **存在**: 初始化 Sherpa 引擎 -> 进入主界面。
-3.  **模型源**: 托管于 HuggingFace 或 GitHub Releases 的 `zipformer` 压缩包。
-4.  **自定义 URL**: 支持通过配置文件指定自定义模型下载地址。
+1. **Storage Path**: Follows XDG Base Directory specification.
+   * Path: `$XDG_DATA_HOME/nextalk/models` (default `~/.local/share/nextalk/models`)
+2. **Startup Flow**:
+   * App starts -> Check model file integrity.
+   * **Missing**: Navigate to `DownloadPage`, download and extract model package.
+   * **Present**: Initialize Sherpa engine -> Enter main interface.
+3. **Model Source**: `zipformer` package hosted on HuggingFace or GitHub Releases.
+4. **Custom URL**: Support custom model download URL via config file.
 
-### 4.5 配置服务 (Settings Service)
+### 4.5 Settings Service
 
-配置服务提供模型版本选择和高级配置管理功能。
+Settings service provides model version selection and advanced configuration management.
 
-**架构设计**:
-*   **双层存储**: 运行时配置使用 `SharedPreferences`，高级配置使用 YAML 文件。
-*   **热切换**: 支持运行时切换模型版本，无需重启应用。
-*   **XDG 规范**: 配置文件路径遵循 XDG Base Directory 规范。
+**Architecture Design**:
+* **Dual-layer Storage**: Runtime config uses `SharedPreferences`, advanced config uses YAML file.
+* **Hot Switch**: Support runtime model version switching without app restart.
+* **XDG Spec**: Config file path follows XDG Base Directory specification.
 
-**配置文件结构**:
+**Config File Structure**:
 
 ```yaml
 # ~/.config/nextalk/settings.yaml
 model:
-  # 自定义模型下载地址 (留空使用默认地址)
+  # Custom model download URL (leave empty for default)
   custom_url: ""
 
-  # 模型版本: int8 | standard
-  # int8: 量化版本，速度快，内存占用小
-  # standard: 标准版本，精度高
+  # Model version: int8 | standard
+  # int8: Quantized version, faster, smaller memory
+  # standard: Standard version, higher accuracy
   type: int8
 ```
 
-**模型版本**:
+**Model Versions**:
 
-| 版本 | 特点 | 适用场景 |
+| Version | Features | Use Case |
 | :--- | :--- | :--- |
-| `int8` | 量化模型，体积小，推理快 | 日常使用，低配置设备 |
-| `standard` | 标准模型，精度高 | 需要高识别准确率的场景 |
+| `int8` | Quantized model, smaller size, faster inference | Daily use, low-spec devices |
+| `standard` | Standard model, higher accuracy | Scenarios requiring high recognition accuracy |
 
-**热切换流程**:
+**Hot Switch Flow**:
 
 ```mermaid
 sequenceDiagram
-    participant User as 用户
-    participant Tray as 系统托盘
+    participant User as User
+    participant Tray as System Tray
     participant Settings as SettingsService
     participant Pipeline as AudioInferencePipeline
     participant Sherpa as SherpaService
 
-    User->>Tray: 选择模型版本
+    User->>Tray: Select model version
     Tray->>Settings: switchModelType(newType)
     Settings->>Pipeline: onModelSwitch(newType)
-    Pipeline->>Pipeline: stop() (如正在运行)
+    Pipeline->>Pipeline: stop() (if running)
     Pipeline->>Sherpa: dispose()
-    Pipeline->>Sherpa: 创建新实例
-    Pipeline->>Pipeline: start() (如之前在运行)
-    Pipeline-->>Settings: 切换完成
-    Settings-->>Tray: 更新菜单状态
+    Pipeline->>Sherpa: Create new instance
+    Pipeline->>Pipeline: start() (if was running)
+    Pipeline-->>Settings: Switch complete
+    Settings-->>Tray: Update menu state
 ```
 
-**系统托盘集成**:
-*   提供"模型设置"子菜单
-*   支持 int8/standard 版本切换 (复选框)
-*   提供"打开配置目录"快捷操作
+**System Tray Integration**:
+* Provides "Model Settings" submenu
+* Supports int8/standard version switching (checkbox)
+* Provides "Open Config Directory" quick action
 
-## 5. 基础设施与构建系统
+## 5. Infrastructure and Build System
 
-### 5.1 库链接策略
+### 5.1 Library Linking Strategy
 
-Flutter 的 Linux 构建使用 CMake。我们需要确保外部 `.so` 库被正确打包。
+Flutter's Linux build uses CMake. We need to ensure external `.so` libraries are correctly packaged.
 
-**链接配置 (`linux/CMakeLists.txt`)**:
-1.  **系统库**: `libportaudio.so` 从系统动态链接 (假设用户已通过 `apt` 安装)。
-2.  **打包库**: `libsherpa-onnx-c-api.so` 从项目的 `libs/` 目录复制到构建产物中。
+**Linking Config (`linux/CMakeLists.txt`)**:
+1. **System Libraries**: `libportaudio.so` dynamically linked from system (assumes user installed via `apt`).
+2. **Bundled Libraries**: `libsherpa-onnx-c-api.so` copied from project's `libs/` directory to build artifacts.
 
-### 5.2 RPATH 配置
+### 5.2 RPATH Configuration
 
-确保二进制文件在运行时能找到打包的库：
+Ensure binary can find bundled libraries at runtime:
 
 ```cmake
-# 在 linux/CMakeLists.txt 中
+# In linux/CMakeLists.txt
 install(FILES "${PROJECT_SOURCE_DIR}/../libs/libsherpa-onnx-c-api.so"
         DESTINATION "${CMAKE_INSTALL_PREFIX}/lib"
         COMPONENT Runtime)
 
-# 设置 RPATH，让程序去可执行文件旁的 'lib' 目录查找依赖
+# Set RPATH to look for dependencies in 'lib' directory next to executable
 set(CMAKE_INSTALL_RPATH "$ORIGIN/lib")
 ```
 
-### 5.3 发布包布局
+### 5.3 Release Bundle Layout
 
-最终的构建产物 (Bundle) 结构如下，体积保持轻量化：
+Final build artifact (Bundle) structure, keeping lightweight:
 
 ```text
 bundle/
-├── nextalk              # 可执行文件
+├── nextalk              # Executable
 ├── lib/
-│   ├── libsherpa-onnx-c-api.so  # 私有依赖库
+│   ├── libsherpa-onnx-c-api.so  # Private dependency library
 │   └── libflutter_linux_gtk.so
-└── data/                # Flutter 自身资源 (不含模型)
+└── data/                # Flutter's own resources (no models)
 ```
 
-## 6. 安全与错误处理
+## 6. Security and Error Handling
 
-*   **Socket 权限**: C++ 插件必须强制对 Socket 文件执行 `chmod 600`，防止其他用户的进程注入恶意指令。
-*   **网络权限**: Flutter 客户端需要联网权限以执行模型下载。
-*   **音频故障**: 如果 PortAudio 无法打开流 (例如设备被独占)，UI 必须显示视觉错误指示 (例如红灯变黄/灰)。
-*   **下载校验**: 下载后必须校验 SHA256，防止文件损坏导致引擎崩溃。
+* **Socket Permissions**: C++ plugin must enforce `chmod 600` on Socket file, preventing other users' processes from injecting malicious commands.
+* **Network Permissions**: Flutter client needs network permission for model download.
+* **Audio Failure**: If PortAudio cannot open stream (e.g., device exclusive), UI must show visual error indication (e.g., red light turns yellow/gray).
+* **Download Verification**: Must verify SHA256 after download, preventing corrupted files from crashing engine.

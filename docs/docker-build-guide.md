@@ -1,201 +1,203 @@
-# Docker 跨发行版编译指南
+# Docker Cross-Distribution Build Guide
 
-本文档介绍如何使用 Docker 容器化编译环境构建 Nextalk，确保编译产物可在多个 Linux 发行版上运行。
+[简体中文](docker-build-guide_zh.md) | English
 
-## 为什么使用 Docker 编译
+This document describes how to use Docker containerized build environment to build Nextalk, ensuring build artifacts run on multiple Linux distributions.
 
-在高版本系统（如 Ubuntu 24.04、Fedora 40+）上编译的二进制文件可能依赖新版 GLib 符号（如 `g_once_init_enter_pointer`），导致无法在旧版系统上运行。
+## Why Use Docker Build
 
-Docker 编译环境基于 Ubuntu 22.04，产物兼容以下系统：
+Binaries compiled on newer systems (like Ubuntu 24.04, Fedora 40+) may depend on new GLib symbols (like `g_once_init_enter_pointer`), preventing them from running on older systems.
 
-| 发行版 | 兼容性 |
-|--------|--------|
+Docker build environment is based on Ubuntu 22.04, artifacts compatible with:
+
+| Distribution | Compatibility |
+|--------------|---------------|
 | Ubuntu 22.04+ | ✅ |
 | Ubuntu 24.04 | ✅ |
 | Fedora 40/41 | ✅ |
 | Debian 12 | ✅ |
 
-## 前置条件
+## Prerequisites
 
-- Docker 已安装并运行
-- 约 4GB 磁盘空间（用于 Docker 镜像）
+- Docker installed and running
+- About 4GB disk space (for Docker image)
 
-验证 Docker 是否可用：
+Verify Docker is available:
 
 ```bash
 docker info
 ```
 
-## 快速开始
+## Quick Start
 
-### 编译全部组件
-
-```bash
-./scripts/docker-build.sh
-```
-
-首次运行会自动构建 Docker 镜像，后续运行直接使用缓存镜像。
-
-### 编译产物路径
-
-| 组件 | 路径 |
-|------|------|
-| Flutter 应用 | `voice_capsule/build/linux/x64/release/bundle/` |
-| Fcitx5 插件 | `addons/fcitx5/build/` |
-
-## 命令选项
-
-```bash
-./scripts/docker-build.sh [选项]
-```
-
-| 选项 | 说明 |
-|------|------|
-| `--flutter-only` | 只编译 Flutter 应用 |
-| `--plugin-only` | 只编译 Fcitx5 插件 |
-| `--clean` | 清理缓存后全量编译 |
-| `--rebuild-image` | 强制重建 Docker 镜像 |
-| `--with-proxy` | 使用代理（`http://host.docker.internal:2080`） |
-| `-h, --help` | 显示帮助信息 |
-
-## 常用场景
-
-### 日常开发（增量编译）
+### Build All Components
 
 ```bash
 ./scripts/docker-build.sh
 ```
 
-默认增量编译，速度较快。
+First run will automatically build Docker image, subsequent runs use cached image.
 
-### 发布构建（全量编译）
+### Build Artifact Paths
+
+| Component | Path |
+|-----------|------|
+| Flutter App | `voice_capsule/build/linux/x64/release/bundle/` |
+| Fcitx5 Plugin | `addons/fcitx5/build/` |
+
+## Command Options
+
+```bash
+./scripts/docker-build.sh [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--flutter-only` | Build Flutter app only |
+| `--plugin-only` | Build Fcitx5 plugin only |
+| `--clean` | Clean cache before full build |
+| `--rebuild-image` | Force rebuild Docker image |
+| `--with-proxy` | Use proxy (`http://host.docker.internal:2080`) |
+| `-h, --help` | Show help message |
+
+## Common Scenarios
+
+### Daily Development (Incremental Build)
+
+```bash
+./scripts/docker-build.sh
+```
+
+Default incremental build, faster.
+
+### Release Build (Full Build)
 
 ```bash
 ./scripts/docker-build.sh --clean
 ```
 
-清理所有缓存后重新编译，确保产物干净。
+Clean all cache before rebuilding, ensures clean artifacts.
 
-### 只编译 Flutter 应用
+### Flutter App Only
 
 ```bash
 ./scripts/docker-build.sh --flutter-only
 ```
 
-### 只编译 Fcitx5 插件
+### Fcitx5 Plugin Only
 
 ```bash
 ./scripts/docker-build.sh --plugin-only
 ```
 
-### 网络环境需要代理
+### Network Requires Proxy
 
 ```bash
 ./scripts/docker-build.sh --with-proxy
 ```
 
-代理地址：`http://host.docker.internal:2080`
+Proxy address: `http://host.docker.internal:2080`
 
-### 更新编译环境
+### Update Build Environment
 
-当 Dockerfile 有变更时，重建镜像：
+When Dockerfile changes, rebuild image:
 
 ```bash
 ./scripts/docker-build.sh --rebuild-image
 ```
 
-## 与本地编译的关系
+## Relationship with Local Build
 
-| 脚本 | 用途 | 使用场景 |
-|------|------|----------|
-| `scripts/docker-build.sh` | Docker 容器内编译 | **发布构建**、跨发行版兼容、CI/CD |
-| `scripts/build-pkg.sh` | 本地编译 + 打包 DEB/RPM | 开发机环境匹配目标系统时 |
+| Script | Purpose | Use Case |
+|--------|---------|----------|
+| `scripts/docker-build.sh` | Build in Docker container | **Release builds**, cross-distro compatibility, CI/CD |
+| `scripts/build-pkg.sh` | Local build + DEB/RPM packaging | When dev machine matches target system |
 
-**推荐工作流程：**
+**Recommended Workflow:**
 
-1. 日常开发：直接使用 `flutter build` 或本地编译
-2. 发布构建：先用 `docker-build.sh` 编译，再用 `build-pkg.sh --skip-build` 打包
+1. Daily development: Use `flutter build` directly or local build
+2. Release build: First use `docker-build.sh` to compile, then use `build-pkg.sh --skip-build` to package
 
-## 验证编译产物
+## Verify Build Artifacts
 
-检查产物是否包含问题符号（应无输出）：
+Check if artifacts contain problematic symbols (should have no output):
 
 ```bash
-# Flutter 应用
+# Flutter app
 nm -D voice_capsule/build/linux/x64/release/bundle/lib/*.so 2>/dev/null | grep g_once_init_enter_pointer
 
-# Fcitx5 插件
+# Fcitx5 plugin
 nm -D addons/fcitx5/build/libnextalk.so | grep g_once_init_enter_pointer
 ```
 
-## 故障排除
+## Troubleshooting
 
-### Docker daemon 未运行
+### Docker daemon not running
 
 ```
-错误: Docker daemon 未运行
+Error: Docker daemon not running
 ```
 
-**解决：** 启动 Docker 服务
+**Solution:** Start Docker service
 
 ```bash
 sudo systemctl start docker
 ```
 
-### 镜像构建失败（网络问题）
+### Image build failed (network issues)
 
-**解决：** 使用代理
+**Solution:** Use proxy
 
 ```bash
 ./scripts/docker-build.sh --rebuild-image --with-proxy
 ```
 
-### 编译产物权限问题
+### Build artifact permission issues
 
-脚本使用 `--user $(id -u):$(id -g)` 运行容器，编译产物所有权应与当前用户一致。如仍有问题：
+Script runs container with `--user $(id -u):$(id -g)`, artifact ownership should match current user. If issues persist:
 
 ```bash
 sudo chown -R $(id -u):$(id -g) voice_capsule/build addons/fcitx5/build
 ```
 
-### 缓存导致编译问题
+### Cache causing build issues
 
-**解决：** 使用清理模式
+**Solution:** Use clean mode
 
 ```bash
 ./scripts/docker-build.sh --clean
 ```
 
-## 技术细节
+## Technical Details
 
-### Docker 镜像信息
+### Docker Image Info
 
-- **镜像名称：** `nextalk-builder:u22`
-- **基础镜像：** Ubuntu 22.04
-- **Flutter 版本：** 3.32.5
-- **Fcitx5 开发库：** 5.0.14
-- **镜像大小：** 约 3.8GB
+- **Image Name:** `nextalk-builder:u22`
+- **Base Image:** Ubuntu 22.04
+- **Flutter Version:** 3.32.5
+- **Fcitx5 Dev Library:** 5.0.14
+- **Image Size:** ~3.8GB
 
-### 编译环境包含
+### Build Environment Includes
 
-- Flutter Linux 桌面开发工具链
-- C++ 编译工具（clang, cmake, ninja-build）
-- Fcitx5 开发库
-- PortAudio 开发库（libportaudio2, portaudio19-dev）
-- System Tray 依赖（libayatana-appindicator3）
+- Flutter Linux desktop development toolchain
+- C++ compilation tools (clang, cmake, ninja-build)
+- Fcitx5 development libraries
+- PortAudio development libraries (libportaudio2, portaudio19-dev)
+- System Tray dependencies (libayatana-appindicator3)
 
-### 打包的运行时库
+### Bundled Runtime Libraries
 
-编译产物 `bundle/lib/` 包含以下库，无需目标系统安装：
+Build artifact `bundle/lib/` includes these libraries, no target system installation needed:
 
-| 库 | 用途 |
-|----|------|
-| libsherpa-onnx-c-api.so | 语音识别引擎 |
-| libonnxruntime.so | ONNX 推理运行时 |
-| libportaudio.so.2 | 音频采集 |
+| Library | Purpose |
+|---------|---------|
+| libsherpa-onnx-c-api.so | Speech recognition engine |
+| libonnxruntime.so | ONNX inference runtime |
+| libportaudio.so.2 | Audio capture |
 
 ---
 
-**相关文档：**
+**Related Documents:**
 
-- [docs/research/docker_build.md](research/docker_build.md) - Docker 编译方案研究
+- [docs/research/docker_build.md](research/docker_build.md) - Docker build solution research

@@ -1,119 +1,121 @@
-# 开发踩坑记录
+# Development Pitfalls Record
 
-本文档记录 Nextalk 开发过程中遇到的技术问题、根因分析及解决方案，供后续维护参考。
+[简体中文](development-pitfalls_zh.md) | English
 
----
-
-## 目录
-
-- [Flutter system_tray 库 Linux Checkbox 状态 Bug](#flutter-system_tray-库-linux-checkbox-状态-bug)
+This document records technical issues encountered during Nextalk development, root cause analysis, and solutions for future maintenance reference.
 
 ---
 
-## Flutter system_tray 库 Linux Checkbox 状态 Bug
+## Table of Contents
 
-### 问题描述
+- [Flutter system_tray Library Linux Checkbox State Bug](#flutter-system_tray-library-linux-checkbox-state-bug)
 
-在 Linux 环境下使用 `system_tray` 包（v2.0.3）时，托盘菜单中的 `MenuItemCheckbox` 组件无法正确更新选中状态。
+---
 
-**表现**：
-- 代码逻辑正确传入 `checked: false`，但 UI 上仍显示为选中（打勾）状态
-- 多个互斥的 checkbox 项同时显示为选中状态
-- 重建菜单后问题依然存在
+## Flutter system_tray Library Linux Checkbox State Bug
 
-### 复现场景
+### Problem Description
+
+When using the `system_tray` package (v2.0.3) on Linux, the `MenuItemCheckbox` component in tray menus cannot correctly update checked state.
+
+**Symptoms**:
+- Code logic correctly passes `checked: false`, but UI still shows as checked (ticked)
+- Multiple mutually exclusive checkbox items simultaneously show as checked
+- Problem persists after rebuilding menu
+
+### Reproduction Scenario
 
 ```dart
-// 代码逻辑正确
+// Code logic is correct
 final senseChecked = actualEngine == EngineType.sensevoice;  // false
 final zipStdChecked = actualEngine == EngineType.zipformer;  // true
 
 MenuItemCheckbox(
   label: 'SenseVoice',
-  checked: senseChecked,  // 传入 false
+  checked: senseChecked,  // passes false
   onClicked: (_) => _switchEngine(EngineType.sensevoice),
 ),
 ```
 
-日志输出确认值正确：
+Log output confirms correct values:
 ```
 [TrayService._buildMenu] zipInt8=false, zipStd=true, sense=false
 ```
 
-但托盘菜单中 SenseVoice 和 Zipformer 子项**同时显示勾选**。
+But tray menu shows both SenseVoice and Zipformer items **simultaneously checked**.
 
-### 根因分析
+### Root Cause Analysis
 
-通过分析 `system_tray` 库的 Linux 原生实现（`~/.pub-cache/hosted/pub.dev/system_tray-2.0.3/linux/`）发现：
+By analyzing `system_tray` library's Linux native implementation (`~/.pub-cache/hosted/pub.dev/system_tray-2.0.3/linux/`):
 
-1. **菜单缓存未清理**：`MenuManager::menus_map_` 静态 Map 会累积旧菜单，旧菜单的 GTK widget 可能仍被引用
-2. **GTK checkbox 状态残留**：`tray.cc` 的 `set_context_menu()` 方法只是简单调用 `app_indicator_set_menu_()`，没有正确销毁旧的 GTK 菜单或重置 checkbox 状态
-3. **menu_id 递增但旧菜单未删除**：每次 `buildFrom()` 时 `_menuId` 递增，但 `menus_map_` 中的旧条目未被清理
+1. **Menu cache not cleared**: `MenuManager::menus_map_` static Map accumulates old menus, old menu GTK widgets may still be referenced
+2. **GTK checkbox state residue**: `tray.cc`'s `set_context_menu()` method simply calls `app_indicator_set_menu_()`, doesn't properly destroy old GTK menu or reset checkbox state
+3. **menu_id increments but old menus not deleted**: Each `buildFrom()` increments `_menuId`, but old entries in `menus_map_` not cleaned up
 
-关键代码位置：
-- `tray.cc:set_context_menu()` - 未清理旧菜单
-- `menu_manager.cc:add_menu()` - 使用 `emplace` 只添加不替换
-- `menu.cc:value_to_menu_item()` - checkbox 创建逻辑本身正确
+Key code locations:
+- `tray.cc:set_context_menu()` - doesn't clean old menu
+- `menu_manager.cc:add_menu()` - uses `emplace` which only adds, doesn't replace
+- `menu.cc:value_to_menu_item()` - checkbox creation logic itself is correct
 
-### 解决方案
+### Solution
 
-**采用方案**：用 `MenuItemLabel` + 标记符号代替 `MenuItemCheckbox`，避开库的 bug。
+**Adopted Solution**: Use `MenuItemLabel` + marker symbols instead of `MenuItemCheckbox` to avoid the library bug.
 
 ```dart
-// 修改前（有 bug）
+// Before (buggy)
 MenuItemCheckbox(
   label: lang.tr('tray_engine_sensevoice'),
   checked: actualEngine == EngineType.sensevoice,
   onClicked: (_) => _switchEngine(EngineType.sensevoice),
 ),
 
-// 修改后（workaround）
+// After (workaround)
 MenuItemLabel(
   label: '${senseChecked ? "● " : ""}${lang.tr('tray_engine_sensevoice')}',
   onClicked: (_) => _switchEngine(EngineType.sensevoice),
 ),
 ```
 
-**效果**：
-- 选中项显示 `● SenseVoice (离线)`
-- 未选中项显示 `SenseVoice (离线)`
-- 状态更新可靠
+**Result**:
+- Selected item shows `● SenseVoice (Offline)`
+- Unselected item shows `SenseVoice (Offline)`
+- State updates reliably
 
-### 相关文件
+### Related Files
 
-- `voice_capsule/lib/services/tray_service.dart` - 托盘服务实现
-- 库源码：`~/.pub-cache/hosted/pub.dev/system_tray-2.0.3/linux/`
+- `voice_capsule/lib/services/tray_service.dart` - Tray service implementation
+- Library source: `~/.pub-cache/hosted/pub.dev/system_tray-2.0.3/linux/`
 
-### 备选方案（未采用）
+### Alternative Solutions (Not Adopted)
 
-1. **销毁并重建整个托盘**：调用 `SystemTray.destroy()` 后重新 `initSystemTray()`，但会造成托盘图标闪烁
-2. **换用 tray_manager 库**：另一个托盘库，有明确的 checkbox 支持，但需要评估迁移成本
-3. **提交 PR 修复上游**：修复 `system_tray` 库的 Linux 实现，长期方案
+1. **Destroy and rebuild entire tray**: Call `SystemTray.destroy()` then re-init `initSystemTray()`, but causes tray icon flicker
+2. **Switch to tray_manager library**: Another tray library with explicit checkbox support, but requires migration cost evaluation
+3. **Submit PR to fix upstream**: Fix `system_tray` library's Linux implementation, long-term solution
 
 ---
 
-## 文档维护
+## Document Maintenance
 
-遇到新的踩坑问题时，请按以下模板添加：
+When encountering new pitfalls, please add using this template:
 
 ```markdown
-## [问题标题]
+## [Problem Title]
 
-### 问题描述
-[简要描述问题表现]
+### Problem Description
+[Brief description of symptoms]
 
-### 复现场景
-[代码示例或操作步骤]
+### Reproduction Scenario
+[Code example or steps]
 
-### 根因分析
-[技术层面的原因分析]
+### Root Cause Analysis
+[Technical analysis of the cause]
 
-### 解决方案
-[采用的解决方案及代码示例]
+### Solution
+[Adopted solution with code example]
 
-### 相关文件
-[涉及的源码文件路径]
+### Related Files
+[Involved source file paths]
 
-### 备选方案（未采用）
-[其他考虑过的方案]
+### Alternative Solutions (Not Adopted)
+[Other considered solutions]
 ```
