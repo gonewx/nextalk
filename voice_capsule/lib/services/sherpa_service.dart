@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 
 import '../ffi/sherpa_ffi.dart';
-import '../ffi/sherpa_onnx_bindings.dart';
 
 /// Sherpa 服务配置
 class SherpaConfig {

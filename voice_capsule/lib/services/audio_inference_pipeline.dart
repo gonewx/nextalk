@@ -2,8 +2,6 @@ import 'dart:async';
 
 import '../constants/settings_constants.dart';
 import 'asr/asr_engine.dart';
-import 'asr/asr_engine_factory.dart';
-import 'asr/zipformer_engine.dart';
 import 'audio_capture.dart';
 import 'model_manager.dart';
 import 'settings_service.dart';
@@ -499,7 +497,8 @@ class AudioInferencePipeline {
       // 首帧处理完成后，通知 start() 可以返回
       if (isFirstChunk) {
         isFirstChunk = false;
-        if (_firstChunkCompleter != null && !_firstChunkCompleter!.isCompleted) {
+        if (_firstChunkCompleter != null &&
+            !_firstChunkCompleter!.isCompleted) {
           _firstChunkCompleter!.complete();
         }
       }
@@ -580,8 +579,7 @@ class AudioInferencePipeline {
 
     if (samplesRead > 0) {
       // 同一指针传给 ASREngine (零拷贝)
-      _asrEngine.acceptWaveform(
-          AudioConfig.sampleRate, buffer, samplesRead);
+      _asrEngine.acceptWaveform(AudioConfig.sampleRate, buffer, samplesRead);
 
       // 解码并获取结果 (仅当有足够数据时)
       while (_asrEngine.isReady()) {
@@ -709,7 +707,8 @@ class AudioInferencePipeline {
 
       if (enableDebugLog) {
         // ignore: avoid_print
-        print('[Pipeline] 🎯 VAD 端点 (PTT累积=$isPttAccumulateMode): "${finalResult.text}"');
+        print(
+            '[Pipeline] 🎯 VAD 端点 (PTT累积=$isPttAccumulateMode): "${finalResult.text}"');
       }
 
       // 4. 根据配置决定后续行为

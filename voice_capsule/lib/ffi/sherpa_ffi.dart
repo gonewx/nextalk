@@ -1,6 +1,6 @@
 /// Sherpa-onnx FFI 绑定入口
 /// 基于官方 flutter/sherpa_onnx 包，针对 Nextalk 项目定制
-library sherpa_ffi;
+library;
 
 import 'dart:ffi';
 import 'dart:io';

@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 
 import '../../ffi/sherpa_ffi.dart';
-import '../../ffi/sherpa_onnx_bindings.dart';
 import 'asr_engine.dart';
 
 /// Zipformer 流式 ASR 引擎
@@ -103,10 +102,10 @@ class ZipformerEngine implements ASREngine {
 
     // 2. 查找模型文件
     _useInt8Model = config.useInt8Model;
-    final encoderPath =
-        _findModelFile(config.modelDir, 'encoder', useInt8: config.useInt8Model);
-    final decoderPath =
-        _findModelFile(config.modelDir, 'decoder', useInt8: config.useInt8Model);
+    final encoderPath = _findModelFile(config.modelDir, 'encoder',
+        useInt8: config.useInt8Model);
+    final decoderPath = _findModelFile(config.modelDir, 'decoder',
+        useInt8: config.useInt8Model);
     final joinerPath =
         _findModelFile(config.modelDir, 'joiner', useInt8: config.useInt8Model);
     final tokensPath = '${config.modelDir}/tokens.txt';
@@ -272,7 +271,8 @@ class ZipformerEngine implements ASREngine {
   @override
   void acceptWaveform(int sampleRate, Pointer<Float> samples, int n) {
     if (!_isInitialized || _stream == null) return;
-    SherpaOnnxBindings.onlineStreamAcceptWaveform(_stream!, sampleRate, samples, n);
+    SherpaOnnxBindings.onlineStreamAcceptWaveform(
+        _stream!, sampleRate, samples, n);
   }
 
   @override

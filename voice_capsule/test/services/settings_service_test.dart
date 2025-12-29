@@ -45,8 +45,7 @@ void main() {
     });
 
     test('defaultSettingsYaml 包含 engine 配置项', () {
-      expect(
-          SettingsConstants.defaultSettingsYaml, contains('engine:'));
+      expect(SettingsConstants.defaultSettingsYaml, contains('engine:'));
     });
 
     test('defaultSettingsYaml 默认引擎为 sensevoice (AC5)', () {
@@ -56,27 +55,24 @@ void main() {
     });
 
     test('defaultSettingsYaml 包含 zipformer 配置块', () {
-      expect(
-          SettingsConstants.defaultSettingsYaml, contains('zipformer:'));
+      expect(SettingsConstants.defaultSettingsYaml, contains('zipformer:'));
     });
 
     test('defaultSettingsYaml 包含 sensevoice 配置块', () {
-      expect(
-          SettingsConstants.defaultSettingsYaml, contains('sensevoice:'));
+      expect(SettingsConstants.defaultSettingsYaml, contains('sensevoice:'));
     });
 
     test('defaultSettingsYaml sensevoice 配置包含 use_itn', () {
-      expect(
-          SettingsConstants.defaultSettingsYaml, contains('use_itn:'));
+      expect(SettingsConstants.defaultSettingsYaml, contains('use_itn:'));
     });
 
     test('defaultSettingsYaml sensevoice 配置包含 language', () {
-      expect(
-          SettingsConstants.defaultSettingsYaml, contains('language:'));
+      expect(SettingsConstants.defaultSettingsYaml, contains('language:'));
     });
 
     test('defaultEngineType 为 sensevoice', () {
-      expect(SettingsConstants.defaultEngineType, equals(EngineType.sensevoice));
+      expect(
+          SettingsConstants.defaultEngineType, equals(EngineType.sensevoice));
     });
 
     test('keyEngineType 键名正确', () {
@@ -98,7 +94,8 @@ void main() {
 
       // 由于 SettingsService 是单例，我们只测试默认值逻辑
       // engineType getter 在没有存储值时应返回默认值
-      expect(SettingsConstants.defaultEngineType, equals(EngineType.sensevoice));
+      expect(
+          SettingsConstants.defaultEngineType, equals(EngineType.sensevoice));
     });
 
     test('EngineType 可以通过 name 解析', () {
@@ -119,9 +116,8 @@ void main() {
       expect(parsed.isEmpty, isTrue);
 
       // 当解析失败时应使用默认值
-      final result = parsed.isEmpty
-          ? SettingsConstants.defaultEngineType
-          : parsed.first;
+      final result =
+          parsed.isEmpty ? SettingsConstants.defaultEngineType : parsed.first;
       expect(result, equals(EngineType.sensevoice));
     });
   });
@@ -139,9 +135,9 @@ void main() {
 
     test('EngineSwitchCallback 可以处理 zipformer', () async {
       EngineType? receivedType;
-      final callback = (EngineType newType) async {
+      callback(EngineType newType) async {
         receivedType = newType;
-      };
+      }
 
       await callback(EngineType.zipformer);
       expect(receivedType, equals(EngineType.zipformer));
@@ -149,9 +145,9 @@ void main() {
 
     test('EngineSwitchCallback 可以处理 sensevoice', () async {
       EngineType? receivedType;
-      final callback = (EngineType newType) async {
+      callback(EngineType newType) async {
         receivedType = newType;
-      };
+      }
 
       await callback(EngineType.sensevoice);
       expect(receivedType, equals(EngineType.sensevoice));
@@ -173,11 +169,11 @@ void main() {
       // 验证 YAML 结构可以被正确解析
       // 这里只做基本格式检查，实际解析在 SettingsService 中
       final yaml = SettingsConstants.defaultSettingsYaml;
-      
+
       // 检查缩进结构
       expect(yaml.contains('\n  '), isTrue); // 二级缩进
       expect(yaml.contains('\n    '), isTrue); // 三级缩进
-      
+
       // 检查关键配置项存在
       expect(yaml.contains('model:'), isTrue);
       expect(yaml.contains('engine:'), isTrue);
@@ -250,15 +246,18 @@ void main() {
     });
 
     test('senseVoiceLanguage getter 存在', () {
-      expect(() => SettingsService.instance.senseVoiceLanguage, returnsNormally);
+      expect(
+          () => SettingsService.instance.senseVoiceLanguage, returnsNormally);
     });
 
     test('zipformerCustomUrl getter 存在', () {
-      expect(() => SettingsService.instance.zipformerCustomUrl, returnsNormally);
+      expect(
+          () => SettingsService.instance.zipformerCustomUrl, returnsNormally);
     });
 
     test('senseVoiceCustomUrl getter 存在', () {
-      expect(() => SettingsService.instance.senseVoiceCustomUrl, returnsNormally);
+      expect(
+          () => SettingsService.instance.senseVoiceCustomUrl, returnsNormally);
     });
 
     test('customModelUrl getter 存在', () {
@@ -277,4 +276,3 @@ void main() {
     });
   });
 }
-
