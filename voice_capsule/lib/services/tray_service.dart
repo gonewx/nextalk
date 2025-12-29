@@ -111,7 +111,7 @@ class TrayService {
       final iconPath = await _getIconPath();
 
       await _systemTray.initSystemTray(
-        title: TrayConstants.appName,
+        title: '', // 不显示标题，只显示图标
         iconPath: iconPath,
         toolTip: TrayConstants.appName,
       );
