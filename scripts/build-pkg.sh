@@ -71,6 +71,7 @@ Format:
 Options:
   --clean       Clean staging directory and exit
   --rebuild     Force rebuild (ignore existing build artifacts)
+  --skip-build  Skip build step (use existing artifacts)
   --help        Show this help message
   --version     Show version number
 
@@ -507,6 +508,7 @@ show_summary() {
 # ==============================================================================
 main() {
     local do_rebuild=false
+    local do_skip_build=false
     local build_deb_flag=false
     local build_rpm_flag=false
 
@@ -532,6 +534,10 @@ main() {
                 ;;
             --rebuild)
                 do_rebuild=true
+                shift
+                ;;
+            --skip-build)
+                do_skip_build=true
                 shift
                 ;;
             --help|-h)
@@ -561,9 +567,14 @@ main() {
     echo "═══════════════════════════════════════════════════════════"
     echo ""
 
-    # Check common dependencies
-    check_common_dependencies
-    echo ""
+    # Check common dependencies (skip if --skip-build)
+    if [[ "$do_skip_build" == "false" ]]; then
+        check_common_dependencies
+        echo ""
+    else
+        info "Skipping build dependencies check (--skip-build)"
+        echo ""
+    fi
 
     # Check format-specific dependencies
     if [[ "$build_deb_flag" == "true" ]]; then
@@ -592,23 +603,39 @@ main() {
     extract_version
     echo ""
 
-    # Build components
+    # Build components (skip if --skip-build)
     local flutter_bundle="$VOICE_CAPSULE_DIR/build/linux/x64/release/bundle/voice_capsule"
     local plugin_so="$ADDON_DIR/build/libnextalk.so"
 
-    if [[ "$do_rebuild" == "true" ]] || [[ ! -f "$flutter_bundle" ]]; then
-        build_flutter
+    if [[ "$do_skip_build" == "true" ]]; then
+        # Verify artifacts exist
+        if [[ ! -f "$flutter_bundle" ]]; then
+            error "Flutter build artifact not found: $flutter_bundle"
+            error "Run without --skip-build or build first"
+            exit 1
+        fi
+        if [[ ! -f "$plugin_so" ]]; then
+            error "Plugin artifact not found: $plugin_so"
+            error "Run without --skip-build or build first"
+            exit 1
+        fi
+        success "Using existing build artifacts (--skip-build)"
+        echo ""
     else
-        success "Flutter build exists, skipping (use --rebuild to force)"
-    fi
-    echo ""
+        if [[ "$do_rebuild" == "true" ]] || [[ ! -f "$flutter_bundle" ]]; then
+            build_flutter
+        else
+            success "Flutter build exists, skipping (use --rebuild to force)"
+        fi
+        echo ""
 
-    if [[ "$do_rebuild" == "true" ]] || [[ ! -f "$plugin_so" ]]; then
-        build_fcitx5_plugin
-    else
-        success "Plugin build exists, skipping (use --rebuild to force)"
+        if [[ "$do_rebuild" == "true" ]] || [[ ! -f "$plugin_so" ]]; then
+            build_fcitx5_plugin
+        else
+            success "Plugin build exists, skipping (use --rebuild to force)"
+        fi
+        echo ""
     fi
-    echo ""
 
     # Build packages
     if [[ "$build_deb_flag" == "true" ]]; then

@@ -95,11 +95,11 @@ jobs:
 
       - name: Build DEB package
         run: |
-          ./scripts/build-pkg.sh --deb
+          ./scripts/build-pkg.sh --deb --skip-build
 
       - name: Build RPM package
         run: |
-          ./scripts/build-pkg.sh --rpm
+          ./scripts/build-pkg.sh --rpm --skip-build
 
       - name: List artifacts
         run: |
