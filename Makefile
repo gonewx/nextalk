@@ -1,7 +1,7 @@
 # Nextalk - 项目级 Makefile
 # 离线语音输入应用 (Flutter + Fcitx5)
 
-.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version package package-deb package-rpm package-all docker-build docker-build-flutter docker-build-addon docker-rebuild docker-build-image docker-clean
+.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version package package-deb package-rpm package-all docker-build docker-build-flutter docker-build-addon docker-rebuild docker-build-image docker-clean release release-patch release-minor release-major version
 
 # 默认目标
 all: build
@@ -145,6 +145,30 @@ package-all: sync-version
 	./scripts/build-pkg.sh --all
 
 # ============================================================
+# 发布目标
+# ============================================================
+
+# 显示当前版本
+version:
+	@echo "当前版本: v$$(grep -E '^app_version:' version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/')"
+
+# 发布新版本 (默认 patch)
+# 用法: make release 或 make release MSG="修复xxx问题"
+release: release-patch
+
+# 发布 patch 版本 (0.0.x)
+release-patch:
+	@./scripts/release.sh patch "$(MSG)"
+
+# 发布 minor 版本 (0.x.0)
+release-minor:
+	@./scripts/release.sh minor "$(MSG)"
+
+# 发布 major 版本 (x.0.0)
+release-major:
+	@./scripts/release.sh major "$(MSG)"
+
+# ============================================================
 # Docker 跨发行版编译 (推荐用于发布)
 # ============================================================
 
@@ -252,6 +276,14 @@ help:
 	@echo "  make package-deb        - 构建 DEB 包"
 	@echo "  make package-rpm        - 构建 RPM 包"
 	@echo "  make package-all        - 构建所有包格式"
+	@echo ""
+	@echo "发布命令:"
+	@echo "  make version            - 显示当前版本"
+	@echo "  make release            - 发布 patch 版本 (0.0.x)"
+	@echo "  make release-patch      - 发布 patch 版本 (0.0.x)"
+	@echo "  make release-minor      - 发布 minor 版本 (0.x.0)"
+	@echo "  make release-major      - 发布 major 版本 (x.0.0)"
+	@echo "  make release MSG=\"xxx\" - 带提交信息发布"
 	@echo ""
 	@echo "其他命令:"
 	@echo "  make deps               - 获取 Flutter 依赖"
