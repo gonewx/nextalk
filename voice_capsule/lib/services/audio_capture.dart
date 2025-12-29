@@ -7,6 +7,7 @@ class AudioConfig {
   static const int sampleRate = 16000;
   static const int channels = 1;
   static const int framesPerBuffer = 1600; // 100ms @ 16kHz
+  static const int firstFrameBuffer = 320; // 20ms @ 16kHz (首帧快速响应)
 }
 
 /// 音频采集错误类型
@@ -44,6 +45,11 @@ class AudioCapture {
   bool _isCapturing = false;
   bool _isWarmedUp = false; // 是否已预热
   AudioCaptureError _lastReadError = AudioCaptureError.none; // M2 修复: 记录最近的读取错误
+
+  // 首帧预缓冲 (冷启动优化)
+  Pointer<Float>? _prebuffer;
+  int _prebufferSamples = 0;
+  bool _hasPrebuffer = false;
 
   AudioCapture() : _bindings = PortAudioBindings();
 
@@ -249,6 +255,10 @@ class AudioCapture {
         return AudioCaptureError.streamStartFailed;
       }
       _isCapturing = true;
+
+      // 冷启动优化: 预读取首帧到预缓冲区
+      await _prefillBuffer();
+
       return AudioCaptureError.none;
     }
 
@@ -322,7 +332,37 @@ class AudioCapture {
     }
 
     _isCapturing = true;
+
+    // 冷启动优化: 预读取首帧到预缓冲区
+    await _prefillBuffer();
+
     return AudioCaptureError.none;
+  }
+
+  /// 冷启动优化: 预填充音频缓冲区
+  ///
+  /// 在 start() 后立即读取一小帧数据到预缓冲区，
+  /// 让第一次 read() 能够快速返回数据，避免丢失首帧语音。
+  Future<void> _prefillBuffer() async {
+    // 分配预缓冲区
+    _prebuffer ??= calloc<Float>(AudioConfig.firstFrameBuffer);
+
+    // 读取一小帧数据 (20ms)
+    final result = _bindings.readStream(
+      _stream!,
+      _prebuffer!,
+      AudioConfig.firstFrameBuffer,
+    );
+
+    if (result == paNoError || result == paInputOverflowed) {
+      _prebufferSamples = AudioConfig.firstFrameBuffer;
+      _hasPrebuffer = true;
+      // ignore: avoid_print
+      print('[AudioCapture] ✅ 首帧预缓冲完成 (${AudioConfig.firstFrameBuffer} samples)');
+    } else {
+      _hasPrebuffer = false;
+      _prebufferSamples = 0;
+    }
   }
 
   /// 读取音频数据
@@ -339,6 +379,38 @@ class AudioCapture {
       return -1;
     }
 
+    // 冷启动优化: 如果有预缓冲数据，先复制到目标缓冲区
+    if (_hasPrebuffer && _prebufferSamples > 0 && _prebuffer != null) {
+      // 复制预缓冲数据到目标缓冲区开头
+      for (int i = 0; i < _prebufferSamples && i < samples; i++) {
+        buffer[i] = _prebuffer![i];
+      }
+
+      final prebufferUsed = _prebufferSamples;
+      _hasPrebuffer = false;
+      _prebufferSamples = 0;
+
+      // 如果预缓冲数据不够，从流中读取剩余数据
+      if (prebufferUsed < samples) {
+        final remainingSamples = samples - prebufferUsed;
+        final offsetBuffer = buffer + prebufferUsed;
+        final result = _bindings.readStream(_stream!, offsetBuffer, remainingSamples);
+
+        if (result != paNoError && result != paInputOverflowed) {
+          if (result == paDeviceUnavailable) {
+            _lastReadError = AudioCaptureError.deviceUnavailable;
+            return -1;
+          }
+          _lastReadError = AudioCaptureError.readFailed;
+          return -1;
+        }
+      }
+
+      _lastReadError = AudioCaptureError.none;
+      return samples;
+    }
+
+    // 正常读取流程
     final result = _bindings.readStream(_stream!, buffer, samples);
 
     // paInputOverflowed 时继续读取 (不视为错误)
@@ -370,6 +442,10 @@ class AudioCapture {
 
     _bindings.stopStream(_stream!);
     _isCapturing = false;
+
+    // 重置预缓冲状态
+    _hasPrebuffer = false;
+    _prebufferSamples = 0;
   }
 
   /// 释放所有资源
@@ -398,6 +474,10 @@ class AudioCapture {
       calloc.free(_buffer!);
       _buffer = null;
     }
+    if (_prebuffer != null) {
+      calloc.free(_prebuffer!);
+      _prebuffer = null;
+    }
     if (_inputParams != null) {
       calloc.free(_inputParams!);
       _inputParams = null;
@@ -406,6 +486,8 @@ class AudioCapture {
       calloc.free(_streamPtr!);
       _streamPtr = null;
     }
+    _hasPrebuffer = false;
+    _prebufferSamples = 0;
   }
 
   /// Story 2.3 使用此 getter 获取缓冲区指针 (零拷贝接口)

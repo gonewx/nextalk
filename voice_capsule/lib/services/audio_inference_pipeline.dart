@@ -154,6 +154,7 @@ class AudioInferencePipeline {
   bool _stopRequested = false;
   String _lastEmittedText = ''; // 用于去重
   Completer<void>? _loopCompleter; // 跟踪循环完成状态
+  Completer<void>? _firstChunkCompleter; // 首帧处理完成信号 (冷启动优化)
   bool _isDisposed = false; // M1 修复: 防止在关闭后访问 StreamController
 
   // Story 2-6: VAD 相关状态
@@ -362,7 +363,24 @@ class AudioInferencePipeline {
 
     // 4. 更新状态并启动采集循环
     _setState(PipelineState.running);
+    _firstChunkCompleter = Completer<void>(); // 初始化首帧完成信号
     _startCaptureLoop(); // 不 await，后台运行
+
+    // 5. 等待首帧处理完成，避免冷启动丢失语音 (最长等待 150ms)
+    try {
+      await _firstChunkCompleter!.future.timeout(
+        const Duration(milliseconds: 150),
+        onTimeout: () {
+          if (enableDebugLog) {
+            // ignore: avoid_print
+            print('[Pipeline] ⚠️ 首帧等待超时，继续执行');
+          }
+        },
+      );
+    } catch (_) {
+      // 忽略超时异常
+    }
+
     return PipelineError.none;
   }
 
@@ -470,12 +488,21 @@ class AudioInferencePipeline {
     _loopCompleter = Completer<void>();
     final stopwatch = Stopwatch();
     const targetDurationMs = 100;
+    bool isFirstChunk = true; // 首帧标记
 
     while (!_stopRequested && _state == PipelineState.running) {
       stopwatch.reset();
       stopwatch.start();
 
       await _processSingleChunk();
+
+      // 首帧处理完成后，通知 start() 可以返回
+      if (isFirstChunk) {
+        isFirstChunk = false;
+        if (_firstChunkCompleter != null && !_firstChunkCompleter!.isCompleted) {
+          _firstChunkCompleter!.complete();
+        }
+      }
 
       // 提前检查停止标志
       if (_stopRequested || _state != PipelineState.running) break;
