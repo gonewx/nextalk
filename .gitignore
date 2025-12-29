@@ -34,3 +34,5 @@ core
 dist/
 
 .claude/skills/ui-ux-pro-max/
+
+.claude/settings.local.json
