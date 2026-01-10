@@ -2,7 +2,7 @@
 # 应用和插件版本独立管理
 
 # Flutter 应用版本 (同步到 voice_capsule/pubspec.yaml)
-app_version: "0.1.6"
+app_version: "0.1.7"
 app_build: 1
 
 # Fcitx5 插件版本
