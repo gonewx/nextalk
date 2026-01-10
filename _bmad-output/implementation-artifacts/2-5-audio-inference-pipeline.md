@@ -25,7 +25,7 @@ So that **获得即时的视觉反馈**。
 | AC2 | 零拷贝数据流: 音频数据使用同一内存指针从 PortAudio 传递到 Sherpa | 检查代码使用 `AudioCapture.buffer` 直接传给 `acceptWaveform` |
 | AC3 | 实时识别: 每 100ms 音频块自动送入 Sherpa 引擎并解码 | 录音时观察识别结果 Stream 持续输出 |
 | AC4 | Stream 输出: 识别结果通过 `Stream<String>` 实时输出 | 订阅 `resultStream` 并验证收到文本事件 |
-| AC5 | 延迟要求: 端到端延迟 < 200ms (NFR1) | 测量说话到文字显示的时间差 |
+| AC5 | 延迟要求: 端到端延迟 < 20ms (NFR1) | 测量说话到文字显示的时间差 |
 | AC6 | 流水线停止: 调用 `Pipeline.stop()` 停止采集，返回最终结果 | 调用后 `isRunning` 返回 false，资源已释放 |
 | AC7 | 错误处理: 音频设备异常或模型加载失败时返回明确错误 | 模拟设备不可用，检查错误回调触发 |
 | AC8 | 资源释放: 调用 `dispose()` 释放所有原生资源和 Stream | 调用后无内存泄漏，StreamController 已关闭 |
@@ -271,7 +271,7 @@ voice_capsule/lib/services/
       _setState(PipelineState.stopping);
       _stopRequested = true;
 
-      // 等待循环退出 (最多等待 200ms)
+      // 等待循环退出 (最多等待 20ms)
       await Future.delayed(const Duration(milliseconds: 200));
 
       // 获取最终识别结果
@@ -350,7 +350,7 @@ voice_capsule/lib/services/
 |------|------|
 | **零拷贝** | 音频数据必须使用同一 `Pointer<Float>`，从 PortAudio 直接到 Sherpa |
 | **主 Isolate** | MVP 阶段在主 Isolate 运行，处理 100ms 块耗时 < 10ms 可接受 |
-| **延迟预算** | 200ms = 100ms (采集) + 10ms (推理) + 90ms (余量) |
+| **延迟预算** | 20ms = 100ms (采集) + 10ms (推理) + 90ms (余量) |
 
 ### 与现有组件的接口一致性
 

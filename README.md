@@ -13,7 +13,7 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 ## Features
 
 - **Offline Recognition** - Based on Sherpa-onnx streaming bilingual model (Chinese/English), data never leaves your device
-- **Ultra-low Latency** - End-to-end latency < 200ms for real-time transcription
+- **Ultra-low Latency** - End-to-end latency < 20ms for real-time transcription
 - **Transparent Floating Window** - Borderless capsule UI with breathing animation, minimal workflow disruption
 - **Native Wayland Support** - System shortcuts and text submission both support Wayland
 - **Focus Lock** - Switch windows while recording, text still submits to the original window

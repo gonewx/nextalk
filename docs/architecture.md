@@ -154,7 +154,7 @@ To ensure terminals and similar apps correctly handle input, `commitText` simula
 
 ### 4.2 Audio and AI Pipeline (Zero-copy FFI)
 
-To meet **NFR1 (Latency < 200ms)**, audio pipeline must minimize memory copies.
+To meet **NFR1 (Latency < 20ms)**, audio pipeline must minimize memory copies.
 
 1. **Memory Allocation**: Dart allocates off-heap buffer (`Pointer<Float>`) using `calloc`.
 2. **Capture**: Dart passes this pointer to PortAudio's `Pa_ReadStream`. C code writes PCM data directly to this memory address.

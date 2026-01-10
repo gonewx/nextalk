@@ -501,7 +501,7 @@ voice_capsule/
 - [x] **Task 6: 手动验证和调试** (AC: #1-12)
   - [x] 6.1 执行完整验证清单
   - [x] 6.2 修复发现的问题
-  - [x] 6.3 性能测试 (延迟 < 200ms)
+  - [x] 6.3 性能测试 (延迟 < 20ms)
   - [x] 6.4 更新 sprint-status.yaml
 
 ## Dev Notes
@@ -629,7 +629,7 @@ Epic: 3 (完整产品体验)
 | 模型未下载导致 Pipeline 启动失败 | ModelManager.isModelReady 检查 + 错误 UI |
 | Fcitx5 未运行导致文本无法上屏 | FcitxClient 重试机制 + 错误状态显示 |
 | 快捷键被占用 | HotkeyService 备用快捷键 + 配置文件 |
-| 延迟超过 200ms | 检查 latencyStats + 优化处理逻辑 |
+| 延迟超过 20ms | 检查 latencyStats + 优化处理逻辑 |
 | 内存泄漏 | onBeforeExit 完整释放 + dispose 检查 |
 
 ### 外部资源

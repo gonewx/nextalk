@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 离线语音识别 (Sherpa-onnx 流式双语模型)
 - 真透明无边框胶囊悬浮窗 UI
 - 通过 Unix Domain Socket 与 Fcitx5 通信实现文本上屏
-- 端到端延迟 < 200ms
+- 端到端延迟 < 20ms
 
 ## 架构
 

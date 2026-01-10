@@ -7,7 +7,7 @@
 ### Goals
 * **Build a benchmark voice input experience for Linux**: Fill the gap of lacking high-quality, modern voice input tools on Linux desktop.
 * **Achieve "ultimate transparency" visual effect**: Utilize Flutter rendering capabilities to provide borderless, background-artifact-free, breathing-animation modern floating window UI.
-* **Ensure privacy and high performance**: Integrate Sherpa-onnx offline model, ensuring data never leaves local machine, achieving <200ms input latency.
+* **Ensure privacy and high performance**: Integrate Sherpa-onnx offline model, ensuring data never leaves local machine, achieving <20ms input latency.
 * **Enable "speak-to-type" fluid interaction**: Implement intelligent VAD (endpoint detection) for automatic sentence breaks and text submission.
 * **Seamless Fcitx5 integration**: Stable communication with input method framework via existing lightweight C++ plugin and Unix Domain Socket.
 
@@ -50,7 +50,7 @@ Linux users lack beautiful and practical voice input tools. This project **Nexta
     * Auto-hide window after 2 seconds.
 
 ### 2.2 Non-Functional Requirements
-* **NFR1**: End-to-end latency < 200ms.
+* **NFR1**: End-to-end latency < 20ms.
 * **NFR2**: Pure offline inference, no network requests.
 * **NFR3**: Compatible with Ubuntu 22.04+ (X11/Wayland native support, shortcuts and text submission both support Wayland).
 * **NFR4**: Window launch without black frame flicker (based on C++ Runner modification).

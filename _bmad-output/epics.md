@@ -45,7 +45,7 @@ FR6 [系统]: 全局快捷键
 
 ### NonFunctional Requirements
 
-NFR1: 端到端延迟 < 200ms
+NFR1: 端到端延迟 < 20ms
 NFR2: 纯离线推理，无网络请求（运行时）
 NFR3: 兼容 Ubuntu 22.04+ (X11/Wayland 原生支持，快捷键和文本提交均支持 Wayland)
 NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
@@ -329,7 +329,7 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **Given** 流水线正在运行
 **When** 用户说话
 **Then** 识别结果通过 Stream 实时输出
-**And** 端到端延迟 < 200ms (NFR1)
+**And** 端到端延迟 < 20ms (NFR1)
 
 **Given** 流水线正在运行
 **When** 调用 `Pipeline.stop()`

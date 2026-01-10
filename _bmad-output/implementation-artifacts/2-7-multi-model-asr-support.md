@@ -145,7 +145,7 @@ model:
 | 特性 | ZipformerEngine (流式) | SenseVoiceEngine (非流式) |
 |:---|:---|:---|
 | 识别方式 | 边听边识别，实时输出 | VAD 分段后一次性识别 |
-| 延迟 | 极低 (<200ms) | 较高 (取决于语音段长度) |
+| 延迟 | 极低 (<20ms) | 较高 (取决于语音段长度) |
 | 精度 | 良好 | 更高 (含自动标点) |
 | API 调用 | `acceptWaveform` 可重复调用 | 每段音频需创建新 OfflineStream |
 
@@ -398,7 +398,7 @@ tray_engine_switch_fallback: "Switch failed, fallback to {engine}"
 
 ### 性能注意事项
 
-1. **SenseVoice 推理延迟**: 约 100-200ms (取决于语音长度)
+1. **SenseVoice 推理延迟**: 约 100-20ms (取决于语音长度)
 2. **建议在 Isolate 中执行推理**: 避免阻塞 UI，保持动画流畅
 3. **VAD 窗口**: 512 samples = 32ms@16kHz，需高效缓冲
 4. **内存管理**: 每段语音处理完毕后立即销毁 OfflineStream
