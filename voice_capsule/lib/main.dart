@@ -200,6 +200,10 @@ Future<void> main(List<String> args) async {
       DiagnosticLogger.instance.info('main', '✅ 音频设备预热完成');
     } else {
       DiagnosticLogger.instance.warn('main', '⚠️ 音频设备预热失败: $warmupError');
+      if (_audioCapture!.lastErrorDetail != null) {
+        DiagnosticLogger.instance.warn('main', '📋 ${_audioCapture!.lastErrorDetail}');
+        DiagnosticLogger.instance.warn('main', '💡 可能原因: 1) PulseAudio/PipeWire 未运行 2) 设备被占用 3) 权限不足');
+      }
     }
 
     // Story 2-7: 使用 EngineInitializer 初始化引擎 (带回退逻辑)

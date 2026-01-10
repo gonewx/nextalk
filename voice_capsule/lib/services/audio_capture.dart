@@ -45,6 +45,7 @@ class AudioCapture {
   bool _isCapturing = false;
   bool _isWarmedUp = false; // 是否已预热
   AudioCaptureError _lastReadError = AudioCaptureError.none; // M2 修复: 记录最近的读取错误
+  String? _lastErrorDetail; // 详细错误信息 (用于诊断)
 
   // 首帧预缓冲 (冷启动优化)
   Pointer<Float>? _prebuffer;
@@ -120,8 +121,15 @@ class AudioCapture {
     );
 
     if (openResult != paNoError) {
+      final errorText = _bindings.errorText(openResult);
+      final deviceName = deviceInfo.ref.name.toDartString();
+      _lastErrorDetail = 'PortAudio 错误: $openResult ($errorText), 设备: "$deviceName", maxInputChannels=${deviceInfo.ref.maxInputChannels}, defaultSampleRate=${deviceInfo.ref.defaultSampleRate}';
       // ignore: avoid_print
-      print('[AudioCapture] ⚠️ 打开音频流失败: $openResult');
+      print('[AudioCapture] ⚠️ 打开音频流失败: $openResult ($errorText)');
+      // ignore: avoid_print
+      print('[AudioCapture] 📋 设备信息: "$deviceName", maxInputChannels=${deviceInfo.ref.maxInputChannels}, defaultSampleRate=${deviceInfo.ref.defaultSampleRate}');
+      // ignore: avoid_print
+      print('[AudioCapture] 💡 可能原因: 1) PulseAudio/PipeWire 未运行 2) 设备被占用 3) 权限不足');
       _isWarmedUp = true;
       return AudioCaptureError.streamOpenFailed;
     }
@@ -313,6 +321,15 @@ class AudioCapture {
     );
 
     if (openResult != paNoError) {
+      final errorText = _bindings.errorText(openResult);
+      final deviceName = deviceInfo.ref.name.toDartString();
+      _lastErrorDetail = 'PortAudio 错误: $openResult ($errorText), 设备: "$deviceName", maxInputChannels=${deviceInfo.ref.maxInputChannels}, defaultSampleRate=${deviceInfo.ref.defaultSampleRate}';
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ 打开音频流失败: $openResult ($errorText)');
+      // ignore: avoid_print
+      print('[AudioCapture] 📋 设备信息: "$deviceName", maxInputChannels=${deviceInfo.ref.maxInputChannels}, defaultSampleRate=${deviceInfo.ref.defaultSampleRate}');
+      // ignore: avoid_print
+      print('[AudioCapture] 💡 可能原因: 1) PulseAudio/PipeWire 未运行 2) 设备被占用 3) 权限不足');
       _bindings.terminate(); // C1 修复: 必须调用 terminate 释放 PortAudio
       _isInitialized = false;
       _cleanup();
@@ -508,4 +525,8 @@ class AudioCapture {
   /// 最近一次 read() 调用的错误类型 (M2 修复)
   /// 当 read() 返回 -1 时，检查此属性获取详细错误信息
   AudioCaptureError get lastReadError => _lastReadError;
+
+  /// 详细错误信息 (用于诊断)
+  /// 当 warmup() 或 start() 返回错误时，检查此属性获取详细信息
+  String? get lastErrorDetail => _lastErrorDetail;
 }
