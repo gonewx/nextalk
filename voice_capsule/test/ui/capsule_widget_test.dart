@@ -7,6 +7,7 @@ import 'package:voice_capsule/ui/capsule_widget.dart';
 import 'package:voice_capsule/ui/capsule_text_preview.dart';
 import 'package:voice_capsule/ui/cursor_blink.dart';
 import 'package:voice_capsule/ui/state_indicator.dart';
+import 'package:voice_capsule/ui/gradient_text_flow.dart';
 
 // ⚠️ 注意: 这些测试专注于 Widget 渲染，不测试拖拽功能
 // 拖拽功能需要 WindowService 环境，在集成测试中验证
@@ -82,7 +83,11 @@ void main() {
         ),
       ));
 
-      expect(find.text('你好世界'), findsOneWidget);
+      // 非空文本使用 GradientTextFlowWithFade 显示，不是普通 Text
+      final gradientText = tester.widget<GradientTextFlowWithFade>(
+        find.byType(GradientTextFlowWithFade),
+      );
+      expect(gradientText.text, '你好世界');
     });
 
     testWidgets('has correct decoration (background, radius)', (tester) async {
@@ -192,8 +197,12 @@ void main() {
         const CapsuleTextPreview(text: '测试文本', showHint: false),
       ));
 
-      final textWidget = tester.widget<Text>(find.byType(Text));
-      expect(textWidget.style?.color, CapsuleColors.textWhite);
+      // 非空文本使用 GradientTextFlowWithFade 显示，验证其存在且文本正确
+      final gradientText = tester.widget<GradientTextFlowWithFade>(
+        find.byType(GradientTextFlowWithFade),
+      );
+      expect(gradientText.text, '测试文本');
+      expect(gradientText.baseColor, CapsuleColors.textWhite);
     });
 
     testWidgets('uses hint style for hint text', (tester) async {
@@ -210,9 +219,12 @@ void main() {
         const CapsuleTextPreview(text: '这是一段非常长的文本用于测试省略功能'),
       ));
 
-      final textWidget = tester.widget<Text>(find.byType(Text));
-      expect(textWidget.overflow, TextOverflow.ellipsis);
-      expect(textWidget.maxLines, 1);
+      // 非空文本使用 GradientTextFlowWithFade，自动处理溢出
+      // 验证 GradientTextFlowWithFade 存在
+      final gradientText = tester.widget<GradientTextFlowWithFade>(
+        find.byType(GradientTextFlowWithFade),
+      );
+      expect(gradientText.visibleCharCount, isPositive);
     });
 
     testWidgets('displays hint when text is empty and showHint is true',
@@ -356,7 +368,11 @@ void main() {
 
       expect(find.byType(StateIndicator), findsOneWidget);
       expect(find.byType(CursorBlink), findsOneWidget);
-      expect(find.text('你好'), findsOneWidget);
+      // 非空文本使用 GradientTextFlowWithFade 显示
+      final gradientText = tester.widget<GradientTextFlowWithFade>(
+        find.byType(GradientTextFlowWithFade),
+      );
+      expect(gradientText.text, '你好');
     });
   });
 

@@ -6,7 +6,8 @@ void main() {
   group('CapsuleState Enum Tests', () {
     test('contains all expected states including new init states', () {
       // Story 3-7: 新增 initializing, downloading, extracting 状态
-      expect(CapsuleState.values.length, 7);
+      // SCP-002: 新增 copiedToClipboard 状态
+      expect(CapsuleState.values.length, 8);
       expect(CapsuleState.values, contains(CapsuleState.idle));
       expect(CapsuleState.values, contains(CapsuleState.listening));
       expect(CapsuleState.values, contains(CapsuleState.processing));
@@ -14,6 +15,7 @@ void main() {
       expect(CapsuleState.values, contains(CapsuleState.initializing));
       expect(CapsuleState.values, contains(CapsuleState.downloading));
       expect(CapsuleState.values, contains(CapsuleState.extracting));
+      expect(CapsuleState.values, contains(CapsuleState.copiedToClipboard));
     });
   });
 

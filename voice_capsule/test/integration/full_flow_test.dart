@@ -5,6 +5,37 @@ import 'package:voice_capsule/app/nextalk_app.dart';
 import 'package:voice_capsule/services/model_manager.dart';
 import 'package:voice_capsule/state/capsule_state.dart';
 import 'package:voice_capsule/ui/capsule_widget.dart';
+import 'package:voice_capsule/ui/gradient_text_flow.dart';
+
+/// 辅助函数: 查找文本 (支持普通 Text 和 GradientTextFlowWithFade)
+Finder findTextInCapsule(String text) {
+  return find.byWidgetPredicate((widget) {
+    if (widget is GradientTextFlowWithFade) {
+      return widget.text == text;
+    }
+    return false;
+  });
+}
+
+/// 辅助函数: 验证文本是否显示在胶囊中
+void expectTextInCapsule(WidgetTester tester, String text) {
+  // 先尝试普通 Text
+  final textFinder = find.text(text);
+  if (textFinder.evaluate().isNotEmpty) {
+    expect(textFinder, findsOneWidget);
+    return;
+  }
+  // 再尝试 GradientTextFlowWithFade
+  final gradientFinder = findTextInCapsule(text);
+  expect(gradientFinder, findsOneWidget,
+      reason: '文本 "$text" 未在普通 Text 或 GradientTextFlowWithFade 中找到');
+}
+
+/// 辅助函数: 验证文本不存在
+void expectTextNotInCapsule(WidgetTester tester, String text) {
+  expect(find.text(text), findsNothing);
+  expect(findTextInCapsule(text), findsNothing);
+}
 
 /// Story 3-6: 完整业务流集成测试
 ///
@@ -51,17 +82,17 @@ void main() {
         stateController.add(CapsuleStateData.listening(text: '你'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('你'), findsOneWidget);
+        expectTextInCapsule(tester, '你');
 
         stateController.add(CapsuleStateData.listening(text: '你好'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('你好'), findsOneWidget);
+        expectTextInCapsule(tester, '你好');
 
         stateController.add(CapsuleStateData.listening(text: '你好世界'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('你好世界'), findsOneWidget);
+        expectTextInCapsule(tester, '你好世界');
       });
 
       testWidgets('AC4: listening -> processing 流转正确', (tester) async {
@@ -73,13 +104,14 @@ void main() {
         stateController.add(CapsuleStateData.listening(text: '测试文本'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('测试文本'), findsOneWidget);
+        expectTextInCapsule(tester, '测试文本');
 
         // processing 状态 (VAD 触发)
         stateController.add(CapsuleStateData.processing(text: '测试文本'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('测试文本'), findsOneWidget);
+        // processing 状态也用 GradientTextFlowWithFade 或普通 Text
+        expectTextInCapsule(tester, '测试文本');
       });
 
       testWidgets('processing -> idle 流转正确 (提交完成)', (tester) async {
@@ -90,12 +122,12 @@ void main() {
         stateController.add(CapsuleStateData.processing(text: '提交中'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('提交中'), findsOneWidget);
+        expectTextInCapsule(tester, '提交中');
 
         stateController.add(CapsuleStateData.idle());
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('提交中'), findsNothing);
+        expectTextNotInCapsule(tester, '提交中');
       });
     });
 
@@ -208,7 +240,7 @@ void main() {
         }
 
         // 最终状态应该是最后一次更新
-        expect(find.text('文本5'), findsOneWidget);
+        expectTextInCapsule(tester, '文本5');
       });
 
       testWidgets('StreamBuilder 初始状态为 listening', (tester) async {
@@ -237,25 +269,25 @@ void main() {
         stateController.add(CapsuleStateData.listening(text: '你好'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('你好'), findsOneWidget);
+        expectTextInCapsule(tester, '你好');
 
         // 3. 继续说话
         stateController.add(CapsuleStateData.listening(text: '你好世界'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('你好世界'), findsOneWidget);
+        expectTextInCapsule(tester, '你好世界');
 
         // 4. VAD 触发或手动停止 -> processing
         stateController.add(CapsuleStateData.processing(text: '你好世界'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('你好世界'), findsOneWidget);
+        expectTextInCapsule(tester, '你好世界');
 
         // 5. 提交完成 -> idle
         stateController.add(CapsuleStateData.idle());
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('你好世界'), findsNothing);
+        expectTextNotInCapsule(tester, '你好世界');
       });
 
       testWidgets('录音中遇到错误的流程', (tester) async {
@@ -267,7 +299,7 @@ void main() {
         stateController.add(CapsuleStateData.listening(text: '正在说话'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.text('正在说话'), findsOneWidget);
+        expectTextInCapsule(tester, '正在说话');
 
         // 2. 遇到错误 (如 Socket 断开)
         stateController

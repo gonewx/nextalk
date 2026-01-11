@@ -3,6 +3,7 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:voice_capsule/constants/settings_constants.dart';
 import 'package:voice_capsule/services/asr/asr_engine.dart';
 import 'package:voice_capsule/services/audio_capture.dart';
 import 'package:voice_capsule/services/audio_inference_pipeline.dart';
@@ -22,7 +23,7 @@ class MockAudioCapture extends AudioCapture {
   void setReadReturnValue(int value) => _readReturnValue = value;
 
   @override
-  Future<AudioCaptureError> start() async {
+  Future<AudioCaptureError> start({String? deviceName}) async {
     if (_startError != AudioCaptureError.none) {
       return _startError;
     }
@@ -211,6 +212,9 @@ class MockModelManager extends ModelManager {
 
   @override
   String get modelPath => _modelPath;
+
+  @override
+  bool isEngineReady(EngineType engineType) => _modelReady;
 }
 
 void main() {
