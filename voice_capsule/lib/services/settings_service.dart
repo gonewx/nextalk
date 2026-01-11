@@ -351,4 +351,71 @@ class SettingsService {
 
   /// 获取配置文件路径 (用于 UI 显示)
   String get configFilePath => SettingsConstants.settingsFilePath;
+
+  // ===== Story 3-9: 音频输入设备 =====
+
+  /// 获取配置的音频输入设备名称
+  /// 返回 "default" 或设备名称
+  String get audioInputDevice {
+    // 优先从 YAML 读取
+    final yamlDevice = _yamlConfig?['audio']?['input_device'] as String?;
+    if (yamlDevice != null && yamlDevice.isNotEmpty) {
+      return yamlDevice;
+    }
+    return SettingsConstants.defaultAudioInputDevice;
+  }
+
+  /// 设置音频输入设备 (Story 3-9: AC6, AC7, AC12)
+  /// [deviceName] 设备名称或 "default"
+  Future<void> setAudioInputDevice(String deviceName) async {
+    await _updateYamlAudioInputDevice(deviceName);
+    debugPrint('SettingsService: 音频输入设备已设置为 $deviceName');
+  }
+
+  /// 更新 YAML 文件中的音频输入设备
+  Future<void> _updateYamlAudioInputDevice(String deviceName) async {
+    try {
+      final settingsFile = File(SettingsConstants.settingsFilePath);
+      if (!settingsFile.existsSync()) return;
+
+      final content = settingsFile.readAsStringSync();
+
+      // 检查是否存在 audio.input_device 配置
+      final hasAudioSection = RegExp(r'^audio:', multiLine: true).hasMatch(content);
+      final hasInputDevice = RegExp(r'^\s*input_device:', multiLine: true).hasMatch(content);
+
+      String updatedContent;
+      if (hasInputDevice) {
+        // 更新现有的 input_device 值
+        updatedContent = content.replaceFirstMapped(
+          RegExp(r'^(\s*input_device:\s*).+$', multiLine: true),
+          (match) => '${match.group(1)}$deviceName',
+        );
+      } else if (hasAudioSection) {
+        // audio 段存在但没有 input_device，添加到 audio 段
+        updatedContent = content.replaceFirstMapped(
+          RegExp(r'^(audio:)(.*)$', multiLine: true),
+          (match) => '${match.group(1)}${match.group(2)}\n  input_device: $deviceName',
+        );
+      } else {
+        // 没有 audio 段，追加到文件末尾
+        updatedContent = '''$content
+# 音频设置 (Story 3-9)
+audio:
+  input_device: $deviceName
+''';
+      }
+
+      if (content != updatedContent) {
+        settingsFile.writeAsStringSync(updatedContent);
+        // 更新内存缓存
+        _yamlConfig ??= {};
+        _yamlConfig!['audio'] ??= <String, dynamic>{};
+        (_yamlConfig!['audio'] as Map<String, dynamic>)['input_device'] = deviceName;
+        debugPrint('SettingsService: YAML 音频设备配置已更新');
+      }
+    } catch (e) {
+      debugPrint('SettingsService: 更新 YAML 音频设备配置失败: $e');
+    }
+  }
 }

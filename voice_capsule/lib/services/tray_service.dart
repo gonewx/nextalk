@@ -5,6 +5,7 @@ import 'package:system_tray/system_tray.dart';
 
 import '../constants/settings_constants.dart';
 import '../constants/tray_constants.dart';
+import 'audio_device_service.dart';
 import 'hotkey_service.dart';
 import 'language_service.dart';
 import 'model_manager.dart';
@@ -217,6 +218,11 @@ class TrayService {
           ),
         ],
       ),
+      // Story 3-9: 音频输入设备子菜单 (AC14, AC15)
+      SubMenu(
+        label: lang.tr('tray_audio_device'),
+        children: _buildAudioDeviceMenuItems(lang),
+      ),
       MenuItemLabel(
         label: lang.tr('tray_settings'),
         onClicked: (_) => _openConfigDirectory(),
@@ -236,6 +242,69 @@ class TrayService {
     // 语言切换后重建菜单以更新文本
     await rebuildMenu();
     debugPrint('TrayService: 语言已切换为 $languageCode');
+  }
+
+  /// Story 3-9: 构建音频设备菜单项列表 (AC14)
+  List<MenuItemBase> _buildAudioDeviceMenuItems(LanguageService lang) {
+    final devices = AudioDeviceService.instance.listInputDevices();
+    final currentDevice = SettingsService.instance.audioInputDevice;
+
+    final items = <MenuItemBase>[];
+
+    // 添加"系统默认"选项
+    final isDefault = currentDevice == 'default';
+    items.add(MenuItemLabel(
+      label: '${isDefault ? "● " : ""}${lang.tr('tray_audio_default')}',
+      onClicked: (_) => _switchAudioDevice('default', lang),
+    ));
+
+    if (devices.isNotEmpty) {
+      items.add(MenuSeparator());
+
+      // 添加所有输入设备 (使用 description 显示，name 存储)
+      for (final device in devices) {
+        final isCurrent = _isCurrentAudioDevice(device.name, currentDevice);
+        final statusIcon = device.status == DeviceAvailability.available ? '' : ' ⚠️';
+        items.add(MenuItemLabel(
+          label: '${isCurrent ? "● " : ""}${device.description}$statusIcon',
+          onClicked: (_) => _switchAudioDevice(device.name, lang),
+        ));
+      }
+    }
+
+    return items;
+  }
+
+  /// Story 3-9: 判断设备是否为当前配置
+  bool _isCurrentAudioDevice(String deviceName, String currentConfig) {
+    if (currentConfig == 'default') return false;
+    return deviceName == currentConfig ||
+        deviceName.contains(currentConfig) ||
+        currentConfig.contains(deviceName);
+  }
+
+  /// Story 3-9: 切换音频设备 (AC15)
+  Future<void> _switchAudioDevice(String deviceName, LanguageService lang) async {
+    await SettingsService.instance.setAudioInputDevice(deviceName);
+
+    // 重建菜单以更新选中状态
+    await rebuildMenu();
+
+    // 发送桌面通知"重启后生效"
+    try {
+      await Process.run('notify-send', [
+        '-a',
+        'Nextalk',
+        '-i',
+        'dialog-information',
+        'Nextalk',
+        lang.tr('tray_audio_restart_notice'),
+      ]);
+    } catch (e) {
+      debugPrint('TrayService: 发送通知失败: $e');
+    }
+
+    debugPrint('TrayService: 音频设备已切换为 $deviceName');
   }
 
   /// 切换到 Zipformer 引擎并设置模型版本

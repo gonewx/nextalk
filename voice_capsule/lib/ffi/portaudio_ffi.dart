@@ -53,6 +53,7 @@ final class PaDeviceInfo extends Struct {
 typedef PaInitializeC = Int32 Function();
 typedef PaTerminateC = Int32 Function();
 typedef PaGetDefaultInputDeviceC = Int32 Function();
+typedef PaGetDeviceCountC = Int32 Function();
 typedef PaGetDeviceInfoC = Pointer<PaDeviceInfo> Function(Int32 device);
 typedef PaCloseStreamC = Int32 Function(Pointer<Void> stream);
 typedef PaStartStreamC = Int32 Function(Pointer<Void> stream);
@@ -80,6 +81,7 @@ typedef PaOpenStreamC = Int32 Function(
 typedef PaInitializeDart = int Function();
 typedef PaTerminateDart = int Function();
 typedef PaGetDefaultInputDeviceDart = int Function();
+typedef PaGetDeviceCountDart = int Function();
 typedef PaGetDeviceInfoDart = Pointer<PaDeviceInfo> Function(int device);
 typedef PaCloseStreamDart = int Function(Pointer<Void> stream);
 typedef PaStartStreamDart = int Function(Pointer<Void> stream);
@@ -108,6 +110,7 @@ class PortAudioBindings {
   late final PaInitializeDart initialize;
   late final PaTerminateDart terminate;
   late final PaGetDefaultInputDeviceDart getDefaultInputDevice;
+  late final PaGetDeviceCountDart getDeviceCount;
   late final PaGetDeviceInfoDart getDeviceInfo;
   late final PaOpenStreamDart openStream;
   late final PaCloseStreamDart closeStream;
@@ -126,6 +129,8 @@ class PortAudioBindings {
     );
     getDefaultInputDevice = _lib.lookupFunction<PaGetDefaultInputDeviceC,
         PaGetDefaultInputDeviceDart>('Pa_GetDefaultInputDevice');
+    getDeviceCount = _lib.lookupFunction<PaGetDeviceCountC,
+        PaGetDeviceCountDart>('Pa_GetDeviceCount');
     getDeviceInfo = _lib.lookupFunction<PaGetDeviceInfoC, PaGetDeviceInfoDart>(
       'Pa_GetDeviceInfo',
     );

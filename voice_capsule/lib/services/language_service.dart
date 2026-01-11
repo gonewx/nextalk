@@ -141,6 +141,17 @@ class LanguageService {
       'tray_engine_actual': '当前使用',
       'tray_model_not_found': '{engine} 模型未下载，请先下载模型',
       'tray_model_settings': '模型设置',
+      // Story 3-9: 音频设备 (AC19)
+      'tray_audio_device': '音频输入设备',
+      'tray_audio_default': '系统默认',
+      'tray_audio_restart_notice': '音频设备已更改，重启应用后生效',
+      'audio_error_title': '音频设备不可用',
+      'audio_error_device': '设备:',
+      'audio_error_reason': '原因:',
+      'audio_error_solution_title': '解决方法:',
+      'audio_error_solution_1': '使用托盘菜单切换到其他音频设备',
+      'audio_error_solution_2': '或执行 nextalk audio 命令配置设备',
+      'audio_error_ok': '知道了',
 
       // 错误消息 (AC7)
       'error_fcitx_not_connected': 'Fcitx5 未连接',
@@ -196,6 +207,17 @@ class LanguageService {
       'tray_engine_actual': 'In Use',
       'tray_model_not_found': '{engine} model not downloaded, please download first',
       'tray_model_settings': 'Model Settings',
+      // Story 3-9: 音频设备 (AC19)
+      'tray_audio_device': 'Audio Input Device',
+      'tray_audio_default': 'System Default',
+      'tray_audio_restart_notice': 'Audio device changed, restart app to take effect',
+      'audio_error_title': 'Audio Device Unavailable',
+      'audio_error_device': 'Device:',
+      'audio_error_reason': 'Reason:',
+      'audio_error_solution_title': 'Solutions:',
+      'audio_error_solution_1': 'Use tray menu to switch to another audio device',
+      'audio_error_solution_2': 'Or run nextalk audio command to configure device',
+      'audio_error_ok': 'OK',
 
       // 错误消息 (AC8)
       'error_fcitx_not_connected': 'Fcitx5 Not Connected',

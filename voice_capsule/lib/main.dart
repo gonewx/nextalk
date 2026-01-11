@@ -21,6 +21,7 @@ import 'services/tray_service.dart';
 import 'services/window_service.dart';
 import 'state/capsule_state.dart';
 import 'utils/diagnostic_logger.dart';
+import 'cli/audio_command.dart';
 
 /// Nextalk Voice Capsule 入口
 /// Story 3-6: 完整业务流串联
@@ -38,7 +39,9 @@ ASREngineType _toASREngineType(EngineType type) {
 
 /// 处理命令行参数
 ///
-/// 支持的参数：
+/// 支持的命令：
+/// help: 显示帮助信息
+/// audio [...]: 音频设备配置命令 (Story 3-9)
 /// --toggle: 切换窗口/录音状态
 /// --show: 显示窗口并开始录音
 /// --hide: 隐藏窗口并停止录音
@@ -50,6 +53,25 @@ Future<bool> _handleCommandLineArgs(List<String> args) async {
   }
 
   final command = args[0];
+
+  // help / --help / -h: 显示帮助
+  if (command == 'help' || command == '--help' || command == '-h') {
+    _printHelp();
+    exit(0);
+  }
+
+  // version / --version / -v: 显示版本
+  if (command == 'version' || command == '--version' || command == '-v') {
+    _printVersion();
+    exit(0);
+  }
+
+  // Story 3-9: audio 子命令
+  if (command == 'audio') {
+    final subArgs = args.length > 1 ? args.sublist(1) : <String>[];
+    final exitCode = await AudioCommand.execute(subArgs);
+    exit(exitCode);
+  }
 
   // 检查是否是命令参数
   if (command == '--toggle' || command == '--show' || command == '--hide') {
@@ -79,8 +101,44 @@ Future<bool> _handleCommandLineArgs(List<String> args) async {
     }
   }
 
-  // 其他参数，正常启动
-  return true;
+  // 未知命令，显示帮助
+  // ignore: avoid_print
+  print('未知命令: $command\n');
+  _printHelp();
+  exit(1);
+}
+
+/// 打印帮助信息
+void _printHelp() {
+  // ignore: avoid_print
+  print('''
+Nextalk - Linux 离线语音输入
+
+用法:
+  nextalk                    启动应用
+  nextalk help               显示此帮助
+  nextalk version            显示版本信息
+  nextalk audio [子命令]      音频设备配置
+
+  nextalk --toggle           切换窗口/录音状态
+  nextalk --show             显示窗口并开始录音
+  nextalk --hide             隐藏窗口并停止录音
+
+音频子命令:
+  nextalk audio              交互模式选择设备
+  nextalk audio <序号>       设置指定设备
+  nextalk audio default      恢复默认设备
+  nextalk audio list         列出所有设备
+  nextalk audio help         显示音频命令帮助
+
+更多信息: https://github.com/anthropics/nextalk
+''');
+}
+
+/// 打印版本信息
+void _printVersion() {
+  // ignore: avoid_print
+  print('Nextalk v0.1.7');
 }
 
 /// 预初始化 ASR 引擎
@@ -194,14 +252,37 @@ Future<void> main(List<String> args) async {
     // 6. 创建服务实例 (即使模型未就绪也创建，便于后续初始化)
     _audioCapture = AudioCapture();
 
-    // 6.1 预热音频设备 (避免第一次录音时因设备初始化延迟导致丢失语音)
-    final warmupError = await _audioCapture!.warmup();
+    // 6.1 Story 3-9: 预热音频设备，使用配置的设备名称 (AC2, AC3)
+    final configuredDevice = SettingsService.instance.audioInputDevice;
+    final warmupError = await _audioCapture!.warmup(deviceName: configuredDevice);
+    String? audioErrorDetail;
     if (warmupError == AudioCaptureError.none) {
       DiagnosticLogger.instance.info('main', '✅ 音频设备预热完成');
+      // Story 3-9 AC18: 检测设备回退
+      if (_audioCapture!.lastDeviceFallback) {
+        DiagnosticLogger.instance.warn('main', '⚠️ 配置的设备不存在，已回退到默认设备');
+        // 发送桌面通知
+        final lang = LanguageService.instance;
+        try {
+          await Process.run('notify-send', [
+            '-a',
+            'Nextalk',
+            '-i',
+            'dialog-warning',
+            'Nextalk',
+            lang.isZh
+                ? '配置的音频设备"$configuredDevice"不存在，已使用默认设备'
+                : 'Configured audio device "$configuredDevice" not found, using default device',
+          ]);
+        } catch (e) {
+          DiagnosticLogger.instance.warn('main', '发送通知失败: $e');
+        }
+      }
     } else {
       DiagnosticLogger.instance.warn('main', '⚠️ 音频设备预热失败: $warmupError');
-      if (_audioCapture!.lastErrorDetail != null) {
-        DiagnosticLogger.instance.warn('main', '📋 ${_audioCapture!.lastErrorDetail}');
+      audioErrorDetail = _audioCapture!.lastErrorDetail;
+      if (audioErrorDetail != null) {
+        DiagnosticLogger.instance.warn('main', '📋 $audioErrorDetail');
         DiagnosticLogger.instance.warn('main', '💡 可能原因: 1) PulseAudio/PipeWire 未运行 2) 设备被占用 3) 权限不足');
       }
     }
@@ -357,9 +438,13 @@ Future<void> main(List<String> args) async {
 
     // 12. 启动应用
     // Story 3-7: 传递 modelManager 以便 NextalkApp 根据模型状态路由 UI
+    // Story 3-9 AC16: 传递音频设备错误以便显示错误对话框
     runApp(NextalkApp(
       stateController: _stateController,
       modelManager: modelManager,
+      audioDeviceError: warmupError != AudioCaptureError.none ? warmupError : null,
+      audioDeviceName: configuredDevice,
+      audioErrorDetail: audioErrorDetail,
     ));
 
     DiagnosticLogger.instance.info('main', '应用初始化完成');

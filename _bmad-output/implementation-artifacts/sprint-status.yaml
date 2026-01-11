@@ -79,6 +79,7 @@ development_status:
   3-6-full-business-flow: done
   3-7-init-wizard-error-handling: done
   3-8-i18n-language-switch: done
+  3-9-audio-device-selection: ready-for-review
   epic-3-retrospective: optional
 
   # ============================================

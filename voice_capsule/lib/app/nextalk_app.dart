@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 
 import '../constants/settings_constants.dart';
 import '../l10n/app_localizations.dart';
+import '../services/audio_capture.dart';
 import '../services/hotkey_controller.dart';
 import '../services/language_service.dart';
 import '../services/model_manager.dart';
@@ -11,6 +12,7 @@ import '../services/settings_service.dart';
 import '../services/tray_service.dart';
 import '../services/window_service.dart';
 import '../state/capsule_state.dart';
+import '../ui/audio_device_error_dialog.dart';
 import '../ui/capsule_widget.dart';
 import '../ui/error_action_widget.dart';
 import '../ui/init_wizard/init_wizard.dart';
@@ -18,6 +20,7 @@ import '../ui/init_wizard/init_wizard.dart';
 /// Nextalk 应用根组件
 /// Story 3-6: 完整业务流串联
 /// Story 3-7: 错误状态操作按钮集成 + 初始化向导路由
+/// Story 3-9: 启动时音频设备错误提示 (AC16, AC17)
 ///
 /// 使用 StreamBuilder 绑定状态流到 UI，自动处理生命周期。
 /// 根据模型状态路由到初始化向导或正常胶囊 UI。
@@ -26,6 +29,9 @@ class NextalkApp extends StatefulWidget {
     super.key,
     required this.stateController,
     required this.modelManager,
+    this.audioDeviceError,
+    this.audioDeviceName,
+    this.audioErrorDetail,
   });
 
   /// 状态控制器 (由 main.dart 注入)
@@ -33,6 +39,15 @@ class NextalkApp extends StatefulWidget {
 
   /// 模型管理器 (由 main.dart 注入)
   final ModelManager modelManager;
+
+  /// Story 3-9: 音频设备错误 (AC16)
+  final AudioCaptureError? audioDeviceError;
+
+  /// Story 3-9: 配置的音频设备名称 (AC16)
+  final String? audioDeviceName;
+
+  /// Story 3-9: 详细错误信息 (AC16)
+  final String? audioErrorDetail;
 
   @override
   State<NextalkApp> createState() => _NextalkAppState();
@@ -59,6 +74,15 @@ class _NextalkAppState extends State<NextalkApp> {
     TrayService.instance.onShowInitWizard = (targetEngine) {
       _showInitWizard(targetEngine: targetEngine);
     };
+
+    // Story 3-9 AC16: 启动时检测到音频设备错误，延迟显示错误对话框
+    if (widget.audioDeviceError != null &&
+        widget.audioDeviceError != AudioCaptureError.none) {
+      // 延迟显示对话框，确保 MaterialApp 已完全构建
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showAudioDeviceErrorDialog();
+      });
+    }
   }
 
   @override
@@ -122,6 +146,59 @@ class _NextalkAppState extends State<NextalkApp> {
 
     // ignore: avoid_print
     print('[NextalkApp] 重新显示初始化向导, 目标引擎: $targetEngine');
+  }
+
+  /// Story 3-9 AC16: 显示音频设备错误对话框
+  void _showAudioDeviceErrorDialog() {
+    if (!mounted) return;
+
+    final lang = LanguageService.instance;
+    final deviceName = widget.audioDeviceName ?? 'default';
+
+    // 根据错误类型生成错误原因描述
+    final errorReason = _getAudioErrorReason(widget.audioDeviceError!, lang);
+
+    // 显示窗口 (对话框需要可见的窗口)
+    WindowService.instance.show();
+
+    // 显示错误对话框
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => AudioDeviceErrorDialog(
+        deviceName: deviceName,
+        errorReason: errorReason,
+        onDismiss: () {
+          // 对话框关闭后隐藏窗口
+          WindowService.instance.hide();
+        },
+      ),
+    );
+  }
+
+  /// Story 3-9: 根据错误类型获取本地化的错误原因描述
+  String _getAudioErrorReason(AudioCaptureError error, LanguageService lang) {
+    return switch (error) {
+      AudioCaptureError.initializationFailed => lang.isZh
+          ? 'PortAudio 初始化失败'
+          : 'PortAudio initialization failed',
+      AudioCaptureError.noInputDevice => lang.isZh
+          ? '未检测到音频输入设备'
+          : 'No audio input device detected',
+      AudioCaptureError.deviceUnavailable => lang.isZh
+          ? '设备不可用'
+          : 'Device unavailable',
+      AudioCaptureError.streamOpenFailed => lang.isZh
+          ? '无法打开音频流 (设备可能被其他应用占用)'
+          : 'Failed to open audio stream (device may be in use by another app)',
+      AudioCaptureError.streamStartFailed => lang.isZh
+          ? '无法启动音频流'
+          : 'Failed to start audio stream',
+      AudioCaptureError.readFailed => lang.isZh
+          ? '音频读取失败'
+          : 'Audio read failed',
+      AudioCaptureError.none => '',
+    };
   }
 
   @override

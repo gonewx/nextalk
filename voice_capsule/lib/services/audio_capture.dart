@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import '../ffi/portaudio_ffi.dart';
+import 'audio_device_service.dart';
 
 /// 音频采集配置
 class AudioConfig {
@@ -46,6 +47,7 @@ class AudioCapture {
   bool _isWarmedUp = false; // 是否已预热
   AudioCaptureError _lastReadError = AudioCaptureError.none; // M2 修复: 记录最近的读取错误
   String? _lastErrorDetail; // 详细错误信息 (用于诊断)
+  bool _lastDeviceFallback = false; // Story 3-9: 记录最近一次设备回退状态
 
   // 首帧预缓冲 (冷启动优化)
   Pointer<Float>? _prebuffer;
@@ -54,15 +56,44 @@ class AudioCapture {
 
   AudioCapture() : _bindings = PortAudioBindings();
 
+  /// Story 3-9: 根据设备名称解析设备索引 (AC2, AC3)
+  ///
+  /// 逻辑:
+  /// 1. "default" 或空 → 使用系统默认设备
+  /// 2. 设备名称 → 精确匹配 → 子串匹配 → 回退默认
+  ///
+  /// 返回: (设备索引, 是否回退到默认)
+  (int, bool) _resolveDeviceIndex(String? deviceName) {
+    // 如果是 "default" 或空，使用默认设备
+    if (deviceName == null || deviceName.isEmpty || deviceName == 'default') {
+      final defaultIndex = _bindings.getDefaultInputDevice();
+      return (defaultIndex, false);
+    }
+
+    // 尝试按名称查找设备
+    final deviceIndex = AudioDeviceService.instance.findDeviceByName(deviceName);
+    if (deviceIndex >= 0) {
+      return (deviceIndex, false);
+    }
+
+    // 回退到默认设备
+    final defaultIndex = _bindings.getDefaultInputDevice();
+    // ignore: avoid_print
+    print('[AudioCapture] ⚠️ 未找到设备 "$deviceName"，回退到默认设备');
+    return (defaultIndex, true);
+  }
+
   /// 预热音频设备
   ///
   /// 在应用启动时调用，提前初始化 PortAudio 并打开音频流，
   /// 避免用户第一次录音时因设备初始化延迟导致丢失语音。
   ///
+  /// Story 3-9: [deviceName] 可选设备名称，"default" 或空使用系统默认
+  ///
   /// 返回值:
   /// - [AudioCaptureError.none] 预热成功
   /// - 其他错误码表示预热失败（但不影响后续使用）
-  Future<AudioCaptureError> warmup() async {
+  Future<AudioCaptureError> warmup({String? deviceName}) async {
     if (_isWarmedUp) {
       return AudioCaptureError.none;
     }
@@ -79,14 +110,19 @@ class AudioCapture {
     }
     _isInitialized = true;
 
-    // 2. 获取默认输入设备
-    final deviceIndex = _bindings.getDefaultInputDevice();
+    // 2. Story 3-9: 解析设备索引 (AC2, AC3)
+    final (deviceIndex, fallback) = _resolveDeviceIndex(deviceName);
+    _lastDeviceFallback = fallback; // 记录回退状态 (AC18)
     if (deviceIndex == paNoDevice) {
       // ignore: avoid_print
       print('[AudioCapture] ⚠️ 无可用输入设备');
       // 不终止 PortAudio，保持初始化状态
       _isWarmedUp = true;
       return AudioCaptureError.noInputDevice;
+    }
+    if (fallback) {
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ 配置的设备不可用，已回退到默认设备');
     }
 
     // 3. 获取设备信息
@@ -245,13 +281,15 @@ class AudioCapture {
 
   /// 启动音频采集
   ///
+  /// Story 3-9: [deviceName] 可选设备名称，"default" 或空使用系统默认
+  ///
   /// 返回值:
   /// - [AudioCaptureError.none] 成功
   /// - [AudioCaptureError.initializationFailed] PortAudio 初始化失败
   /// - [AudioCaptureError.noInputDevice] 无可用输入设备
   /// - [AudioCaptureError.streamOpenFailed] 无法打开音频流
   /// - [AudioCaptureError.streamStartFailed] 无法启动音频流
-  Future<AudioCaptureError> start() async {
+  Future<AudioCaptureError> start({String? deviceName}) async {
     if (_isCapturing) {
       return AudioCaptureError.none;
     }
@@ -280,12 +318,17 @@ class AudioCapture {
       _isInitialized = true;
     }
 
-    // 2. 获取默认输入设备
-    final deviceIndex = _bindings.getDefaultInputDevice();
+    // 2. Story 3-9: 解析设备索引 (AC2, AC3)
+    final (deviceIndex, fallback) = _resolveDeviceIndex(deviceName);
+    _lastDeviceFallback = fallback; // 记录回退状态 (AC18)
     if (deviceIndex == paNoDevice) {
       _bindings.terminate();
       _isInitialized = false;
       return AudioCaptureError.noInputDevice;
+    }
+    if (fallback) {
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ 配置的设备不可用，已回退到默认设备');
     }
 
     // 3. 获取设备信息以获取默认延迟
@@ -529,4 +572,8 @@ class AudioCapture {
   /// 详细错误信息 (用于诊断)
   /// 当 warmup() 或 start() 返回错误时，检查此属性获取详细信息
   String? get lastErrorDetail => _lastErrorDetail;
+
+  /// Story 3-9 AC18: 最近一次设备解析是否回退到了默认设备
+  /// 当配置的设备不存在时返回 true
+  bool get lastDeviceFallback => _lastDeviceFallback;
 }

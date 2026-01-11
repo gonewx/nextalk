@@ -33,6 +33,9 @@ class SettingsConstants {
   /// 引擎类型键名 (Story 2-7: zipformer | sensevoice)
   static const String keyEngineType = '${keyPrefix}engine_type';
 
+  /// 音频输入设备名称键名 (Story 3-9)
+  static const String keyAudioInputDevice = '${keyPrefix}audio_input_device';
+
   // ===== 配置文件路径 =====
 
   /// XDG 配置目录
@@ -62,6 +65,9 @@ class SettingsConstants {
 
   /// SenseVoice 默认配置: 语言 (auto 自动检测)
   static const String defaultSenseVoiceLanguage = 'auto';
+
+  /// 默认音频输入设备 (Story 3-9: "default" 表示使用系统默认设备)
+  static const String defaultAudioInputDevice = 'default';
 
   // ===== 配置文件模板 =====
 
@@ -120,5 +126,14 @@ hotkey:
   # 修饰键 (可选): ctrl, shift, alt, meta
   # 示例: modifiers: [ctrl, shift]
   modifiers: []
+
+# 音频设置 (Story 3-9)
+audio:
+  # 输入设备名称
+  # "default": 使用系统默认设备
+  # 设备名称: 使用指定设备 (如 "HDA Intel PCH: ALC3246 Analog")
+  #
+  # 使用 nextalk audio 命令配置设备
+  input_device: default
 ''';
 }

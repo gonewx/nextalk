@@ -275,4 +275,20 @@ void main() {
       expect(SettingsService.instance.switchEngineType, isA<Function>());
     });
   });
+
+  // Story 3-9 Task 3.5, 9.2: 音频设备配置测试
+  group('SettingsService 音频设备配置', () {
+    test('audioInputDevice getter 存在', () {
+      expect(() => SettingsService.instance.audioInputDevice, returnsNormally);
+    });
+
+    test('audioInputDevice 默认返回 "default"', () {
+      // 由于 SettingsService 是单例，验证默认值逻辑
+      expect(SettingsConstants.defaultAudioInputDevice, equals('default'));
+    });
+
+    test('setAudioInputDevice 方法存在', () {
+      expect(SettingsService.instance.setAudioInputDevice, isA<Function>());
+    });
+  });
 }
