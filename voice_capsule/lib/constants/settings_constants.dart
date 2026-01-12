@@ -71,8 +71,22 @@ class SettingsConstants {
 
   // ===== 配置文件模板 =====
 
-  /// 默认配置文件内容 (Story 2-7 AC5: 支持多引擎配置)
-  static const String defaultSettingsYaml = '''# Nextalk 设置文件
+  /// 检测系统是否为中文环境
+  static bool get isChineseLocale {
+    final lang = Platform.environment['LANG'] ?? '';
+    final lcAll = Platform.environment['LC_ALL'] ?? '';
+    final lcMessages = Platform.environment['LC_MESSAGES'] ?? '';
+    return lang.startsWith('zh') ||
+        lcAll.startsWith('zh') ||
+        lcMessages.startsWith('zh');
+  }
+
+  /// 获取当前语言环境的配置文件模板
+  static String get defaultSettingsYaml =>
+      isChineseLocale ? _settingsYamlZh : _settingsYamlEn;
+
+  /// 中文配置文件模板
+  static const String _settingsYamlZh = '''# Nextalk 设置文件
 # 修改后重启应用生效
 
 model:
@@ -104,36 +118,68 @@ model:
     # 自定义模型下载地址 (留空使用默认地址)
     custom_url: ""
 
-hotkey:
-  # 触发语音输入的快捷键
-  #
-  # 推荐配置:
-  #   key: altRight, modifiers: []     - 单独按右 Alt 键 (默认)
-  #   key: space, modifiers: [ctrl]    - Ctrl+Space
-  #   key: f12, modifiers: []          - 单独按 F12
-  #
-  # 支持的主键:
-  #   修饰键: altRight, altLeft (仅作为单独按键使用)
-  #   功能键: f1-f12, space, escape/esc, tab, enter, backspace, capsLock
-  #   方向键: up/arrowUp, down/arrowDown, left/arrowLeft, right/arrowRight
-  #   编辑键: insert, delete, home, end, pageUp, pageDown
-  #   字母键: a-z
-  #   数字键: 0-9, numpad0-numpad9
-  #   小键盘: numpadEnter, numpadAdd, numpadSubtract, numpadMultiply, numpadDivide
-  #   符号键: minus, equal, bracketLeft, bracketRight, backslash, semicolon, quote, backquote, comma, period, slash
-  key: altRight
+# 快捷键设置
+# 请通过系统设置配置全局快捷键来触发 Nextalk：
+#   GNOME: 设置 → 键盘 → 自定义快捷键 → 添加快捷键
+#   KDE:   系统设置 → 快捷键 → 自定义快捷键
+# 命令设置为: nextalk --toggle
 
-  # 修饰键 (可选): ctrl, shift, alt, meta
-  # 示例: modifiers: [ctrl, shift]
-  modifiers: []
-
-# 音频设置 (Story 3-9)
+# 音频设置
 audio:
   # 输入设备名称
   # "default": 使用系统默认设备
   # 设备名称: 使用指定设备 (如 "HDA Intel PCH: ALC3246 Analog")
   #
   # 使用 nextalk audio 命令配置设备
+  input_device: default
+''';
+
+  /// English settings template
+  static const String _settingsYamlEn = '''# Nextalk Settings
+# Restart the app after making changes
+
+model:
+  # ASR engine type: zipformer | sensevoice
+  # zipformer: Streaming recognition, real-time, low latency (<200ms)
+  # sensevoice: Offline recognition, VAD segmented, high accuracy, auto punctuation
+  engine: sensevoice
+
+  # Zipformer configuration (streaming engine)
+  zipformer:
+    # Model version: int8 | standard
+    # int8: Quantized version, faster, less memory
+    # standard: Standard version, higher accuracy
+    type: int8
+
+    # Custom model download URL (leave empty for default)
+    custom_url: ""
+
+  # SenseVoice configuration (offline engine)
+  sensevoice:
+    # Enable Inverse Text Normalization (ITN)
+    # true: Auto-convert numbers, dates, etc. (e.g., "one two three" → "123")
+    use_itn: true
+
+    # Recognition language: auto | zh | en | ja | ko | yue
+    # auto: Auto-detect language
+    language: auto
+
+    # Custom model download URL (leave empty for default)
+    custom_url: ""
+
+# Hotkey Settings
+# Configure global hotkey via system settings to trigger Nextalk:
+#   GNOME: Settings → Keyboard → Custom Shortcuts → Add Shortcut
+#   KDE:   System Settings → Shortcuts → Custom Shortcuts
+# Set command to: nextalk --toggle
+
+# Audio Settings
+audio:
+  # Input device name
+  # "default": Use system default device
+  # Device name: Use specific device (e.g., "HDA Intel PCH: ALC3246 Analog")
+  #
+  # Use 'nextalk audio' command to configure device
   input_device: default
 ''';
 }
