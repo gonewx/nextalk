@@ -18,10 +18,10 @@ class HotkeyConfig {
     required this.modifiers,
   });
 
-  /// 默认快捷键配置 (Ctrl+Alt+V)
+  /// 默认快捷键配置 (Alt+Space)
   static const HotkeyConfig defaultConfig = HotkeyConfig(
-    key: 'v',
-    modifiers: ['ctrl', 'alt'],
+    key: 'space',
+    modifiers: ['alt'],
   );
 
   /// 转换为人类可读格式

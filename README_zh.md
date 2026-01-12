@@ -47,13 +47,13 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 2. 点击"添加快捷键"
 3. 名称: `Nextalk 语音输入`
 4. 命令: `nextalk --toggle`
-5. 快捷键: 按下 `Ctrl+Alt+V` (推荐)
+5. 快捷键: 按下 `Alt+Space` (推荐)
 
 **KDE Plasma:**
 
 1. 系统设置 → 快捷键 → 自定义快捷键
 2. 编辑 → 新建 → 全局快捷键 → 命令/URL
-3. 触发器: 设置为 `Ctrl+Alt+V`
+3. 触发器: 设置为 `Alt+Space`
 4. 动作: `nextalk --toggle`
 
 ### 使用
@@ -71,6 +71,12 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 | 参数 | 说明 |
 |------|------|
 | `--toggle` | 切换录音状态 (用于系统快捷键) |
+| `audio` | 管理音频输入设备 (交互模式) |
+| `audio <序号>` | 按序号直接设置音频设备 |
+| `audio --list` | 列出可用设备 (机器可读格式) |
+| `audio default` | 恢复系统默认设备 |
+| `--help` | 显示帮助信息 |
+| `--version` | 显示版本号 |
 
 ### 非 Fcitx5 环境
 
@@ -85,6 +91,7 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 
 - 显示/隐藏窗口
 - 切换模型版本
+- **音频输入设备** - 选择可用的音频输入设备
 - 打开配置目录
 - 退出应用
 
@@ -119,12 +126,17 @@ model:
   custom_url: ""    # 自定义模型下载地址
   type: int8        # 模型版本: int8 | standard
 
-hotkey:
-  key: v            # 主键 (仅供显示，实际由系统快捷键控制)
-  modifiers:        # 修饰键
-    - ctrl
-    - alt
+audio:
+  input_device: "default"  # 音频输入设备: "default" 或设备名称
 ```
+
+**音频设备选择:**
+- 使用 `"default"` 自动选择系统默认音频设备
+- 指定设备名称（如 `"Built-in Audio Analog Stereo"`）使用特定设备
+- 使用 `nextalk audio` 命令或系统托盘菜单交互式选择设备
+
+**快捷键配置:**
+快捷键通过桌面环境的原生设置配置，不在此配置文件中。请参阅 [配置快捷键](#配置快捷键) 章节了解设置方法。
 
 ## 从源码构建
 
@@ -294,6 +306,24 @@ model:
 
 ### 音频设备问题
 
+如果遇到 "Audio device busy" 错误（如使用 EasyEffects 时），可以选择其他音频输入设备：
+
+**方法一: CLI 交互模式**
+```bash
+nextalk audio       # 进入交互模式选择设备
+```
+
+**方法二: CLI 直接选择**
+```bash
+nextalk audio --list  # 列出可用设备
+nextalk audio 2       # 按序号选择设备
+nextalk audio default # 恢复系统默认
+```
+
+**方法三: 系统托盘**
+右键托盘图标 → 音频输入设备 → 从可用设备中选择
+
+**调试命令:**
 ```bash
 nextalk audio --list  # 查看应用检测到的设备
 pactl list sources    # 系统级调试命令

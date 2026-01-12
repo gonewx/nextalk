@@ -47,13 +47,13 @@ The app is triggered via system global hotkey, manual configuration required:
 2. Click "Add Shortcut"
 3. Name: `Nextalk Voice Input`
 4. Command: `nextalk --toggle`
-5. Shortcut: Press `Ctrl+Alt+V` (recommended)
+5. Shortcut: Press `Alt+Space` (recommended)
 
 **KDE Plasma:**
 
 1. System Settings → Shortcuts → Custom Shortcuts
 2. Edit → New → Global Shortcut → Command/URL
-3. Trigger: Set to `Ctrl+Alt+V`
+3. Trigger: Set to `Alt+Space`
 4. Action: `nextalk --toggle`
 
 ### Usage
@@ -71,6 +71,12 @@ The app is triggered via system global hotkey, manual configuration required:
 | Option | Description |
 |--------|-------------|
 | `--toggle` | Toggle recording state (for system hotkey) |
+| `audio` | Manage audio input device (interactive mode) |
+| `audio <number>` | Set audio device by index number directly |
+| `audio --list` | List available devices (machine-readable) |
+| `audio default` | Reset to system default device |
+| `--help` | Show help information |
+| `--version` | Show version |
 
 ### Non-Fcitx5 Environment
 
@@ -85,6 +91,7 @@ The app supports system tray (on supported desktop environments), right-click me
 
 - Show/Hide window
 - Switch model version
+- **Audio input device** - Select from available audio input devices
 - Open config directory
 - Exit app
 
@@ -119,12 +126,17 @@ model:
   custom_url: ""    # Custom model download URL
   type: int8        # Model version: int8 | standard
 
-hotkey:
-  key: v            # Main key (display only, actual key controlled by system shortcut)
-  modifiers:        # Modifier keys
-    - ctrl
-    - alt
+audio:
+  input_device: "default"  # Audio input device: "default" or device name
 ```
+
+**Audio Device Selection:**
+- Use `"default"` to use system default audio device
+- Specify device name (e.g. `"Built-in Audio Analog Stereo"`) to use a specific device
+- Use `nextalk audio` command or system tray menu to select devices interactively
+
+**Hotkey Configuration:**
+Hotkeys are configured through your desktop environment's native settings, not through this config file. See [Configure Hotkey](#configure-hotkey) section for setup instructions.
 
 ## Build from Source
 
@@ -294,6 +306,24 @@ model:
 
 ### Audio Device Issues
 
+If you encounter "Audio device busy" error (e.g., when using EasyEffects), you can select a different audio input device:
+
+**Method 1: CLI Interactive Mode**
+```bash
+nextalk audio       # Enter interactive mode to select device
+```
+
+**Method 2: CLI Direct Selection**
+```bash
+nextalk audio --list  # List available devices
+nextalk audio 2       # Select device by index
+nextalk audio default # Reset to system default
+```
+
+**Method 3: System Tray**
+Right-click tray icon → Audio Input Device → Select from available devices
+
+**Debug Commands:**
 ```bash
 nextalk audio --list  # List devices detected by the app
 pactl list sources    # System-level debug command

@@ -58,14 +58,14 @@ void main() {
     });
 
     group('快捷键配置解析', () {
-      test('默认快捷键应该是 Ctrl+Alt+V', () {
+      test('默认快捷键应该是 Alt+Space', () {
         expect(
           HotkeyConstants.defaultKey,
-          equals('v'),
+          equals('space'),
         );
         expect(
           HotkeyConstants.defaultModifiers,
-          equals(['ctrl', 'alt']),
+          equals(['alt']),
         );
       });
 
@@ -107,8 +107,8 @@ void main() {
     group('HotkeyConfig', () {
       test('默认配置应该正确', () {
         final config = HotkeyConfig.defaultConfig;
-        expect(config.key, equals('v'));
-        expect(config.modifiers, equals(['ctrl', 'alt']));
+        expect(config.key, equals('space'));
+        expect(config.modifiers, equals(['alt']));
       });
 
       // SCP-002: 移除 toFcitx5Format 测试
