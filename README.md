@@ -295,7 +295,8 @@ model:
 ### Audio Device Issues
 
 ```bash
-pactl list sources  # Check microphone devices
+nextalk audio --list  # List devices detected by the app
+pactl list sources    # System-level debug command
 ```
 
 ## Contributing

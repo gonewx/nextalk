@@ -281,6 +281,12 @@ Nextalk 音频设备配置
   - 变更: 解析 `pactl list sources` 输出中的端口可用性信息
   - 只有端口状态为 "available"（非 "not available"）的设备才显示
   - 现在完全匹配系统设置的设备检测逻辑
+- 2026-01-12: 重大重构 - AudioDeviceService 从 pactl 切换到 libpulse FFI:
+  - 原因: Debian 13 等系统可能没有安装 pactl 命令（pulseaudio-utils），但 libpulse.so 作为基础库存在
+  - 变更: 使用 libpulse FFI 直接调用 PulseAudio C API 枚举设备，无需外部命令依赖
+  - 新增 `lib/ffi/libpulse_ffi.dart` - libpulse FFI 绑定
+  - 混合策略: 优先使用 libpulse，不可用时回退到 PortAudio
+  - 设备名称与系统设置完全一致（如 "Built-in Audio Analog Stereo"）
 
 ## Dev Agent Record
 
@@ -288,7 +294,10 @@ Nextalk 音频设备配置
 
 本次实现添加了完整的音频输入设备选择功能，包括：
 - ~~PortAudio FFI 扩展：添加 Pa_GetDeviceCount 绑定~~ (已弃用)
-- AudioDeviceService：基于 pactl 的设备枚举、状态检测、名称匹配、设备列表缓存(5秒TTL)
+- ~~AudioDeviceService：基于 pactl 的设备枚举~~ (已弃用)
+- **AudioDeviceService：基于 libpulse FFI 的设备枚举（当前方案）**
+  - 优先使用 libpulse FFI 获取设备列表（与系统设置一致）
+  - libpulse 不可用时回退到 PortAudio
 - SettingsService：音频设备配置存储
 - AudioCapture：支持指定设备名称进行录音
 - CLI audio 子命令：交互循环模式 + 直接模式 + 机器可读输出
@@ -296,15 +305,16 @@ Nextalk 音频设备配置
 - 启动错误提示：音频设备不可用时显示对话框
 - 设备回退通知：配置的设备不存在时显示警告
 
-**重大变更**: AudioDeviceService 从 PortAudio/ALSA 切换到 pactl (PipeWire/PulseAudio)，
-使设备检测与系统设置保持一致。
+**重大变更**: AudioDeviceService 从 pactl 命令切换到 libpulse FFI，
+无需外部命令依赖，设备名称与系统设置完全一致。
 
 ### 修改/创建的文件
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
-| `lib/ffi/portaudio_ffi.dart` | 修改 | 添加 Pa_GetDeviceCount 绑定 (已弃用) |
-| `lib/services/audio_device_service.dart` | 新增 | 基于 pactl 的设备枚举服务 |
+| `lib/ffi/portaudio_ffi.dart` | 修改 | 添加 Pa_GetDeviceCount 绑定 |
+| `lib/ffi/libpulse_ffi.dart` | **新增** | libpulse FFI 绑定（设备枚举） |
+| `lib/services/audio_device_service.dart` | 新增 | 混合策略：libpulse 优先，PortAudio 回退 |
 | `lib/services/audio_capture.dart` | 修改 | 添加 deviceName 参数和回退状态 |
 | `lib/services/settings_service.dart` | 修改 | 添加 audioInputDevice 配置 |
 | `lib/constants/settings_constants.dart` | 修改 | 添加 audio 配置常量 |

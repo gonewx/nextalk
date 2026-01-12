@@ -234,8 +234,8 @@ class AudioCommand {
     await SettingsService.instance.setAudioInputDevice(device.name);
 
     print(lang.isZh
-        ? '✅ 设备已设置为: ${device.name}，重启应用后生效'
-        : '✅ Device set to: ${device.name}, restart app to take effect');
+        ? '✅ 设备已设置为: ${device.description}，重启应用后生效'
+        : '✅ Device set to: ${device.description}, restart app to take effect');
     return 0;
   }
 
@@ -254,8 +254,8 @@ class AudioCommand {
           : 'busy';
       final current = _isCurrentDevice(device.name, currentDevice) ? '*' : '';
 
-      // 格式: <序号>\t<设备名称>\t<状态>\t<是否当前>
-      print('$i\t${device.name}\t$status\t$current');
+      // 格式: <序号>\t<设备描述>\t<状态>\t<是否当前>
+      print('$i\t${device.description}\t$status\t$current');
     }
     print('# END');
 

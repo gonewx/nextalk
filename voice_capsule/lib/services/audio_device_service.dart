@@ -2,11 +2,13 @@ import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import '../ffi/portaudio_ffi.dart';
+import '../ffi/libpulse_ffi.dart';
 
 /// 音频输入设备状态 (Story 3-9: AC5)
 enum DeviceAvailability {
   /// 设备可用
   available,
+
   /// 设备不可用 (被占用或其他原因)
   busy,
 }
@@ -16,10 +18,10 @@ class AudioInputDevice {
   /// 设备索引 (用于显示，从 0 开始)
   final int index;
 
-  /// PortAudio 设备索引 (用于打开设备)
+  /// PortAudio 设备索引 (用于打开设备，-1 表示使用默认设备)
   final int paDeviceIndex;
 
-  /// 设备名称
+  /// 设备名称 (内部名称，用于配置存储)
   final String name;
 
   /// 设备描述 (用户友好的显示名称)
@@ -43,14 +45,15 @@ class AudioInputDevice {
 
 /// 音频设备服务 (Story 3-9: AC2, AC3, AC4, AC5, AC11, AC14)
 ///
-/// 通过 PortAudio API 枚举设备，无需外部依赖
+/// 优先使用 libpulse 枚举设备（与系统设置一致），
+/// 如果 libpulse 不可用则回退到 PortAudio
 class AudioDeviceService {
   AudioDeviceService._();
 
   static final AudioDeviceService instance = AudioDeviceService._();
 
   /// PortAudio 绑定 (延迟初始化)
-  PortAudioBindings? _bindings;
+  PortAudioBindings? _paBindings;
 
   /// 缓存的设备列表
   List<AudioInputDevice>? _cachedDevices;
@@ -61,15 +64,18 @@ class AudioDeviceService {
   /// 缓存有效期 (5 秒)
   static const Duration _cacheTtl = Duration(seconds: 5);
 
+  /// 是否使用 libpulse 枚举
+  bool? _usePulse;
+
   /// 获取 PortAudio 绑定
   PortAudioBindings get _pa {
-    _bindings ??= PortAudioBindings();
-    return _bindings!;
+    _paBindings ??= PortAudioBindings();
+    return _paBindings!;
   }
 
   /// 列出所有可用的音频输入设备
   ///
-  /// 通过 PortAudio API 枚举设备，只返回有输入通道的设备
+  /// 优先使用 libpulse（与系统设置一致），失败则回退到 PortAudio
   List<AudioInputDevice> listInputDevices({bool forceRefresh = false}) {
     // 检查缓存是否有效
     if (!forceRefresh &&
@@ -79,20 +85,72 @@ class AudioDeviceService {
       return _cachedDevices!;
     }
 
+    // 优先尝试 libpulse
+    final pulseDevices = _listInputDevicesViaPulse();
+    if (pulseDevices != null && pulseDevices.isNotEmpty) {
+      _usePulse = true;
+      _cachedDevices = pulseDevices;
+      _cacheTime = DateTime.now();
+      return pulseDevices;
+    }
+
+    // 回退到 PortAudio
+    debugPrint('AudioDeviceService: libpulse 不可用，回退到 PortAudio');
+    _usePulse = false;
+    final paDevices = _listInputDevicesViaPortAudio();
+    _cachedDevices = paDevices;
+    _cacheTime = DateTime.now();
+    return paDevices;
+  }
+
+  /// 使用 libpulse 枚举设备
+  List<AudioInputDevice>? _listInputDevicesViaPulse() {
+    try {
+      final enumerator = PulseDeviceEnumerator();
+      final sources = enumerator.enumerate();
+
+      if (sources == null || sources.isEmpty) return null;
+
+      final devices = <AudioInputDevice>[];
+      int displayIndex = 0;
+
+      for (final source in sources) {
+        // 过滤掉 monitor 设备（输出设备的回环）
+        if (source.isMonitor) continue;
+
+        devices.add(AudioInputDevice(
+          index: displayIndex++,
+          paDeviceIndex: paNoDevice, // libpulse 设备不使用 PortAudio 索引
+          name: source.name,
+          description: source.description,
+          status: DeviceAvailability.available,
+        ));
+      }
+
+      return devices.isEmpty ? null : devices;
+    } catch (e) {
+      debugPrint('AudioDeviceService: libpulse 枚举失败: $e');
+      return null;
+    }
+  }
+
+  /// 使用 PortAudio 枚举设备（回退方案）
+  List<AudioInputDevice> _listInputDevicesViaPortAudio() {
     final devices = <AudioInputDevice>[];
 
     try {
-      // 初始化 PortAudio
       final initResult = _pa.initialize();
       if (initResult != paNoError) {
-        debugPrint('AudioDeviceService: PortAudio 初始化失败: ${_pa.errorText(initResult)}');
+        debugPrint(
+            'AudioDeviceService: PortAudio 初始化失败: ${_pa.errorText(initResult)}');
         return devices;
       }
 
       try {
         final deviceCount = _pa.getDeviceCount();
         if (deviceCount < 0) {
-          debugPrint('AudioDeviceService: 获取设备数量失败: ${_pa.errorText(deviceCount)}');
+          debugPrint(
+              'AudioDeviceService: 获取设备数量失败: ${_pa.errorText(deviceCount)}');
           return devices;
         }
 
@@ -107,11 +165,14 @@ class AudioDeviceService {
 
           final name = info.name.toDartString();
 
+          // 过滤掉底层 ALSA 硬件设备，只保留 default/pipewire/pulse
+          if (name.contains('hw:') || name.contains('plughw:')) continue;
+
           devices.add(AudioInputDevice(
             index: displayIndex++,
             paDeviceIndex: i,
             name: name,
-            description: name, // PortAudio 没有单独的描述字段
+            description: name,
             status: DeviceAvailability.available,
           ));
         }
@@ -119,12 +180,8 @@ class AudioDeviceService {
         _pa.terminate();
       }
     } catch (e) {
-      debugPrint('AudioDeviceService: 枚举设备失败: $e');
+      debugPrint('AudioDeviceService: PortAudio 枚举设备失败: $e');
     }
-
-    // 更新缓存
-    _cachedDevices = devices;
-    _cacheTime = DateTime.now();
 
     return devices;
   }
@@ -176,4 +233,7 @@ class AudioDeviceService {
     }
     return devices[index].status;
   }
+
+  /// 是否正在使用 libpulse 枚举
+  bool get isUsingPulse => _usePulse ?? false;
 }

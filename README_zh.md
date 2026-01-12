@@ -295,7 +295,8 @@ model:
 ### 音频设备问题
 
 ```bash
-pactl list sources  # 检查麦克风设备
+nextalk audio --list  # 查看应用检测到的设备
+pactl list sources    # 系统级调试命令
 ```
 
 ## 贡献
