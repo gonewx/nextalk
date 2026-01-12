@@ -1,7 +1,10 @@
 #!/bin/bash
 # Nextalk 发布脚本
-# 用法: ./scripts/release.sh [patch|minor|major] [提交信息]
-# 示例: ./scripts/release.sh patch "修复冷启动问题"
+# 用法: ./scripts/release.sh [current|patch|minor|major] [提交信息]
+# 示例: ./scripts/release.sh current "发布新版本"
+#       ./scripts/release.sh patch "修复冷启动问题"
+# current: 使用 version.yaml 中的当前版本（不递增）
+# patch/minor/major: 自动递增版本号
 
 set -e
 
@@ -57,13 +60,15 @@ main() {
     cd "$PROJECT_ROOT"
 
     # 参数解析
-    BUMP_TYPE="${1:-patch}"
+    BUMP_TYPE="${1:-current}"
     COMMIT_MSG="$2"
 
     # 验证参数
-    if [[ ! "$BUMP_TYPE" =~ ^(patch|minor|major)$ ]]; then
-        echo -e "${RED}错误: 版本类型必须是 patch, minor 或 major${NC}"
-        echo "用法: $0 [patch|minor|major] [提交信息]"
+    if [[ ! "$BUMP_TYPE" =~ ^(current|patch|minor|major)$ ]]; then
+        echo -e "${RED}错误: 版本类型必须是 current, patch, minor 或 major${NC}"
+        echo "用法: $0 [current|patch|minor|major] [提交信息]"
+        echo "  current: 使用 version.yaml 中的当前版本（不递增）"
+        echo "  patch/minor/major: 自动递增版本号"
         exit 1
     fi
 
@@ -81,12 +86,18 @@ main() {
 
     # 获取版本信息
     CURRENT_VERSION=$(get_current_version)
-    NEW_VERSION=$(bump_version "$CURRENT_VERSION" "$BUMP_TYPE")
 
-    echo -e "${GREEN}=== Nextalk 发布 ===${NC}"
-    echo "当前版本: v$CURRENT_VERSION"
-    echo "新版本:   v$NEW_VERSION"
-    echo "类型:     $BUMP_TYPE"
+    if [[ "$BUMP_TYPE" == "current" ]]; then
+        NEW_VERSION="$CURRENT_VERSION"
+        echo -e "${GREEN}=== Nextalk 发布 ===${NC}"
+        echo "版本: v$NEW_VERSION (使用当前版本)"
+    else
+        NEW_VERSION=$(bump_version "$CURRENT_VERSION" "$BUMP_TYPE")
+        echo -e "${GREEN}=== Nextalk 发布 ===${NC}"
+        echo "当前版本: v$CURRENT_VERSION"
+        echo "新版本:   v$NEW_VERSION"
+        echo "类型:     $BUMP_TYPE"
+    fi
     echo ""
 
     # 确认发布
@@ -97,20 +108,28 @@ main() {
         exit 0
     fi
 
-    # 1. 更新版本文件
-    echo -e "\n${YELLOW}[1/4] 更新版本号...${NC}"
-    update_version_file "$NEW_VERSION"
+    # 1. 更新版本文件（仅在 bump 模式下）
+    if [[ "$BUMP_TYPE" != "current" ]]; then
+        echo -e "\n${YELLOW}[1/4] 更新版本号...${NC}"
+        update_version_file "$NEW_VERSION"
+    else
+        echo -e "\n${YELLOW}[1/4] 使用当前版本，跳过版本更新${NC}"
+    fi
 
-    # 2. 提交更改
-    echo -e "${YELLOW}[2/4] 提交更改...${NC}"
+    # 2. 提交更改（如果有）
+    echo -e "${YELLOW}[2/4] 检查并提交更改...${NC}"
     git add -A
 
-    if [[ -n "$COMMIT_MSG" ]]; then
-        git commit -m "chore: 版本升级至 v$NEW_VERSION
+    if [[ -n $(git status --porcelain) ]]; then
+        if [[ -n "$COMMIT_MSG" ]]; then
+            git commit -m "chore: 更新版本至 v$NEW_VERSION
 
 - $COMMIT_MSG"
+        else
+            git commit -m "chore: 更新版本至 v$NEW_VERSION"
+        fi
     else
-        git commit -m "chore: 版本升级至 v$NEW_VERSION"
+        echo "无需提交，工作区干净"
     fi
 
     # 3. 推送代码

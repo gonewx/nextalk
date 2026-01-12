@@ -156,9 +156,10 @@ package-all: sync-version
 version:
 	@echo "当前版本: v$$(grep -E '^app_version:' version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/')"
 
-# 发布新版本 (默认 patch)
+# 发布当前版本 (使用 version.yaml 中的版本，不递增)
 # 用法: make release 或 make release MSG="修复xxx问题"
-release: release-patch
+release:
+	@./scripts/release.sh current "$(MSG)"
 
 # 发布 patch 版本 (0.0.x)
 release-patch:
@@ -302,10 +303,10 @@ help:
 	@echo ""
 	@echo "发布命令:"
 	@echo "  make version            - 显示当前版本"
-	@echo "  make release            - 发布 patch 版本 (0.0.x)"
-	@echo "  make release-patch      - 发布 patch 版本 (0.0.x)"
-	@echo "  make release-minor      - 发布 minor 版本 (0.x.0)"
-	@echo "  make release-major      - 发布 major 版本 (x.0.0)"
+	@echo "  make release            - 发布当前版本 (使用 version.yaml)"
+	@echo "  make release-patch      - 递增并发布 patch 版本 (0.0.x)"
+	@echo "  make release-minor      - 递增并发布 minor 版本 (0.x.0)"
+	@echo "  make release-major      - 递增并发布 major 版本 (x.0.0)"
 	@echo "  make release MSG=\"xxx\" - 带提交信息发布"
 	@echo ""
 	@echo "其他命令:"
