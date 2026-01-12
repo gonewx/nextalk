@@ -27,6 +27,8 @@ RUN apt-get update && apt-get install -y \
     libfcitx5core-dev libfcitx5utils-dev libfcitx5config-dev \
     # PortAudio 开发库 (音频采集)
     libportaudio2 portaudio19-dev \
+    # 打包工具 (DEB 和 RPM)
+    dpkg dpkg-dev rpm imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 Flutter 3.32.5 (直接克隆指定标签)

@@ -1,7 +1,7 @@
 # Nextalk - 项目级 Makefile
 # 离线语音输入应用 (Flutter + Fcitx5)
 
-.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version package package-deb package-rpm package-all docker-build docker-build-flutter docker-build-addon docker-rebuild docker-build-image docker-clean release release-patch release-minor release-major version
+.PHONY: all build build-flutter build-addon test test-flutter clean clean-flutter clean-addon install install-addon install-addon-system uninstall-addon uninstall-addon-system run dev help sync-version package package-deb package-rpm package-all docker-build docker-build-flutter docker-build-addon docker-rebuild docker-package-deb docker-package-rpm docker-package-all docker-build-image docker-clean release release-patch release-minor release-major version
 
 # 默认目标
 all: build
@@ -25,12 +25,14 @@ sync-version:
 # 构建 Flutter 客户端 (Release)
 build-flutter: sync-version
 	@echo "🔨 构建 Flutter 客户端..."
-	cd voice_capsule && flutter build linux --release
+	@APP_VER=$$(grep -E "^app_version:" version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/'); \
+	cd voice_capsule && flutter build linux --release --dart-define=APP_VERSION=$$APP_VER
 
 # 构建 Flutter 客户端 (Debug)
 build-flutter-debug: sync-version
 	@echo "🔨 构建 Flutter 客户端 (Debug)..."
-	cd voice_capsule && flutter build linux --debug
+	@APP_VER=$$(grep -E "^app_version:" version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/'); \
+	cd voice_capsule && flutter build linux --debug --dart-define=APP_VERSION=$$APP_VER
 
 # 构建 Fcitx5 插件
 build-addon:
@@ -90,12 +92,14 @@ uninstall-addon-system:
 # 运行 Flutter 应用 (开发模式)
 run:
 	@echo "🚀 运行 Flutter 应用..."
-	cd voice_capsule && flutter run -d linux
+	@APP_VER=$$(grep -E "^app_version:" version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/'); \
+	cd voice_capsule && flutter run -d linux --dart-define=APP_VERSION=$$APP_VER
 
 # 开发模式 (热重载)
 dev:
 	@echo "🔥 开发模式运行..."
-	cd voice_capsule && flutter run -d linux
+	@APP_VER=$$(grep -E "^app_version:" version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/'); \
+	cd voice_capsule && flutter run -d linux --dart-define=APP_VERSION=$$APP_VER
 
 # 运行构建产物
 run-release: build-flutter
@@ -192,6 +196,21 @@ docker-rebuild:
 	@echo "🐳 Docker 重新完整编译..."
 	./scripts/docker-build.sh --clean
 
+# Docker 打包 DEB (推荐用于发布)
+docker-package-deb:
+	@echo "🐳 Docker 编译并打包 DEB..."
+	./scripts/docker-build.sh --deb
+
+# Docker 打包 RPM (推荐用于发布)
+docker-package-rpm:
+	@echo "🐳 Docker 编译并打包 RPM..."
+	./scripts/docker-build.sh --rpm
+
+# Docker 打包所有格式 (推荐用于发布)
+docker-package-all:
+	@echo "🐳 Docker 编译并打包所有格式..."
+	./scripts/docker-build.sh --package
+
 # 构建/重建 Docker 镜像
 docker-build-image:
 	@echo "🐳 构建 Docker 镜像..."
@@ -247,6 +266,9 @@ help:
 	@echo "  make docker-rebuild     - Docker 重新完整编译"
 	@echo "  make docker-build-flutter - Docker 只编译 Flutter"
 	@echo "  make docker-build-addon - Docker 只编译插件"
+	@echo "  make docker-package-deb - Docker 编译并打包 DEB (推荐)"
+	@echo "  make docker-package-rpm - Docker 编译并打包 RPM (推荐)"
+	@echo "  make docker-package-all - Docker 编译并打包所有格式"
 	@echo "  make docker-build-image - 构建/重建 Docker 镜像"
 	@echo "  make docker-clean       - 清理 Docker 编译产物"
 	@echo ""
@@ -271,11 +293,12 @@ help:
 	@echo "  make clean-flutter      - 清理 Flutter 构建"
 	@echo "  make clean-addon        - 清理插件构建"
 	@echo ""
-	@echo "打包命令:"
+	@echo "打包命令 (本地):"
 	@echo "  make package            - 构建 DEB 包"
 	@echo "  make package-deb        - 构建 DEB 包"
 	@echo "  make package-rpm        - 构建 RPM 包"
 	@echo "  make package-all        - 构建所有包格式"
+	@echo "  (注: 发布推荐使用 docker-package-* 确保跨发行版兼容)"
 	@echo ""
 	@echo "发布命令:"
 	@echo "  make version            - 显示当前版本"

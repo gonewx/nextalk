@@ -27,19 +27,27 @@ NC='\033[0m' # No Color
 show_help() {
     echo "用法: $0 [选项]"
     echo ""
-    echo "选项:"
+    echo "编译选项:"
     echo "  --rebuild-image   强制重建 Docker 镜像"
     echo "  --flutter-only    只编译 Flutter 应用"
     echo "  --plugin-only     只编译 Fcitx5 插件"
     echo "  --with-proxy      使用代理 (http://host.docker.internal:2080)"
     echo "  --clean           清理缓存后编译 (默认增量编译)"
+    echo ""
+    echo "打包选项:"
+    echo "  --deb             编译并打包 DEB 包"
+    echo "  --rpm             编译并打包 RPM 包"
+    echo "  --package         编译并打包所有格式 (DEB + RPM)"
+    echo ""
+    echo "其他:"
     echo "  -h, --help        显示此帮助信息"
     echo ""
     echo "示例:"
     echo "  $0                    # 增量编译全部"
     echo "  $0 --clean            # 清理后全量编译"
     echo "  $0 --flutter-only     # 只编译 Flutter 应用"
-    echo "  $0 --rebuild-image    # 重建镜像后编译"
+    echo "  $0 --deb              # 编译并打包 DEB"
+    echo "  $0 --package          # 编译并打包所有格式"
 }
 
 # 解析参数
@@ -48,6 +56,8 @@ FLUTTER_ONLY=false
 PLUGIN_ONLY=false
 WITH_PROXY=false
 CLEAN_BUILD=false
+PACKAGE_DEB=false
+PACKAGE_RPM=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -69,6 +79,19 @@ while [[ $# -gt 0 ]]; do
             ;;
         --clean)
             CLEAN_BUILD=true
+            shift
+            ;;
+        --deb)
+            PACKAGE_DEB=true
+            shift
+            ;;
+        --rpm)
+            PACKAGE_RPM=true
+            shift
+            ;;
+        --package)
+            PACKAGE_DEB=true
+            PACKAGE_RPM=true
             shift
             ;;
         -h|--help)
@@ -154,13 +177,18 @@ build_flutter() {
         echo -e "${YELLOW}  (清理模式: 将删除 .dart_tool 和 build/linux)${NC}"
     fi
 
+    # 从 version.yaml 读取版本号
+    local app_ver
+    app_ver=$(grep -E "^app_version:" "$PROJECT_DIR/version.yaml" | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/')
+    echo -e "${YELLOW}  版本: v${app_ver}${NC}"
+
     if docker run "${DOCKER_RUN_ARGS[@]}" "$IMAGE_NAME" /bin/bash -c "
         mkdir -p /tmp/builder && \
         git config --global --add safe.directory /opt/flutter && \
         cd voice_capsule && \
         rm -rf .dart_tool && \
         ${clean_cmd}flutter pub get && \
-        flutter build linux --release
+        flutter build linux --release --dart-define=APP_VERSION=${app_ver}
     "; then
         echo -e "${GREEN}Flutter 应用编译成功${NC}"
         echo "  产物路径: voice_capsule/build/linux/x64/release/bundle/"
@@ -197,6 +225,40 @@ build_plugin() {
     fi
 }
 
+# 打包 DEB
+package_deb() {
+    echo -e "${YELLOW}正在打包 DEB...${NC}"
+
+    prepare_docker_args
+
+    if docker run "${DOCKER_RUN_ARGS[@]}" "$IMAGE_NAME" /bin/bash -c "
+        ./scripts/build-pkg.sh --deb --skip-build
+    "; then
+        echo -e "${GREEN}DEB 打包成功${NC}"
+        echo "  产物路径: dist/"
+    else
+        echo -e "${RED}DEB 打包失败${NC}"
+        exit 1
+    fi
+}
+
+# 打包 RPM
+package_rpm() {
+    echo -e "${YELLOW}正在打包 RPM...${NC}"
+
+    prepare_docker_args
+
+    if docker run "${DOCKER_RUN_ARGS[@]}" "$IMAGE_NAME" /bin/bash -c "
+        ./scripts/build-pkg.sh --rpm --skip-build
+    "; then
+        echo -e "${GREEN}RPM 打包成功${NC}"
+        echo "  产物路径: dist/"
+    else
+        echo -e "${RED}RPM 打包失败${NC}"
+        exit 1
+    fi
+}
+
 # 主流程
 main() {
     echo "========================================"
@@ -207,26 +269,44 @@ main() {
     # 构建镜像
     build_image
 
-    # 执行编译
-    if $FLUTTER_ONLY; then
+    # 如果指定了打包选项，需要先编译全部组件
+    if $PACKAGE_DEB || $PACKAGE_RPM; then
         build_flutter
-    elif $PLUGIN_ONLY; then
         build_plugin
+
+        # 执行打包
+        if $PACKAGE_DEB; then
+            package_deb
+        fi
+        if $PACKAGE_RPM; then
+            package_rpm
+        fi
     else
-        build_flutter
-        build_plugin
+        # 执行编译
+        if $FLUTTER_ONLY; then
+            build_flutter
+        elif $PLUGIN_ONLY; then
+            build_plugin
+        else
+            build_flutter
+            build_plugin
+        fi
     fi
 
     echo ""
     echo "========================================"
-    echo -e "${GREEN}编译完成!${NC}"
+    echo -e "${GREEN}完成!${NC}"
     echo "========================================"
 
-    if ! $PLUGIN_ONLY; then
-        echo "Flutter 应用: voice_capsule/build/linux/x64/release/bundle/"
-    fi
-    if ! $FLUTTER_ONLY; then
-        echo "Fcitx5 插件:  addons/fcitx5/build/"
+    if $PACKAGE_DEB || $PACKAGE_RPM; then
+        echo "发布包: dist/"
+    else
+        if ! $PLUGIN_ONLY; then
+            echo "Flutter 应用: voice_capsule/build/linux/x64/release/bundle/"
+        fi
+        if ! $FLUTTER_ONLY; then
+            echo "Fcitx5 插件:  addons/fcitx5/build/"
+        fi
     fi
 }
 

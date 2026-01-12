@@ -84,6 +84,9 @@ if is_chinese; then
     restart_fcitx5
     echo ""
     echo "运行 'nextalk' 启动应用。"
+    echo ""
+    echo "💡 温馨提示："
+    echo "   如果遇到问题，请尝试重新登录或重启系统。"
 else
     echo "  Nextalk Installation Complete!"
     echo "═══════════════════════════════════════════════════════════"
@@ -92,6 +95,9 @@ else
     restart_fcitx5
     echo ""
     echo "Run 'nextalk' to start the application."
+    echo ""
+    echo "💡 Tip:"
+    echo "   If you encounter issues, try logging out and back in, or restart your system."
 fi
 echo ""
 

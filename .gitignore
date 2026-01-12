@@ -36,3 +36,6 @@ dist/
 .claude/skills/ui-ux-pro-max/
 
 .claude/settings.local.json
+_bmad/
+.cursor/
+.claude/commands/bmad

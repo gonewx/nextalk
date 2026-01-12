@@ -135,10 +135,16 @@ Nextalk - Linux 离线语音输入
 ''');
 }
 
+/// 应用版本号 (构建时通过 --dart-define=APP_VERSION=x.x.x 注入)
+const String appVersion = String.fromEnvironment(
+  'APP_VERSION',
+  defaultValue: 'dev',
+);
+
 /// 打印版本信息
 void _printVersion() {
   // ignore: avoid_print
-  print('Nextalk v0.1.7');
+  print('Nextalk v$appVersion');
 }
 
 /// 预初始化 ASR 引擎
