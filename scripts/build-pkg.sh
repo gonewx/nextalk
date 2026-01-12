@@ -168,24 +168,25 @@ check_rpm_dependencies() {
 # Version Extraction
 # ==============================================================================
 extract_version() {
-    local pubspec="$VOICE_CAPSULE_DIR/pubspec.yaml"
+    local version_file="$PROJECT_ROOT/version.yaml"
 
-    if [[ ! -f "$pubspec" ]]; then
-        error "pubspec.yaml not found: $pubspec"
+    if [[ ! -f "$version_file" ]]; then
+        error "version.yaml not found: $version_file"
         exit 1
     fi
 
-    local raw_version
-    raw_version=$(grep "^version:" "$pubspec" | head -1 | awk '{print $2}')
+    local app_version app_build
+    app_version=$(grep -E "^app_version:" "$version_file" | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/')
+    app_build=$(grep -E "^app_build:" "$version_file" | sed 's/app_build:[[:space:]]*\([0-9]*\)/\1/')
 
-    if [[ -z "$raw_version" ]]; then
-        error "Cannot extract version from pubspec.yaml"
+    if [[ -z "$app_version" ]]; then
+        error "Cannot extract app_version from version.yaml"
         exit 1
     fi
 
-    # Convert + to - for package version (0.1.0+1 -> 0.1.0-1)
-    PACKAGE_VERSION="${raw_version//+/-}"
-    success "Package version: $PACKAGE_VERSION"
+    # Format: 0.2.4-1 (version-build)
+    PACKAGE_VERSION="${app_version}-${app_build:-1}"
+    success "Package version: $PACKAGE_VERSION (from version.yaml)"
 }
 
 # ==============================================================================
