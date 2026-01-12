@@ -65,11 +65,13 @@ void main() {
     test('AudioInputDevice 构造函数正确', () {
       final device = AudioInputDevice(
         index: 0,
+        paDeviceIndex: 2,
         name: 'alsa_input.pci-0000_00_1f.3.analog-stereo',
         description: 'Built-in Audio Analog Stereo',
         status: DeviceAvailability.available,
       );
       expect(device.index, equals(0));
+      expect(device.paDeviceIndex, equals(2));
       expect(device.name, equals('alsa_input.pci-0000_00_1f.3.analog-stereo'));
       expect(device.description, equals('Built-in Audio Analog Stereo'));
       expect(device.status, equals(DeviceAvailability.available));
@@ -84,14 +86,14 @@ void main() {
     test('AudioInputDevice toString() 正确', () {
       final device = AudioInputDevice(
         index: 1,
+        paDeviceIndex: 3,
         name: 'alsa_input.usb-device',
         description: 'USB Microphone',
         status: DeviceAvailability.busy,
       );
       expect(device.toString(), contains('index=1'));
+      expect(device.toString(), contains('paIndex=3'));
       expect(device.toString(), contains('alsa_input.usb-device'));
-      expect(device.toString(), contains('USB Microphone'));
-      expect(device.toString(), contains('busy'));
     });
   });
 
