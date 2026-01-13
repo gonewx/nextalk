@@ -35,6 +35,14 @@ final class PaSourceInfo extends Struct {
   external Pointer<Utf8> description;
 }
 
+/// pa_sink_info 结构体（简化版，用于预热查询）
+final class PaSinkInfo extends Struct {
+  external Pointer<Utf8> name;
+  @Uint32()
+  external int index;
+  external Pointer<Utf8> description;
+}
+
 // ===== C 函数签名 =====
 
 // pa_mainloop
@@ -79,6 +87,8 @@ typedef PaContextNotifyCbC = Void Function(
     Pointer<PaContext>, Pointer<Void>);
 typedef PaSourceInfoCbC = Void Function(
     Pointer<PaContext>, Pointer<PaSourceInfo>, Int32, Pointer<Void>);
+typedef PaSinkInfoCbC = Void Function(
+    Pointer<PaContext>, Pointer<PaSinkInfo>, Int32, Pointer<Void>);
 
 typedef PaContextSetStateCallbackC = Void Function(
   Pointer<PaContext>,
@@ -102,6 +112,17 @@ typedef PaContextGetSourceInfoListDart = Pointer<PaOperation> Function(
   Pointer<Void>,
 );
 
+typedef PaContextGetSinkInfoListC = Pointer<PaOperation> Function(
+  Pointer<PaContext>,
+  Pointer<NativeFunction<PaSinkInfoCbC>>,
+  Pointer<Void>,
+);
+typedef PaContextGetSinkInfoListDart = Pointer<PaOperation> Function(
+  Pointer<PaContext>,
+  Pointer<NativeFunction<PaSinkInfoCbC>>,
+  Pointer<Void>,
+);
+
 // pa_operation
 typedef PaOperationUnrefC = Void Function(Pointer<PaOperation>);
 typedef PaOperationUnrefDart = void Function(Pointer<PaOperation>);
@@ -112,10 +133,21 @@ typedef PaOperationGetStateDart = int Function(Pointer<PaOperation>);
 // ===== 全局状态（用于回调） =====
 List<PulseSourceInfo> _globalSources = [];
 bool _globalDone = false;
+bool _globalSinkWarmupDone = false;
 
 // ===== 回调函数（必须是顶层函数） =====
 void _stateCallback(Pointer<PaContext> ctx, Pointer<Void> userdata) {
   // 状态变化在 mainloop 中处理
+}
+
+/// Sink 信息回调（用于预热 PipeWire 节点）
+void _sinkInfoCallback(
+    Pointer<PaContext> ctx, Pointer<PaSinkInfo> info, int eol, Pointer<Void> userdata) {
+  if (eol > 0) {
+    _globalSinkWarmupDone = true;
+    return;
+  }
+  // 不需要存储 sink 信息，只是为了触发 PipeWire 节点激活
 }
 
 void _sourceInfoCallback(
@@ -164,6 +196,7 @@ class LibPulseBindings {
   late final PaContextGetStateDart contextGetState;
   late final PaContextSetStateCallbackDart contextSetStateCallback;
   late final PaContextGetSourceInfoListDart contextGetSourceInfoList;
+  late final PaContextGetSinkInfoListDart contextGetSinkInfoList;
 
   // operation
   late final PaOperationUnrefDart operationUnref;
@@ -200,6 +233,8 @@ class LibPulseBindings {
         PaContextSetStateCallbackDart>('pa_context_set_state_callback');
     contextGetSourceInfoList = _lib.lookupFunction<PaContextGetSourceInfoListC,
         PaContextGetSourceInfoListDart>('pa_context_get_source_info_list');
+    contextGetSinkInfoList = _lib.lookupFunction<PaContextGetSinkInfoListC,
+        PaContextGetSinkInfoListDart>('pa_context_get_sink_info_list');
 
     operationUnref =
         _lib.lookupFunction<PaOperationUnrefC, PaOperationUnrefDart>(
@@ -245,6 +280,10 @@ class PulseDeviceEnumerator {
   /// 枚举所有输入设备（source）
   ///
   /// 返回设备列表，如果失败返回 null
+  ///
+  /// 注意: 在 PipeWire 环境下，当 WirePlumber 节点处于 Suspended 状态时，
+  /// 直接查询 source 列表可能返回不完整结果。因此我们先查询 sink 列表
+  /// 来触发 PipeWire 节点激活（这正是 pavucontrol 等工具的做法）。
   List<PulseSourceInfo>? enumerate() {
     try {
       _bindings = LibPulseBindings();
@@ -257,6 +296,7 @@ class PulseDeviceEnumerator {
     // 重置全局状态
     _globalSources = [];
     _globalDone = false;
+    _globalSinkWarmupDone = false;
 
     // 创建 mainloop
     final mainloop = pa.mainloopNew();
@@ -287,21 +327,36 @@ class PulseDeviceEnumerator {
         final retval = calloc<Int32>();
         int iterations = 0;
         const maxIterations = 1000;
-        bool requestSent = false;
+        bool sinkRequestSent = false;
+        bool sourceRequestSent = false;
 
         while (!_globalDone && iterations < maxIterations) {
           pa.mainloopIterate(mainloop, 1, retval);
           iterations++;
 
           final state = pa.contextGetState(ctx);
-          if (state == paContextReady && !requestSent) {
-            requestSent = true;
-            final sourceCallbackPtr =
-                Pointer.fromFunction<PaSourceInfoCbC>(_sourceInfoCallback);
-            final op =
-                pa.contextGetSourceInfoList(ctx, sourceCallbackPtr, nullptr);
-            if (op.address != 0) {
-              pa.operationUnref(op);
+          if (state == paContextReady) {
+            // 阶段 1: 先查询 sink 列表，预热 PipeWire 节点
+            if (!sinkRequestSent) {
+              sinkRequestSent = true;
+              final sinkCallbackPtr =
+                  Pointer.fromFunction<PaSinkInfoCbC>(_sinkInfoCallback);
+              final op =
+                  pa.contextGetSinkInfoList(ctx, sinkCallbackPtr, nullptr);
+              if (op.address != 0) {
+                pa.operationUnref(op);
+              }
+            }
+            // 阶段 2: sink 预热完成后，查询 source 列表
+            else if (_globalSinkWarmupDone && !sourceRequestSent) {
+              sourceRequestSent = true;
+              final sourceCallbackPtr =
+                  Pointer.fromFunction<PaSourceInfoCbC>(_sourceInfoCallback);
+              final op =
+                  pa.contextGetSourceInfoList(ctx, sourceCallbackPtr, nullptr);
+              if (op.address != 0) {
+                pa.operationUnref(op);
+              }
             }
           } else if (state == paContextFailed ||
               state == paContextTerminated) {
