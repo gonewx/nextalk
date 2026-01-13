@@ -287,6 +287,38 @@ Nextalk 音频设备配置
   - 新增 `lib/ffi/libpulse_ffi.dart` - libpulse FFI 绑定
   - 混合策略: 优先使用 libpulse，不可用时回退到 PortAudio
   - 设备名称与系统设置完全一致（如 "Built-in Audio Analog Stereo"）
+- 2026-01-13: 重大重构 - AudioCapture 从 PortAudio 切换到 libpulse-simple 录音:
+  - **问题背景**:
+    1. PipeWire + WirePlumber + Easy Effects 环境下节点休眠导致设备不可用
+    2. libpulse 枚举的设备名（如 `alsa_input.xxx`）与 PortAudio 设备名不匹配
+    3. 用户配置保存 libpulse 名称后，PortAudio 无法找到对应设备
+  - **解决方案**: 使用 libpulse-simple 进行音频录制
+    - 设备名直接使用 libpulse 格式，与系统设置完全一致
+    - libpulse-simple 自动处理采样率转换，无需担心硬件限制
+    - 与 PipeWire/PulseAudio 完美集成
+  - **新增文件**:
+    - `lib/ffi/libpulse_simple_ffi.dart` - libpulse-simple FFI 绑定 (pa_simple_new, pa_simple_read, pa_simple_free)
+    - `lib/services/pulse_audio_capture.dart` - PulseAudio 录音服务类
+  - **修改文件**:
+    - `lib/ffi/libpulse_ffi.dart` - 添加 sink 预热查询，解决 PipeWire 节点休眠
+    - `lib/services/audio_capture.dart` - 集成 PulseAudioCapture，优先使用后回退到 PortAudio
+    - `lib/services/audio_device_service.dart` - 恢复 libpulse 设备枚举，显示 description
+  - **架构变更**:
+    ```
+    录音流程 (新):
+    PulseAudioCapture (libpulse-simple)  ← 优先，设备名与系统一致
+        ↓ (失败时回退)
+    AudioCapture (PortAudio)             ← 兼容性保障
+
+    设备枚举流程:
+    libpulse enumerate → description 显示 (如 "内置音频 模拟立体声")
+        ↓ (失败时回退)
+    PortAudio enumerate
+    ```
+  - **解决的问题**:
+    - PipeWire/WirePlumber 节点休眠导致设备不可用
+    - 设备名称与系统设置不一致
+    - 采样率不匹配错误 (硬件 44100Hz vs 应用 16000Hz)
 
 ## Dev Agent Record
 
@@ -298,24 +330,30 @@ Nextalk 音频设备配置
 - **AudioDeviceService：基于 libpulse FFI 的设备枚举（当前方案）**
   - 优先使用 libpulse FFI 获取设备列表（与系统设置一致）
   - libpulse 不可用时回退到 PortAudio
+- **PulseAudioCapture：基于 libpulse-simple 的音频录制（当前方案）**
+  - 优先使用 libpulse-simple 录音（设备名与系统一致）
+  - libpulse-simple 不可用时回退到 PortAudio
+  - 自动处理采样率转换，与 PipeWire/PulseAudio 完美集成
 - SettingsService：音频设备配置存储
-- AudioCapture：支持指定设备名称进行录音
+- AudioCapture：支持指定设备名称进行录音，混合 PulseAudio/PortAudio 方案
 - CLI audio 子命令：交互循环模式 + 直接模式 + 机器可读输出
 - 托盘菜单集成：设备选择子菜单
 - 启动错误提示：音频设备不可用时显示对话框
 - 设备回退通知：配置的设备不存在时显示警告
 
-**重大变更**: AudioDeviceService 从 pactl 命令切换到 libpulse FFI，
-无需外部命令依赖，设备名称与系统设置完全一致。
+**重大变更 (2026-01-13)**: 音频录制从 PortAudio 切换到 libpulse-simple，
+解决 PipeWire 环境下设备命名不一致和节点休眠问题。
 
 ### 修改/创建的文件
 
 | 文件 | 操作 | 说明 |
 |------|------|------|
 | `lib/ffi/portaudio_ffi.dart` | 修改 | 添加 Pa_GetDeviceCount 绑定 |
-| `lib/ffi/libpulse_ffi.dart` | **新增** | libpulse FFI 绑定（设备枚举） |
+| `lib/ffi/libpulse_ffi.dart` | **新增** | libpulse FFI 绑定（设备枚举 + sink 预热） |
+| `lib/ffi/libpulse_simple_ffi.dart` | **新增** | libpulse-simple FFI 绑定（音频录制） |
+| `lib/services/pulse_audio_capture.dart` | **新增** | PulseAudio 录音服务类 |
 | `lib/services/audio_device_service.dart` | 新增 | 混合策略：libpulse 优先，PortAudio 回退 |
-| `lib/services/audio_capture.dart` | 修改 | 添加 deviceName 参数和回退状态 |
+| `lib/services/audio_capture.dart` | 修改 | 集成 PulseAudioCapture，优先使用后回退 PortAudio |
 | `lib/services/settings_service.dart` | 修改 | 添加 audioInputDevice 配置 |
 | `lib/constants/settings_constants.dart` | 修改 | 添加 audio 配置常量 |
 | `lib/services/tray_service.dart` | 修改 | 添加音频设备子菜单 |

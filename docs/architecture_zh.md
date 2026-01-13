@@ -93,7 +93,8 @@ nextalk/
 | :--- | :--- | :--- | :--- |
 | **前端 UI** | Flutter (Dart) | 3.x+ | 提供 Linux 上最佳的真透明、无边框渲染能力。 |
 | **ASR 引擎** | Sherpa-onnx | 最新版 | 高性能、离线、支持流式识别，提供标准 C-API。 |
-| **音频采集** | PortAudio | v19 | Linux 跨平台音频 I/O 的行业标准 (兼容 ALSA/Pulse)。 |
+| **音频采集** | libpulse-simple / PortAudio | 最新 / v19 | 首选: libpulse-simple 与 PipeWire/PulseAudio 深度集成。回退: PortAudio 确保兼容性。 |
+| **设备枚举** | libpulse | 最新版 | 设备列表与系统设置完全一致 (PipeWire/PulseAudio)。 |
 | **语言绑定** | `dart:ffi` | Native | 与 C 库进行零开销互操作。 |
 | **进程通信** | Unix Domain Socket | 标准 | 简单、安全、低延迟的本地通信方案。 |
 | **后端插件** | C++ | C++17 | 开发 Fcitx5 原生插件的硬性要求。 |
@@ -156,8 +157,36 @@ nextalk/
 
 为了满足 **NFR1 (延迟 < 20ms)**，音频流水线必须最大限度减少内存拷贝。
 
+#### 4.2.1 音频采集策略
+
+系统采用**混合音频采集策略**，以确保在不同 Linux 音频系统下的最大兼容性：
+
+```
+首选路径 (PipeWire/PulseAudio 环境):
+┌─────────────────────┐
+│  libpulse-simple    │ ← 设备名与系统设置完全一致
+│  (pa_simple_read)   │ ← 自动采样率转换
+└─────────────────────┘
+          │
+          ↓ (不可用时回退)
+┌─────────────────────┐
+│    PortAudio        │ ← 兼容非 PulseAudio 系统
+│  (Pa_ReadStream)    │ ← 需要时直接访问 ALSA
+└─────────────────────┘
+```
+
+**libpulse-simple 的优势**:
+- 设备名与系统设置完全一致（如"内置音频 模拟立体声"）
+- 自动采样率转换（硬件 44100Hz → 应用 16000Hz）
+- 与 PipeWire/PulseAudio 完美集成
+- 优雅处理 WirePlumber 节点休眠
+
+**设备枚举**: 使用 libpulse API (`pa_context_get_source_info_list`) 获取设备列表，预先查询 sink 以唤醒休眠的 PipeWire 节点。
+
+#### 4.2.2 零拷贝数据流
+
 1.  **内存分配**: Dart 使用 `calloc` 分配一块堆外内存缓冲区 (`Pointer<Float>`)。
-2.  **采集**: Dart 将此指针传递给 PortAudio 的 `Pa_ReadStream`。C 代码直接将 PCM 数据写入该内存地址。
+2.  **采集**: Dart 将此指针传递给 libpulse-simple 的 `pa_simple_read` (或回退到 PortAudio 的 `Pa_ReadStream`)。音频数据直接写入该内存地址。
 3.  **推理**: Dart 将**同一个指针**传递给 Sherpa 的 `AcceptWaveform`。在流处理期间，Dart/C 边界之间没有数据拷贝发生。
 4.  **结果**: 只有当 Sherpa 返回识别出的文本结果时，才将文本字符串复制到 Dart 托管内存中供 UI 显示。
 

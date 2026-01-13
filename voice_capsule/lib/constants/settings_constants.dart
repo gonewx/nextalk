@@ -128,7 +128,7 @@ model:
 audio:
   # 输入设备名称
   # "default": 使用系统默认设备
-  # 设备名称: 使用指定设备 (如 "HDA Intel PCH: ALC3246 Analog")
+  # 设备名称: 使用系统设置中显示的设备名 (如 "Built-in Audio Analog Stereo")
   #
   # 使用 nextalk audio 命令配置设备
   input_device: default
@@ -177,7 +177,7 @@ model:
 audio:
   # Input device name
   # "default": Use system default device
-  # Device name: Use specific device (e.g., "HDA Intel PCH: ALC3246 Analog")
+  # Device name: Use the device name shown in system settings (e.g., "Built-in Audio Analog Stereo")
   #
   # Use 'nextalk audio' command to configure device
   input_device: default

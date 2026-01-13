@@ -75,7 +75,7 @@ class AudioDeviceService {
 
   /// 列出所有可用的音频输入设备
   ///
-  /// 优先使用 libpulse（与系统设置一致），失败则回退到 PortAudio
+  /// 优先使用 libpulse 枚举（与系统设置显示一致），失败则回退到 PortAudio
   List<AudioInputDevice> listInputDevices({bool forceRefresh = false}) {
     // 检查缓存是否有效
     if (!forceRefresh &&
@@ -88,13 +88,13 @@ class AudioDeviceService {
 
     debugPrint('[AudioDeviceService] 📋 开始枚举音频设备...');
 
-    // 优先尝试 libpulse
+    // 优先使用 libpulse 枚举（设备名与系统设置一致）
     final pulseDevices = _listInputDevicesViaPulse();
     if (pulseDevices != null && pulseDevices.isNotEmpty) {
       _usePulse = true;
       _cachedDevices = pulseDevices;
       _cacheTime = DateTime.now();
-      debugPrint('[AudioDeviceService] ✓ 使用 libpulse 枚举成功 (${pulseDevices.length} 个设备)');
+      debugPrint('[AudioDeviceService] ✓ 使用 libpulse 枚举 (${pulseDevices.length} 个设备)');
       return pulseDevices;
     }
 
@@ -225,12 +225,42 @@ class AudioDeviceService {
     for (final device in devices) {
       if (device.name.contains(name) ||
           name.contains(device.name) ||
-          device.description.contains(name)) {
+          device.description.contains(name) ||
+          name.contains(device.description)) {
         return device.index;
       }
     }
 
     return -1;
+  }
+
+  /// 通过配置名称（可能是 description 或 name）获取设备的 libpulse name
+  /// 用于传递给 pa_simple_new
+  String? getDevicePulseName(String configName, {List<AudioInputDevice>? cachedDevices}) {
+    if (configName == 'default' || configName.isEmpty) {
+      return null; // 使用默认设备
+    }
+
+    final devices = cachedDevices ?? listInputDevices();
+
+    // 1. 精确匹配 description 或 name
+    for (final device in devices) {
+      if (device.description == configName || device.name == configName) {
+        return device.name;
+      }
+    }
+
+    // 2. 子串匹配
+    for (final device in devices) {
+      if (device.description.contains(configName) ||
+          configName.contains(device.description) ||
+          device.name.contains(configName) ||
+          configName.contains(device.name)) {
+        return device.name;
+      }
+    }
+
+    return null; // 未找到，将使用默认设备
   }
 
   /// 根据显示索引获取 PortAudio 设备索引

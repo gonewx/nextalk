@@ -1,6 +1,7 @@
 import 'dart:ffi';
 import 'package:ffi/ffi.dart';
 import '../ffi/portaudio_ffi.dart';
+import 'pulse_audio_capture.dart';
 import 'audio_device_service.dart';
 
 /// 音频采集配置
@@ -34,7 +35,8 @@ enum AudioDeviceStatus {
 
 /// 音频采集服务
 ///
-/// 使用 PortAudio 进行音频采集，支持零拷贝接口。
+/// 优先使用 libpulse-simple 进行音频采集（与系统设置一致），
+/// 回退到 PortAudio。
 /// 采样参数: 16kHz, 单声道, Float32
 class AudioCapture {
   final PortAudioBindings _bindings;
@@ -53,6 +55,10 @@ class AudioCapture {
   Pointer<Float>? _prebuffer;
   int _prebufferSamples = 0;
   bool _hasPrebuffer = false;
+
+  // PulseAudio 支持
+  PulseAudioCapture? _pulseCapture;
+  bool _usePulse = false; // 是否使用 PulseAudio
 
   AudioCapture() : _bindings = PortAudioBindings();
 
@@ -135,27 +141,28 @@ class AudioCapture {
   ///
   /// 逻辑:
   /// 1. "default" 或空 → 使用智能默认设备选择（过滤底层硬件）
-  /// 2. 设备名称 → 精确匹配 → 子串匹配 → 回退智能默认
+  /// 2. PortAudio 设备名 → 精确匹配 → 子串匹配 → 回退智能默认
   ///
   /// 返回: (设备索引, 是否回退到默认)
   (int, bool) _resolveDeviceIndex(String? deviceName) {
     // 如果是 "default" 或空，使用智能默认设备选择
     if (deviceName == null || deviceName.isEmpty || deviceName == 'default') {
+      // ignore: avoid_print
+      print('[AudioCapture] 📋 使用默认设备配置');
       final defaultIndex = _selectSmartDefaultDevice();
       return (defaultIndex, false);
     }
 
-    // 尝试按名称查找设备
-    final deviceIndex = AudioDeviceService.instance.findDeviceByName(deviceName);
+    // 尝试在 PortAudio 设备中按名称查找
+    // ignore: avoid_print
+    print('[AudioCapture] 📋 查找配置的设备: "$deviceName"');
+    final deviceIndex = _findPortAudioDeviceByName(deviceName);
     if (deviceIndex >= 0) {
-      // 需要获取实际的 PortAudio 设备索引
-      final paIndex = AudioDeviceService.instance.getPaDeviceIndex(deviceIndex);
-      if (paIndex != paNoDevice) {
-        return (paIndex, false);
-      }
-      // libpulse 枚举的设备没有 PortAudio 索引，回退到智能默认
+      final infoPtr = _bindings.getDeviceInfo(deviceIndex);
+      final actualName = infoPtr.address != 0 ? infoPtr.ref.name.toDartString() : deviceName;
       // ignore: avoid_print
-      print('[AudioCapture] ⚠️ 设备 "$deviceName" 无 PortAudio 索引，使用智能默认');
+      print('[AudioCapture] ✓ 找到设备: "$actualName" (index=$deviceIndex)');
+      return (deviceIndex, false);
     }
 
     // 回退到智能默认设备
@@ -165,12 +172,35 @@ class AudioCapture {
     return (defaultIndex, true);
   }
 
+  /// 在 PortAudio 设备列表中按名称查找设备
+  int _findPortAudioDeviceByName(String deviceName) {
+    final deviceCount = _bindings.getDeviceCount();
+    if (deviceCount <= 0) return -1;
+
+    for (int i = 0; i < deviceCount; i++) {
+      final infoPtr = _bindings.getDeviceInfo(i);
+      if (infoPtr.address == 0) continue;
+
+      final info = infoPtr.ref;
+      if (info.maxInputChannels <= 0) continue;
+
+      final name = info.name.toDartString();
+
+      // 精确匹配或子串匹配
+      if (name == deviceName || name.contains(deviceName) || deviceName.contains(name)) {
+        return i;
+      }
+    }
+
+    return -1;
+  }
+
   /// 预热音频设备
   ///
-  /// 在应用启动时调用，提前初始化 PortAudio 并打开音频流，
-  /// 避免用户第一次录音时因设备初始化延迟导致丢失语音。
+  /// 在应用启动时调用，提前初始化音频采集。
+  /// 优先使用 libpulse-simple（与系统设置一致），失败则回退到 PortAudio。
   ///
-  /// Story 3-9: [deviceName] 可选设备名称，"default" 或空使用系统默认
+  /// Story 3-9: [deviceName] 设备名称（可能是 description 或内部名称），"default" 或空使用系统默认
   ///
   /// 返回值:
   /// - [AudioCaptureError.none] 预热成功
@@ -182,8 +212,51 @@ class AudioCapture {
 
     // ignore: avoid_print
     print('[AudioCapture] 开始预热音频设备...');
+    // ignore: avoid_print
+    print('[AudioCapture] 📋 配置的设备: ${deviceName ?? "default"}');
 
-    // 1. 初始化 PortAudio (这会触发 ALSA 警告)
+    // 将配置名称（可能是 description）转换为 libpulse name
+    final pulseName = deviceName != null && deviceName != 'default'
+        ? AudioDeviceService.instance.getDevicePulseName(deviceName)
+        : null;
+
+    if (pulseName != null) {
+      // ignore: avoid_print
+      print('[AudioCapture] 📋 解析为 libpulse name: $pulseName');
+    }
+
+    // 1. 优先尝试 PulseAudioCapture（与系统设置一致）
+    if (PulseAudioCapture.isAvailable()) {
+      // ignore: avoid_print
+      print('[AudioCapture] 🔍 尝试使用 libpulse-simple...');
+      _pulseCapture = PulseAudioCapture();
+      final pulseResult = await _pulseCapture!.initialize(deviceName: pulseName);
+      if (pulseResult == PulseAudioError.none) {
+        _usePulse = true;
+        _isWarmedUp = true;
+        _buffer = _pulseCapture!.buffer;
+        // ignore: avoid_print
+        print('[AudioCapture] ✅ 使用 libpulse-simple 预热成功');
+        return AudioCaptureError.none;
+      }
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ libpulse-simple 初始化失败: ${_pulseCapture!.lastError}');
+      _pulseCapture!.dispose();
+      _pulseCapture = null;
+    } else {
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ libpulse-simple 不可用');
+    }
+
+    // 2. 回退到 PortAudio
+    // ignore: avoid_print
+    print('[AudioCapture] 📋 回退到 PortAudio...');
+    return _warmupPortAudio(deviceName: deviceName);
+  }
+
+  /// 使用 PortAudio 预热（回退方案）
+  Future<AudioCaptureError> _warmupPortAudio({String? deviceName}) async {
+    // 初始化 PortAudio
     final initResult = _bindings.initialize();
     if (initResult != paNoError) {
       // ignore: avoid_print
@@ -192,13 +265,12 @@ class AudioCapture {
     }
     _isInitialized = true;
 
-    // 2. Story 3-9: 解析设备索引 (AC2, AC3)
+    // 解析设备索引
     final (deviceIndex, fallback) = _resolveDeviceIndex(deviceName);
-    _lastDeviceFallback = fallback; // 记录回退状态 (AC18)
+    _lastDeviceFallback = fallback;
     if (deviceIndex == paNoDevice) {
       // ignore: avoid_print
       print('[AudioCapture] ⚠️ 无可用输入设备');
-      // 不终止 PortAudio，保持初始化状态
       _isWarmedUp = true;
       return AudioCaptureError.noInputDevice;
     }
@@ -207,17 +279,17 @@ class AudioCapture {
       print('[AudioCapture] ⚠️ 配置的设备不可用，已回退到默认设备');
     }
 
-    // 3. 获取设备信息
+    // 获取设备信息
     final deviceInfo = _bindings.getDeviceInfo(deviceIndex);
     if (deviceInfo == nullptr) {
       _isWarmedUp = true;
       return AudioCaptureError.deviceUnavailable;
     }
 
-    // 4. 分配缓冲区
+    // 分配缓冲区
     _buffer = calloc<Float>(AudioConfig.framesPerBuffer);
 
-    // 5. 配置输入参数
+    // 配置输入参数
     _inputParams = calloc<PaStreamParameters>();
     _inputParams!.ref.device = deviceIndex;
     _inputParams!.ref.channelCount = AudioConfig.channels;
@@ -225,7 +297,7 @@ class AudioCapture {
     _inputParams!.ref.suggestedLatency = deviceInfo.ref.defaultLowInputLatency;
     _inputParams!.ref.hostApiSpecificStreamInfo = nullptr;
 
-    // 6. 打开音频流 (预热)
+    // 打开音频流
     _streamPtr = calloc<Pointer<Void>>();
     final openResult = _bindings.openStream(
       _streamPtr!,
@@ -240,12 +312,12 @@ class AudioCapture {
 
     if (openResult != paNoError) {
       final errorText = _bindings.errorText(openResult);
-      final deviceName = deviceInfo.ref.name.toDartString();
-      _lastErrorDetail = 'PortAudio 错误: $openResult ($errorText), 设备: "$deviceName", maxInputChannels=${deviceInfo.ref.maxInputChannels}, defaultSampleRate=${deviceInfo.ref.defaultSampleRate}';
+      final devName = deviceInfo.ref.name.toDartString();
+      _lastErrorDetail = 'PortAudio 错误: $openResult ($errorText), 设备: "$devName", maxInputChannels=${deviceInfo.ref.maxInputChannels}, defaultSampleRate=${deviceInfo.ref.defaultSampleRate}';
       // ignore: avoid_print
       print('[AudioCapture] ⚠️ 打开音频流失败: $openResult ($errorText)');
       // ignore: avoid_print
-      print('[AudioCapture] 📋 设备信息: "$deviceName", maxInputChannels=${deviceInfo.ref.maxInputChannels}, defaultSampleRate=${deviceInfo.ref.defaultSampleRate}');
+      print('[AudioCapture] 📋 设备信息: "$devName", maxInputChannels=${deviceInfo.ref.maxInputChannels}, defaultSampleRate=${deviceInfo.ref.defaultSampleRate}');
       // ignore: avoid_print
       print('[AudioCapture] 💡 可能原因: 1) PulseAudio/PipeWire 未运行 2) 设备被占用 3) 权限不足');
       _isWarmedUp = true;
@@ -254,21 +326,19 @@ class AudioCapture {
 
     _stream = _streamPtr!.value;
 
-    // 7. 启动音频流，读取一帧数据让硬件准备好
+    // 启动音频流，读取一帧数据让硬件准备好
     final startResult = _bindings.startStream(_stream!);
     if (startResult == paNoError) {
-      // 读取一帧数据丢弃 (让硬件准备好)
       _bindings.readStream(_stream!, _buffer!, AudioConfig.framesPerBuffer);
-
-      // 停止流 (预热完成，等待真正使用)
       _bindings.stopStream(_stream!);
     }
 
     _isWarmedUp = true;
     _isCapturing = false;
+    _usePulse = false;
 
     // ignore: avoid_print
-    print('[AudioCapture] ✅ 音频设备预热完成');
+    print('[AudioCapture] ✅ 使用 PortAudio 预热成功');
     return AudioCaptureError.none;
   }
 
@@ -376,7 +446,17 @@ class AudioCapture {
       return AudioCaptureError.none;
     }
 
-    // 如果已经预热，直接启动流
+    // 如果使用 PulseAudio
+    if (_usePulse && _pulseCapture != null) {
+      final result = _pulseCapture!.start();
+      if (result == PulseAudioError.none) {
+        _isCapturing = true;
+        return AudioCaptureError.none;
+      }
+      return AudioCaptureError.streamStartFailed;
+    }
+
+    // 如果已经预热，直接启动流 (PortAudio)
     if (_isWarmedUp && _stream != null) {
       final startResult = _bindings.startStream(_stream!);
       if (startResult != paNoError) {
@@ -516,6 +596,22 @@ class AudioCapture {
   /// - > 0: 实际读取的样本数
   /// - -1: 读取失败 (检查 [lastReadError] 获取详细错误类型)
   int read(Pointer<Float> buffer, int samples) {
+    // 如果使用 PulseAudio
+    if (_usePulse && _pulseCapture != null) {
+      if (!_isCapturing) {
+        _lastReadError = AudioCaptureError.readFailed;
+        return -1;
+      }
+      final result = _pulseCapture!.read(buffer, samples);
+      if (result < 0) {
+        _lastReadError = AudioCaptureError.readFailed;
+        return -1;
+      }
+      _lastReadError = AudioCaptureError.none;
+      return result;
+    }
+
+    // PortAudio 路径
     if (!_isCapturing || _stream == null) {
       _lastReadError = AudioCaptureError.readFailed;
       return -1;
@@ -578,7 +674,19 @@ class AudioCapture {
 
   /// 停止音频采集
   Future<void> stop() async {
-    if (!_isCapturing || _stream == null) {
+    if (!_isCapturing) {
+      return;
+    }
+
+    // 如果使用 PulseAudio
+    if (_usePulse && _pulseCapture != null) {
+      _pulseCapture!.stop();
+      _isCapturing = false;
+      return;
+    }
+
+    // PortAudio 路径
+    if (_stream == null) {
       return;
     }
 
@@ -592,6 +700,18 @@ class AudioCapture {
 
   /// 释放所有资源
   void dispose() {
+    // 如果使用 PulseAudio
+    if (_usePulse && _pulseCapture != null) {
+      _pulseCapture!.dispose();
+      _pulseCapture = null;
+      _usePulse = false;
+      _isCapturing = false;
+      _isWarmedUp = false;
+      _buffer = null;
+      return;
+    }
+
+    // PortAudio 路径
     if (_isCapturing) {
       _bindings.stopStream(_stream!);
       _isCapturing = false;

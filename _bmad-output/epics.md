@@ -633,8 +633,10 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **I want** 能够选择指定的音频输入设备，而不是强制使用系统默认设备,
 **So that** 当默认设备被其他应用（如 EasyEffects）占用时，可以选择其他可用设备继续使用语音输入。
 
-> **实现说明**: 设备枚举使用 `pactl` (PipeWire/PulseAudio) 而非直接访问 ALSA，
-> 确保显示的设备与系统设置一致。
+> **实现说明**:
+> - 设备枚举使用 libpulse FFI（与系统设置一致），回退到 PortAudio
+> - 音频录制使用 libpulse-simple（优先）+ PortAudio（回退）混合策略
+> - 解决 PipeWire/WirePlumber 节点休眠和设备名不一致问题
 
 **Acceptance Criteria:**
 

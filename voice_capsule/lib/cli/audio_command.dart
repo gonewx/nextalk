@@ -112,7 +112,7 @@ class AudioCommand {
 
       final result = await _setDeviceByIndex(index, lang, devices: devices);
       if (result == 0 && index >= 0 && index < devices.length) {
-        currentDevice = devices[index].name;
+        currentDevice = devices[index].description;
       }
       // 设置成功后继续循环，用户可以按 q 退出
     }
@@ -151,8 +151,8 @@ class AudioCommand {
           ? ''
           : (lang.isZh ? ' 不可用' : ' unavailable');
 
-      // 当前设备标记
-      final currentMark = _isCurrentDevice(device.name, currentDevice)
+      // 当前设备标记 (使用 description 匹配)
+      final currentMark = _isCurrentDevice(device.description, currentDevice)
           ? (lang.isZh ? ' (当前)' : ' (current)')
           : '';
 
@@ -174,9 +174,9 @@ class AudioCommand {
           ? '当前配置: 系统默认设备'
           : 'Current config: System default device');
     } else {
-      // 查找当前配置的设备
+      // 查找当前配置的设备 (使用 description 匹配)
       final matchedDevice = devices.where(
-        (d) => _isCurrentDevice(d.name, currentDevice),
+        (d) => _isCurrentDevice(d.description, currentDevice),
       ).firstOrNull;
 
       if (matchedDevice != null) {
@@ -231,7 +231,8 @@ class AudioCommand {
     }
 
     final device = deviceList[index];
-    await SettingsService.instance.setAudioInputDevice(device.name);
+    // 存储 description (用户友好名称)，与系统设置显示一致
+    await SettingsService.instance.setAudioInputDevice(device.description);
 
     print(lang.isZh
         ? '✅ 设备已设置为: ${device.description}，重启应用后生效'
@@ -252,7 +253,7 @@ class AudioCommand {
       final status = device.status == DeviceAvailability.available
           ? 'available'
           : 'busy';
-      final current = _isCurrentDevice(device.name, currentDevice) ? '*' : '';
+      final current = _isCurrentDevice(device.description, currentDevice) ? '*' : '';
 
       // 格式: <序号>\t<设备描述>\t<状态>\t<是否当前>
       print('$i\t${device.description}\t$status\t$current');
@@ -305,12 +306,12 @@ Tips:
     }
   }
 
-  /// 判断设备是否为当前配置
-  static bool _isCurrentDevice(String deviceName, String currentConfig) {
+  /// 判断设备是否为当前配置 (使用 description 匹配)
+  static bool _isCurrentDevice(String deviceDescription, String currentConfig) {
     if (currentConfig == 'default') return false;
-    return deviceName == currentConfig ||
-        deviceName.contains(currentConfig) ||
-        currentConfig.contains(deviceName);
+    return deviceDescription == currentConfig ||
+        deviceDescription.contains(currentConfig) ||
+        currentConfig.contains(deviceDescription);
   }
 
   /// 打印错误信息

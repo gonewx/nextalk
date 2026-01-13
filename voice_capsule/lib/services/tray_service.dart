@@ -261,13 +261,13 @@ class TrayService {
     if (devices.isNotEmpty) {
       items.add(MenuSeparator());
 
-      // 添加所有输入设备 (使用 description 显示，name 存储)
+      // 添加所有输入设备 (使用 description 显示和存储，与系统设置一致)
       for (final device in devices) {
-        final isCurrent = _isCurrentAudioDevice(device.name, currentDevice);
+        final isCurrent = _isCurrentAudioDevice(device.description, currentDevice);
         final statusIcon = device.status == DeviceAvailability.available ? '' : ' ⚠️';
         items.add(MenuItemLabel(
           label: '${isCurrent ? "● " : ""}${device.description}$statusIcon',
-          onClicked: (_) => _switchAudioDevice(device.name, lang),
+          onClicked: (_) => _switchAudioDevice(device.description, lang),
         ));
       }
     }
@@ -275,17 +275,17 @@ class TrayService {
     return items;
   }
 
-  /// Story 3-9: 判断设备是否为当前配置
-  bool _isCurrentAudioDevice(String deviceName, String currentConfig) {
+  /// Story 3-9: 判断设备是否为当前配置 (使用 description 匹配)
+  bool _isCurrentAudioDevice(String deviceDescription, String currentConfig) {
     if (currentConfig == 'default') return false;
-    return deviceName == currentConfig ||
-        deviceName.contains(currentConfig) ||
-        currentConfig.contains(deviceName);
+    return deviceDescription == currentConfig ||
+        deviceDescription.contains(currentConfig) ||
+        currentConfig.contains(deviceDescription);
   }
 
-  /// Story 3-9: 切换音频设备 (AC15)
-  Future<void> _switchAudioDevice(String deviceName, LanguageService lang) async {
-    await SettingsService.instance.setAudioInputDevice(deviceName);
+  /// Story 3-9: 切换音频设备 (AC15) - 存储 description
+  Future<void> _switchAudioDevice(String deviceDescription, LanguageService lang) async {
+    await SettingsService.instance.setAudioInputDevice(deviceDescription);
 
     // 重建菜单以更新选中状态
     await rebuildMenu();
@@ -304,7 +304,7 @@ class TrayService {
       debugPrint('TrayService: 发送通知失败: $e');
     }
 
-    debugPrint('TrayService: 音频设备已切换为 $deviceName');
+    debugPrint('TrayService: 音频设备已切换为 $deviceDescription');
   }
 
   /// 切换到 Zipformer 引擎并设置模型版本

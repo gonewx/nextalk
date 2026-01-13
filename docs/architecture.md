@@ -93,7 +93,8 @@ nextalk/
 | :--- | :--- | :--- | :--- |
 | **Frontend UI** | Flutter (Dart) | 3.x+ | Best true-transparent, borderless rendering on Linux. |
 | **ASR Engine** | Sherpa-onnx | Latest | High-performance, offline, streaming support, standard C-API. |
-| **Audio Capture** | PortAudio | v19 | Industry standard for cross-platform audio I/O on Linux (ALSA/Pulse compatible). |
+| **Audio Capture** | libpulse-simple / PortAudio | Latest / v19 | Primary: libpulse-simple for PipeWire/PulseAudio integration. Fallback: PortAudio for compatibility. |
+| **Device Enumeration** | libpulse | Latest | Device listing consistent with system settings (PipeWire/PulseAudio). |
 | **Language Binding** | `dart:ffi` | Native | Zero-overhead interop with C libraries. |
 | **IPC** | Unix Domain Socket | Standard | Simple, secure, low-latency local communication. |
 | **Backend Plugin** | C++ | C++17 | Hard requirement for Fcitx5 native plugins. |
@@ -156,8 +157,36 @@ To ensure terminals and similar apps correctly handle input, `commitText` simula
 
 To meet **NFR1 (Latency < 20ms)**, audio pipeline must minimize memory copies.
 
+#### 4.2.1 Audio Capture Strategy
+
+The system uses a **hybrid audio capture strategy** to ensure maximum compatibility across different Linux audio systems:
+
+```
+Primary Path (PipeWire/PulseAudio environments):
+┌─────────────────────┐
+│  libpulse-simple    │ ← Device names match system settings
+│  (pa_simple_read)   │ ← Auto sample rate conversion
+└─────────────────────┘
+          │
+          ↓ (if unavailable)
+┌─────────────────────┐
+│    PortAudio        │ ← Fallback for non-PulseAudio systems
+│  (Pa_ReadStream)    │ ← Direct ALSA access if needed
+└─────────────────────┘
+```
+
+**Benefits of libpulse-simple**:
+- Device names identical to system settings (e.g., "Built-in Audio Analog Stereo")
+- Automatic sample rate conversion (hardware 44100Hz → app 16000Hz)
+- Perfect integration with PipeWire/PulseAudio
+- Handles WirePlumber node suspension gracefully
+
+**Device Enumeration**: Uses libpulse API (`pa_context_get_source_info_list`) for device listing, with sink pre-query to wake up suspended PipeWire nodes.
+
+#### 4.2.2 Zero-copy Data Flow
+
 1. **Memory Allocation**: Dart allocates off-heap buffer (`Pointer<Float>`) using `calloc`.
-2. **Capture**: Dart passes this pointer to PortAudio's `Pa_ReadStream`. C code writes PCM data directly to this memory address.
+2. **Capture**: Dart passes this pointer to libpulse-simple's `pa_simple_read` (or PortAudio's `Pa_ReadStream` as fallback). Audio data written directly to this memory address.
 3. **Inference**: Dart passes **same pointer** to Sherpa's `AcceptWaveform`. During streaming, no data copy occurs between Dart/C boundary.
 4. **Result**: Only when Sherpa returns recognized text is the string copied to Dart managed memory for UI display.
 
