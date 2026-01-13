@@ -56,30 +56,112 @@ class AudioCapture {
 
   AudioCapture() : _bindings = PortAudioBindings();
 
+  /// 智能选择默认设备
+  ///
+  /// 在 PipeWire 环境下，Pa_GetDefaultInputDevice() 可能返回底层 ALSA 硬件设备
+  /// (如 hw:0,0)，这些设备不支持采样率转换，会导致 paInvalidSampleRate 错误。
+  ///
+  /// 此方法通过枚举所有设备并过滤掉 hw:/plughw: 设备，选择一个 PipeWire 兼容的
+  /// 虚拟设备作为默认设备。
+  int _selectSmartDefaultDevice() {
+    // ignore: avoid_print
+    print('[AudioCapture] 📋 开始智能设备选择...');
+
+    final deviceCount = _bindings.getDeviceCount();
+    if (deviceCount <= 0) {
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ PortAudio 设备数量: $deviceCount，回退到默认');
+      return _bindings.getDefaultInputDevice();
+    }
+
+    // ignore: avoid_print
+    print('[AudioCapture] 📋 PortAudio 检测到 $deviceCount 个设备:');
+
+    final filteredDevices = <(int, String, int, double)>[]; // (index, name, channels, sampleRate)
+    final skippedDevices = <String>[];
+
+    // 遍历所有设备
+    for (int i = 0; i < deviceCount; i++) {
+      final infoPtr = _bindings.getDeviceInfo(i);
+      if (infoPtr.address == 0) continue;
+
+      final info = infoPtr.ref;
+      final name = info.name.toDartString();
+      final inputChannels = info.maxInputChannels;
+      final sampleRate = info.defaultSampleRate;
+
+      // 跳过无输入通道的设备
+      if (inputChannels <= 0) {
+        // ignore: avoid_print
+        print('[AudioCapture]   [$i] "$name" (输出设备，跳过)');
+        continue;
+      }
+
+      // 跳过底层 ALSA 硬件设备
+      if (name.contains('hw:') || name.contains('plughw:')) {
+        // ignore: avoid_print
+        print('[AudioCapture]   [$i] "$name" ❌ 底层硬件设备，过滤');
+        skippedDevices.add(name);
+        continue;
+      }
+
+      // ignore: avoid_print
+      print('[AudioCapture]   [$i] "$name" ✓ 可用 (ch=$inputChannels, rate=$sampleRate)');
+      filteredDevices.add((i, name, inputChannels, sampleRate));
+    }
+
+    // ignore: avoid_print
+    print('[AudioCapture] 📊 统计: 可用=${filteredDevices.length}, 过滤=${skippedDevices.length}');
+
+    if (filteredDevices.isNotEmpty) {
+      final (index, name, _, _) = filteredDevices.first;
+      // ignore: avoid_print
+      print('[AudioCapture] 🎯 智能选择: "$name" (index=$index)');
+      return index;
+    }
+
+    // 回退到 PortAudio 默认设备
+    final defaultIndex = _bindings.getDefaultInputDevice();
+    final defaultInfo = _bindings.getDeviceInfo(defaultIndex);
+    final defaultName = defaultInfo.address != 0
+        ? defaultInfo.ref.name.toDartString()
+        : 'unknown';
+    // ignore: avoid_print
+    print('[AudioCapture] ⚠️ 无可用设备，回退到 PortAudio 默认: "$defaultName" (index=$defaultIndex)');
+    return defaultIndex;
+  }
+
   /// Story 3-9: 根据设备名称解析设备索引 (AC2, AC3)
   ///
   /// 逻辑:
-  /// 1. "default" 或空 → 使用系统默认设备
-  /// 2. 设备名称 → 精确匹配 → 子串匹配 → 回退默认
+  /// 1. "default" 或空 → 使用智能默认设备选择（过滤底层硬件）
+  /// 2. 设备名称 → 精确匹配 → 子串匹配 → 回退智能默认
   ///
   /// 返回: (设备索引, 是否回退到默认)
   (int, bool) _resolveDeviceIndex(String? deviceName) {
-    // 如果是 "default" 或空，使用默认设备
+    // 如果是 "default" 或空，使用智能默认设备选择
     if (deviceName == null || deviceName.isEmpty || deviceName == 'default') {
-      final defaultIndex = _bindings.getDefaultInputDevice();
+      final defaultIndex = _selectSmartDefaultDevice();
       return (defaultIndex, false);
     }
 
     // 尝试按名称查找设备
     final deviceIndex = AudioDeviceService.instance.findDeviceByName(deviceName);
     if (deviceIndex >= 0) {
-      return (deviceIndex, false);
+      // 需要获取实际的 PortAudio 设备索引
+      final paIndex = AudioDeviceService.instance.getPaDeviceIndex(deviceIndex);
+      if (paIndex != paNoDevice) {
+        return (paIndex, false);
+      }
+      // libpulse 枚举的设备没有 PortAudio 索引，回退到智能默认
+      // ignore: avoid_print
+      print('[AudioCapture] ⚠️ 设备 "$deviceName" 无 PortAudio 索引，使用智能默认');
     }
 
-    // 回退到默认设备
-    final defaultIndex = _bindings.getDefaultInputDevice();
+    // 回退到智能默认设备
+    final defaultIndex = _selectSmartDefaultDevice();
     // ignore: avoid_print
-    print('[AudioCapture] ⚠️ 未找到设备 "$deviceName"，回退到默认设备');
+    print('[AudioCapture] ⚠️ 未找到设备 "$deviceName"，回退到智能默认设备');
     return (defaultIndex, true);
   }
 

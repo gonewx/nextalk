@@ -82,8 +82,11 @@ class AudioDeviceService {
         _cachedDevices != null &&
         _cacheTime != null &&
         DateTime.now().difference(_cacheTime!) < _cacheTtl) {
+      debugPrint('[AudioDeviceService] 📋 使用缓存设备列表 (${_cachedDevices!.length} 个设备)');
       return _cachedDevices!;
     }
+
+    debugPrint('[AudioDeviceService] 📋 开始枚举音频设备...');
 
     // 优先尝试 libpulse
     final pulseDevices = _listInputDevicesViaPulse();
@@ -91,33 +94,47 @@ class AudioDeviceService {
       _usePulse = true;
       _cachedDevices = pulseDevices;
       _cacheTime = DateTime.now();
+      debugPrint('[AudioDeviceService] ✓ 使用 libpulse 枚举成功 (${pulseDevices.length} 个设备)');
       return pulseDevices;
     }
 
     // 回退到 PortAudio
-    debugPrint('AudioDeviceService: libpulse 不可用，回退到 PortAudio');
+    debugPrint('[AudioDeviceService] ⚠️ libpulse 不可用，回退到 PortAudio');
     _usePulse = false;
     final paDevices = _listInputDevicesViaPortAudio();
     _cachedDevices = paDevices;
     _cacheTime = DateTime.now();
+    debugPrint('[AudioDeviceService] ✓ 使用 PortAudio 枚举 (${paDevices.length} 个设备)');
     return paDevices;
   }
 
   /// 使用 libpulse 枚举设备
   List<AudioInputDevice>? _listInputDevicesViaPulse() {
     try {
+      debugPrint('[AudioDeviceService] 🔍 尝试 libpulse 枚举...');
       final enumerator = PulseDeviceEnumerator();
       final sources = enumerator.enumerate();
 
-      if (sources == null || sources.isEmpty) return null;
+      if (sources == null) {
+        debugPrint('[AudioDeviceService] ⚠️ libpulse 枚举返回 null');
+        return null;
+      }
+      if (sources.isEmpty) {
+        debugPrint('[AudioDeviceService] ⚠️ libpulse 枚举返回空列表');
+        return null;
+      }
 
+      debugPrint('[AudioDeviceService] 📋 libpulse 发现 ${sources.length} 个 source:');
       final devices = <AudioInputDevice>[];
       int displayIndex = 0;
 
       for (final source in sources) {
-        // 过滤掉 monitor 设备（输出设备的回环）
-        if (source.isMonitor) continue;
+        if (source.isMonitor) {
+          debugPrint('[AudioDeviceService]   - "${source.name}" (monitor，跳过)');
+          continue;
+        }
 
+        debugPrint('[AudioDeviceService]   ✓ "${source.name}" -> "${source.description}"');
         devices.add(AudioInputDevice(
           index: displayIndex++,
           paDeviceIndex: paNoDevice, // libpulse 设备不使用 PortAudio 索引
@@ -129,7 +146,7 @@ class AudioDeviceService {
 
       return devices.isEmpty ? null : devices;
     } catch (e) {
-      debugPrint('AudioDeviceService: libpulse 枚举失败: $e');
+      debugPrint('[AudioDeviceService] ❌ libpulse 枚举失败: $e');
       return null;
     }
   }
