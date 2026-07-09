@@ -33,9 +33,10 @@ Thumbs.db
 core
 dist/
 
-.claude/skills/ui-ux-pro-max/
+.claude/
 
 .claude/settings.local.json
 _bmad/
 .cursor/
 .claude/commands/bmad
+.agents/
