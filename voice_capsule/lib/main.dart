@@ -155,38 +155,35 @@ void _printVersion() {
 /// 在应用启动时预先初始化引擎，触发 onnxruntime JIT 编译，
 /// 避免第一次录音时因编译延迟导致丢失语音。
 Future<void> _preInitializeEngine(ModelManager modelManager) async {
-  if (_asrEngine == null || !_asrEngine!.isInitialized) {
-    // 根据引擎类型创建配置
-    ASRConfig config;
-    if (_asrEngine!.engineType == ASREngineType.zipformer) {
-      config = ZipformerConfig(
-        modelDir: modelManager.modelPath,
-        useInt8Model: SettingsService.instance.modelType == ModelType.int8,
-      );
-    } else {
-      config = SenseVoiceConfig(
-        modelDir: modelManager.getModelPathForEngine(EngineType.sensevoice),
-        vadModelPath: modelManager.vadModelFilePath,
-      );
-    }
+  final engine = _asrEngine;
+  if (engine == null || engine.isInitialized) {
+    return;
+  }
 
-    // 预初始化引擎
-    final error = await _asrEngine!.initialize(config);
-    if (error == ASRError.none) {
-      DiagnosticLogger.instance.info('main', '✅ ASR 引擎预初始化完成');
-      _warmupEngineWithSilence();
-    } else {
-      DiagnosticLogger.instance.warn('main', '⚠️ ASR 引擎预初始化失败: $error');
-    }
+  // 与 AudioInferencePipeline.start() 共用同一配置构造 (杜绝配置漂移：
+  // 引擎对已初始化实例直接返回，预热用错配置＝运行期用错配置)
+  final config = AudioInferencePipeline.buildEngineConfig(
+    engineType: engine.engineType,
+    modelManager: modelManager,
+    silenceThresholdSec: _pipeline?.vadConfig.silenceThresholdSec,
+  );
+
+  // 预初始化引擎
+  final error = await engine.initialize(config);
+  if (error == ASRError.none) {
+    DiagnosticLogger.instance.info('main', '✅ ASR 引擎预初始化完成');
+    // 传入局部 engine：await 期间全局 _asrEngine 可能已被引擎切换替换
+    _warmupEngineWithSilence(engine);
+  } else {
+    DiagnosticLogger.instance.warn('main', '⚠️ ASR 引擎预初始化失败: $error');
   }
 }
 
 /// 用静音数据跑一轮真实推理，触发 onnxruntime 的懒初始化
 /// (内存 arena 分配、图优化、量化 kernel 选择均发生在首次 Run)，
 /// 避免用户第一次按快捷键时首块推理明显偏慢。
-void _warmupEngineWithSilence() {
-  final engine = _asrEngine;
-  if (engine == null || !engine.isInitialized) return;
+void _warmupEngineWithSilence(ASREngine engine) {
+  if (!engine.isInitialized) return;
 
   const warmupSamples = 12800; // 0.8s @ 16kHz，足以凑满流式模型首个 chunk
   final silence = calloc<Float>(warmupSamples); // calloc 归零即静音
@@ -500,6 +497,10 @@ Future<void> main(List<String> args) async {
       if (_pipeline != null) {
         DiagnosticLogger.instance.info('main', '切换模型类型: $newType');
         await _pipeline!.switchModelType(newType);
+        // 防御性调用：switchModelType 运行期不换模型 (需重启生效)，
+        // 引擎已初始化时此处守卫直通、无副作用；仅当启动预热曾因
+        // 模型缺失失败时，借本次切换补上初始化+预热
+        await _preInitializeEngine(modelManager);
         DiagnosticLogger.instance.info('main', '模型切换完成');
       }
     };
@@ -526,6 +527,10 @@ Future<void> main(List<String> args) async {
 
         // 切换成功，恢复托盘状态为正常
         await TrayService.instance.updateStatus(TrayStatus.normal);
+
+        // 切换后重新预初始化+预热 (switchEngine 换入的新引擎未初始化，
+        // 此处立即预热，首次按键不付模型加载代价)
+        await _preInitializeEngine(modelManager);
 
         DiagnosticLogger.instance.info('main', 'ASR 引擎切换完成: $newEngineType');
       }

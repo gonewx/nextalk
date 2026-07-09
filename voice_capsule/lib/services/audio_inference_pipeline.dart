@@ -269,6 +269,44 @@ class AudioInferencePipeline {
   /// Story 2-7: 获取当前引擎类型
   ASREngineType get currentEngineType => _asrEngine.engineType;
 
+  /// 构造引擎配置 (start() 与 main._preInitializeEngine 共用，杜绝配置漂移)
+  ///
+  /// 引擎对已初始化实例直接返回，配置不一致会被静默忽略，
+  /// 因此预初始化必须与运行期使用完全相同的配置。
+  ///
+  /// [silenceThresholdSec] 为 null 时使用 [kDefaultRule2Silence]，
+  /// 与 VadConfig.silenceThresholdSec 的语义一致；仅对 Zipformer 生效，
+  /// SenseVoice 的端点检测由独立 VAD 模型负责，忽略该参数。
+  static ASRConfig buildEngineConfig({
+    required ASREngineType engineType,
+    required ModelManager modelManager,
+    double? silenceThresholdSec,
+  }) {
+    final silenceThreshold = silenceThresholdSec ?? kDefaultRule2Silence;
+    final useInt8 = SettingsService.instance.isInitialized
+        ? SettingsService.instance.modelType == ModelType.int8
+        : true; // 默认使用 int8
+
+    if (engineType == ASREngineType.zipformer) {
+      return ZipformerConfig(
+        modelDir: modelManager.getModelPathForEngine(EngineType.zipformer),
+        useInt8Model: useInt8,
+        numThreads: 2,
+        sampleRate: 16000,
+        enableEndpoint: true, // Story 2-6: VAD 端点检测
+        rule1MinTrailingSilence: 2.4,
+        rule2MinTrailingSilence: silenceThreshold,
+        rule3MinUtteranceLength: 20.0,
+      );
+    } else {
+      // SenseVoice 配置
+      return SenseVoiceConfig(
+        modelDir: modelManager.getModelPathForEngine(EngineType.sensevoice),
+        vadModelPath: modelManager.vadModelFilePath,
+      );
+    }
+  }
+
   /// 获取延迟统计信息 (AC5: 端到端延迟 < 200ms)
   LatencyStats get latencyStats {
     if (_latencySamples.isEmpty) {
@@ -319,32 +357,12 @@ class AudioInferencePipeline {
     }
 
     // 2. 初始化 ASREngine (使用 VadConfig 中的静音阈值和 SettingsService 中的模型类型)
-    final silenceThreshold =
-        _vadConfig.silenceThresholdSec ?? kDefaultRule2Silence;
-    final useInt8 = SettingsService.instance.isInitialized
-        ? SettingsService.instance.modelType == ModelType.int8
-        : true; // 默认使用 int8
-
-    // 根据引擎类型创建配置
-    final ASRConfig config;
-    if (_asrEngine.engineType == ASREngineType.zipformer) {
-      config = ZipformerConfig(
-        modelDir: _modelManager.getModelPathForEngine(EngineType.zipformer),
-        useInt8Model: useInt8,
-        numThreads: 2,
-        sampleRate: 16000,
-        enableEndpoint: true, // Story 2-6: VAD 端点检测
-        rule1MinTrailingSilence: 2.4,
-        rule2MinTrailingSilence: silenceThreshold,
-        rule3MinUtteranceLength: 20.0,
-      );
-    } else {
-      // SenseVoice 配置
-      config = SenseVoiceConfig(
-        modelDir: _modelManager.getModelPathForEngine(EngineType.sensevoice),
-        vadModelPath: _modelManager.vadModelFilePath,
-      );
-    }
+    // 配置构造与预初始化共用 buildEngineConfig，杜绝配置漂移
+    final config = buildEngineConfig(
+      engineType: _asrEngine.engineType,
+      modelManager: _modelManager,
+      silenceThresholdSec: _vadConfig.silenceThresholdSec,
+    );
 
     final asrError = await _asrEngine.initialize(config);
     if (asrError != ASRError.none) {

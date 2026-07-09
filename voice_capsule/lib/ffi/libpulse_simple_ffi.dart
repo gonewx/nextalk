@@ -24,6 +24,24 @@ final class PaSampleSpec extends Struct {
   external int channels;
 }
 
+/// pa_buffer_attr 结构体
+final class PaBufferAttr extends Struct {
+  @Uint32()
+  external int maxlength;
+
+  @Uint32()
+  external int tlength;
+
+  @Uint32()
+  external int prebuf;
+
+  @Uint32()
+  external int minreq;
+
+  @Uint32()
+  external int fragsize;
+}
+
 /// Opaque 类型
 final class PaSimple extends Opaque {}
 
@@ -37,7 +55,7 @@ typedef PaSimpleNewC = Pointer<PaSimple> Function(
   Pointer<Utf8> streamName,  // Stream name
   Pointer<PaSampleSpec> ss,  // Sample spec
   Pointer<Void> map,         // Channel map (NULL for default)
-  Pointer<Void> attr,        // Buffer attributes (NULL for default)
+  Pointer<PaBufferAttr> attr, // Buffer attributes (NULL for default)
   Pointer<Int32> error,      // Error code output
 );
 
@@ -67,7 +85,7 @@ typedef PaSimpleNewDart = Pointer<PaSimple> Function(
   Pointer<Utf8> streamName,
   Pointer<PaSampleSpec> ss,
   Pointer<Void> map,
-  Pointer<Void> attr,
+  Pointer<PaBufferAttr> attr,
   Pointer<Int32> error,
 );
 

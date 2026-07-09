@@ -7,6 +7,10 @@ class PulseAudioConfig {
   static const int sampleRate = 16000;
   static const int channels = 1;
   static const int framesPerBuffer = 1600; // 100ms @ 16kHz
+
+  /// 录音流 fragsize (字节)：与单次 read() 的量同源 (100ms Float32)，
+  /// 保证服务端投递粒度与采集循环节拍对齐
+  static final int fragsizeBytes = framesPerBuffer * sizeOf<Float>();
 }
 
 /// PulseAudio 录音错误类型
@@ -30,6 +34,7 @@ class PulseAudioCapture {
   Pointer<Float>? _buffer;
   Pointer<Int32>? _errorPtr;
   Pointer<PaSampleSpec>? _sampleSpec;
+  Pointer<PaBufferAttr>? _bufferAttr;
 
   bool _isInitialized = false;
   bool _isCapturing = false;
@@ -76,6 +81,16 @@ class PulseAudioCapture {
     _sampleSpec!.ref.rate = PulseAudioConfig.sampleRate;
     _sampleSpec!.ref.channels = PulseAudioConfig.channels;
 
+    // 配置缓冲属性: 显式设置 fragsize 降低单次投递延迟 (100ms)，
+    // 否则服务端默认碎片可达秒级，pa_simple_read 会成批迟到。
+    // 注意 fragsize 不限制停录期间的积压上限，陈旧音频靠 start() 的 flush() 丢弃
+    _bufferAttr = calloc<PaBufferAttr>();
+    _bufferAttr!.ref.maxlength = 0xFFFFFFFF; // -1: 服务端默认
+    _bufferAttr!.ref.tlength = 0xFFFFFFFF; // 以下三项为 playback 字段，录音流忽略
+    _bufferAttr!.ref.prebuf = 0xFFFFFFFF;
+    _bufferAttr!.ref.minreq = 0xFFFFFFFF;
+    _bufferAttr!.ref.fragsize = PulseAudioConfig.fragsizeBytes; // 6400
+
     // 创建录音流
     final appName = 'Nextalk'.toNativeUtf8();
     final streamName = 'Voice Input'.toNativeUtf8();
@@ -94,7 +109,7 @@ class PulseAudioCapture {
       streamName,
       _sampleSpec!,
       nullptr, // 默认 channel map
-      nullptr, // 默认缓冲属性
+      _bufferAttr!, // 缓冲属性 (fragsize=100ms)
       _errorPtr!,
     );
 
@@ -223,6 +238,10 @@ class PulseAudioCapture {
     if (_sampleSpec != null) {
       calloc.free(_sampleSpec!);
       _sampleSpec = null;
+    }
+    if (_bufferAttr != null) {
+      calloc.free(_bufferAttr!);
+      _bufferAttr = null;
     }
     _isInitialized = false;
     _isCapturing = false;
