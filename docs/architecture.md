@@ -297,7 +297,7 @@ To reduce installation package size, model files use a **"Download-on-Demand"** 
 
 3. **Startup Flow**: App starts → check integrity of required models → if missing, enter the init wizard to download; if present, initialize the engine and enter the main UI. Downloads show progress and support cancellation.
 4. **Model Source**: GitHub Releases (`k2-fsa/sherpa-onnx`).
-5. **Custom URL**: The `custom_url` config field currently takes effect only for Zipformer; the SenseVoice field of the same name is not yet effective (known limitation).
+5. **Custom URL**: Per-engine (zipformer/sensevoice) custom download URLs supported via config file (fixed 2026-07-09: the SenseVoice field previously had no effect).
 6. **Known Limitation**: Models without official checksums get only existence/structure checks; supply-chain integrity relies on trusting the download source (see §6).
 
 ### 4.5 Settings Service

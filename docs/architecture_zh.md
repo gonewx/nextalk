@@ -296,7 +296,7 @@ typedef AcceptWaveformDart = void Function(Pointer<Void> stream, int sampleRate,
 
 3. **启动流程**: 应用启动 → 检查所需模型完整性 → 缺失则进入初始化向导下载，齐备则初始化引擎进入主界面。下载支持进度显示与取消。
 4. **模型来源**: GitHub Releases（`k2-fsa/sherpa-onnx`）。
-5. **自定义 URL**: 配置文件中的 `custom_url` 当前仅对 Zipformer 生效；SenseVoice 的同名字段暂不生效（已知限制）。
+5. **自定义 URL**: 支持经配置文件按引擎（zipformer/sensevoice）分别自定义下载地址（2026-07-09 修复：此前 SenseVoice 字段不生效）。
 6. **已知限制**: 无官方校验值的模型仅做存在性/结构检查，供应链完整性依赖下载源可信（见 §6）。
 
 ### 4.5 设置服务

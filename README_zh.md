@@ -12,12 +12,12 @@
 
 ## 特性
 
-- **离线识别** - 基于 Sherpa-onnx 流式双语模型 (中/英)，数据不出本地
-- **极低延迟** - 端到端延迟 < 20ms，实时转录体验
+- **离线识别** - 基于 Sherpa-onnx 双引擎：SenseVoice 离线引擎（默认，高精度、多语言、自动标点）+ Zipformer 流式引擎（可选，边说边出字），数据不出本地
+- **低延迟** - 流式引擎实时转录，文本上屏链路延迟 < 20ms
 - **透明悬浮窗** - 无边框胶囊 UI，呼吸灯动画，不干扰工作流程
 - **Wayland 原生支持** - 系统快捷键和文本提交均支持 Wayland
-- **焦点锁定** - 录音时切换窗口，文本仍提交到原窗口
-- **模型可选** - 支持 int8 (快速) / standard (高精度) 模型切换
+- **双语界面** - 中英双语 UI，托盘菜单即可切换
+- **引擎与模型可选** - 托盘菜单热切换引擎及 Zipformer int8/standard 版本
 
 ## 快速开始
 
@@ -26,13 +26,13 @@
 **Ubuntu/Debian:**
 
 ```bash
-sudo dpkg -i nextalk_0.1.0-1_amd64.deb
+sudo dpkg -i nextalk_0.2.8-1_amd64.deb
 ```
 
 **Fedora/CentOS/RHEL:**
 
 ```bash
-sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
+sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
 ```
 
 安装后 Fcitx5 会自动重启以加载插件。
@@ -90,8 +90,9 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 应用支持系统托盘（在支持的桌面环境中），右键菜单提供:
 
 - 显示/隐藏窗口
-- 切换模型版本
+- 切换 ASR 引擎 (SenseVoice / Zipformer) 与模型版本
 - **音频输入设备** - 选择可用的音频输入设备
+- 切换界面语言 (中文 / English)
 - 打开配置目录
 - 退出应用
 
@@ -108,14 +109,16 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 
 ## 配置
 
-### 模型设置
+### 引擎与模型设置
 
 通过系统托盘菜单切换：
 
-| 版本 | 说明 |
+| 引擎 | 说明 |
 |------|------|
-| `int8` | 量化版本，速度快，内存占用小 (默认) |
-| `standard` | 标准版本，识别精度更高 |
+| `sensevoice` (默认) | 离线引擎：VAD 分段后整段识别，精度高，自动标点，多语言 (zh/en/ja/ko/yue) |
+| `zipformer` | 流式引擎：边听边识别，文字逐字出现 |
+
+Zipformer 版本：`int8`（速度快、内存小）/ `standard`（精度更高）。
 
 ### 配置文件
 
@@ -123,8 +126,17 @@ sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
 
 ```yaml
 model:
-  custom_url: ""    # 自定义模型下载地址
-  type: int8        # 模型版本: int8 | standard
+  # ASR 引擎: zipformer | sensevoice
+  engine: sensevoice
+
+  zipformer:
+    type: int8        # 模型版本: int8 | standard
+    custom_url: ""    # 自定义模型下载地址 (留空使用默认)
+
+  sensevoice:
+    use_itn: true     # 逆文本正则化
+    language: auto    # auto | zh | en | ja | ko | yue
+    custom_url: ""
 
 audio:
   input_device: "default"  # 音频输入设备: "default" 或设备名称
@@ -301,7 +313,10 @@ fcitx5 -r  # 重启 Fcitx5
 ```yaml
 # ~/.config/nextalk/settings.yaml
 model:
-  custom_url: "https://your-mirror/model.tar.bz2"
+  zipformer:
+    custom_url: "https://your-mirror/zipformer-model.tar.bz2"
+  sensevoice:
+    custom_url: "https://your-mirror/sensevoice-model.tar.bz2"
 ```
 
 ### 音频设备问题

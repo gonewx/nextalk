@@ -143,9 +143,9 @@ class ModelManager {
 
   /// 获取模型下载 URL (优先使用自定义 URL)
   static String get downloadUrl {
-    // 优先使用 SettingsService 中的自定义 URL
+    // 优先使用 SettingsService 中的自定义 URL (本 getter 仅服务 Zipformer 遗留路径)
     if (SettingsService.instance.isInitialized) {
-      final customUrl = SettingsService.instance.customModelUrl;
+      final customUrl = SettingsService.instance.zipformerCustomUrl;
       if (customUrl != null && customUrl.isNotEmpty) {
         return customUrl;
       }
