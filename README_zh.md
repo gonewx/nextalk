@@ -214,6 +214,8 @@ make run-release  # Release 版本
 
 输出位于 `dist/` 目录。
 
+> 📦 维护者发布新版本、CI/CD 自动化、版本管理等完整流程，请参阅 [构建与发布指南](docs/build-and-release_zh.md)。
+
 ## 卸载
 
 **Ubuntu/Debian:**

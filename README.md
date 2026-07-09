@@ -214,6 +214,8 @@ make run-release  # Release version
 
 Output in `dist/` directory.
 
+> 📦 For the full maintainer release flow, CI/CD automation, and version management, see the [Build and Release Guide](docs/build-and-release.md).
+
 ## Uninstall
 
 **Ubuntu/Debian:**

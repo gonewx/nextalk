@@ -200,4 +200,5 @@ sudo chown -R $(id -u):$(id -g) voice_capsule/build addons/fcitx5/build
 
 **相关文档：**
 
+- [构建与发布指南](build-and-release_zh.md) - 版本管理、打包、发布与 CI/CD 全链路
 - [docs/research/docker_build.md](research/docker_build.md) - Docker 编译方案研究

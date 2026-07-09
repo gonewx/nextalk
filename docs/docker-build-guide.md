@@ -200,4 +200,5 @@ Build artifact `bundle/lib/` includes these libraries, no target system installa
 
 **Related Documents:**
 
+- [Build and Release Guide](build-and-release.md) - Version management, packaging, release, and full CI/CD pipeline
 - [docs/research/docker_build.md](research/docker_build.md) - Docker build solution research
