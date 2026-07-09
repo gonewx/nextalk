@@ -4,7 +4,7 @@ baseline_commit: 37cd22883e61768b2d54d940b6f1cd2cff2acf95
 
 # Story 3.10: Portal 全局快捷键（零配置注册）
 
-Status: review
+Status: done
 
 > Ultimate context engine analysis completed - comprehensive developer guide created（代码脉络审计 + Portal 生态 Web 核实双源合成，2026-07-09）
 
@@ -62,6 +62,34 @@ Status: review
   - [x] 5.1 `PortalHotkeyService` 单元测试（mock DBusClient：session 创建/信号分发/token 恢复/超时降级）
   - [x] 5.2 双触发路径防抖回归测试（single_instance 命令 + portal Activated 并发）
   - [~] 5.3 真机验证矩阵记录到 story 完成笔记（KDE / GNOME 新版 / Ubuntu 22.04 降级）— **降级分支已在本机 Ubuntu 24.04+GNOME 46 验证通过**；注册成功分支（KDE / GNOME 48+）待支持环境验证，详见完成笔记
+
+## Review Findings
+
+> 代码审查（2026-07-09，三层对抗式：Blind Hunter / Edge Case Hunter / Acceptance Auditor）。
+> 基线 `37cd228..HEAD`。子代理原始报告行号多有失真，以下已经人工核对源码校正。
+
+### Decision Needed（需人工决策后才能正确修复）
+
+- [x] [Review][Decision→Patch 1A] 交互式 BindShortcuts 复用 2s 探测超时，弹授权框的 backend 必然误判失败降级 — `portal_hotkey_service.dart`（`_timeout` 默认 2s）经 `_sendRequest` 同时约束 getVersion / CreateSession / BindShortcuts。GNOME 48+ 首次绑定需用户点掉系统对话框后才发 Response，2s 内点不完 → `BindShortcuts` 抛 `TimeoutException` → 落 `failed` 降级。**已修复（决策 1A）**：拆分为 `_timeout`（探测 2s）与 `_interactiveTimeout`（交互 60s，默认），`_sendRequest` 改用交互超时。
+- [x] [Review][Decision→Patch 2A] 用户在授权框点“取消”(response=1) 与 backend 报错同等处理并被 `_registerAttempted` 永久锁定 — **已修复（决策 2A）**：新增 `PortalUserCancelledException` 与 `PortalRegistrationResult.cancelled`；取消路径清理 session 但**不置** `_registerAttempted`，允许后续重试；非取消失败仍锁定避免 GNOME 反复弹窗。补 2 个回归测试。
+
+### Patch（修复明确，无需决策）
+
+- [x] [Review][Patch] 注册成功后 rebuildMenu 抛错被同一 catch 覆写 hotkeyMode=portal→system [voice_capsule/lib/main.dart] — 已修复：`rebuildMenu()` 移出模式判定 try，用独立 try/catch 包裹。
+- [x] [Review][Patch] catch 异常路径不 dispose 已赋值的 service，运行期泄漏 D-Bus 连接 [voice_capsule/lib/main.dart] — 已修复：catch 分支补 `await service.dispose()` + 置 null，与正常降级路径一致。
+- [x] [Review][Patch] Activated 回调 fire-and-forget，_onActivated 异常逃逸为未处理 Future [voice_capsule/lib/services/portal_hotkey_service.dart] — 已修复：改为 `unawaited(_onActivated().catchError(...))` 记录异常。
+- [x] [Review][Patch] settings_service_test 以注释删断言而非改为负向断言，静默削弱覆盖 [voice_capsule/test/services/settings_service_test.dart] — 已修复：改为 `expect(yaml.contains('hotkey:'), isFalse)`。
+- [x] [Review][Patch] AC6/类注释宣称的“防抖”在 HotkeyController 中并不存在 [voice_capsule/lib/services/portal_hotkey_service.dart] — 已修复：Portal 注释措辞改为“重入保护”。（`hotkey_controller.dart:52-53` 死字段 pre-existing，不在本 story 清理范围。）
+- [x] [Review][Patch] settings_constants 引导注释仍写旧命令 nextalk --toggle [voice_capsule/lib/constants/settings_constants.dart:125,174] — 已修复：中英两处引导改为 `nextalk-toggle`。`main.dart` 的 `--help` CLI 自述保留。
+- [x] [Review][Patch] Response/Activated 信号流未按 sender 锁定 org.freedesktop.portal.Desktop [voice_capsule/lib/services/portal_hotkey_service.dart] — 已修复：两处 `DBusSignalStream` 加 `sender: 'org.freedesktop.portal.Desktop'`。
+
+### Deferred（真实但当前不宜处理 / 属真机验证事项）
+
+- [x] [Review][Defer] app_id 未设置，KDE 按 app_id 跨重启持久化（AC3）对裸二进制未经验证 — CreateSession options 仅含 handle_token/session_handle_token，未设 .desktop app_id；非 Flatpak 二进制 app_id 可能为空。属真机验证开放项，与 AC8 注册成功分支一并待验。
+- [x] [Review][Defer] D-Bus 连接断开 / portal 重启无检测无重连，UI 与实际状态可能永久不一致 — 连接断开=session 销毁=快捷键失效，但 hotkeyMode 仍 portal。属增强，超本 story 范围。
+- [x] [Review][Defer] register 守卫置于首个 await 前、dispose 与后台 register 可能并发 — 理论 use-after-dispose / 误返回 failed；当前仅 `_setupPortalHotkey` 单一调用点，无实际并发 reachability。
+- [x] [Review][Defer] AC6 双触发回归测试为本地重建 guardedToggle 闭包，未驱动真实 HotkeyController — 两路径确收敛同一 `toggle()`，风险低，但测试保真度弱于 AC6 字面要求。可补真实集成测试。
+- [x] [Review][Defer] AC8 注册成功分支（KDE 5.27+/6.x、GNOME 48+）未真机验证 — story 已诚实记录；仅降级分支在本机 Ubuntu 24.04+GNOME 46 验证通过。
 
 ## Dev Notes
 

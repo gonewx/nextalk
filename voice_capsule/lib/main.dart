@@ -225,9 +225,9 @@ PortalHotkeyService? _portalHotkeyService;
 /// 放在后台 Future 中，失败静默降级到系统快捷键 + nextalk-toggle 回退方案
 /// (AC4)。注册结果只影响 HotkeyService.hotkeyMode 的展示，不影响业务可用性。
 Future<void> _setupPortalHotkey() async {
+  final service = PortalHotkeyService();
+  _portalHotkeyService = service;
   try {
-    final service = PortalHotkeyService();
-    _portalHotkeyService = service;
     final result = await service.register();
 
     if (result == PortalRegistrationResult.registered) {
@@ -235,7 +235,7 @@ Future<void> _setupPortalHotkey() async {
       DiagnosticLogger.instance
           .info('main', 'Portal 全局快捷键已启用 (Alt+Space)');
     } else {
-      // 降级：保持系统快捷键模式，记录原因 (AC4)
+      // 降级（不支持 / 失败 / 用户取消）：保持系统快捷键模式，记录原因 (AC4)
       HotkeyService.instance.hotkeyMode = HotkeyMode.system;
       DiagnosticLogger.instance.info(
         'main',
@@ -245,14 +245,24 @@ Future<void> _setupPortalHotkey() async {
       await service.dispose();
       _portalHotkeyService = null;
     }
-
-    // 刷新托盘菜单以展示最终快捷键模式 (AC4；rebuildMenu 自带初始化守卫)
-    await TrayService.instance.rebuildMenu();
   } catch (e) {
     // 探测/注册意外异常也不能影响启动
     HotkeyService.instance.hotkeyMode = HotkeyMode.system;
     DiagnosticLogger.instance
         .warn('main', 'Portal 快捷键装配异常，回退到系统快捷键: $e');
+    // 立即释放半开的连接，避免运行期泄漏（与正常降级路径行为一致）
+    await service.dispose();
+    _portalHotkeyService = null;
+  }
+
+  // 无论成功/降级/异常，都刷新托盘菜单展示最终快捷键模式
+  // (AC4；rebuildMenu 自带初始化守卫)。放在 try 外，避免其抛错把
+  // 已确定的 hotkeyMode=portal 覆写回 system。
+  try {
+    await TrayService.instance.rebuildMenu();
+  } catch (e) {
+    DiagnosticLogger.instance
+        .warn('main', '刷新托盘菜单失败（不影响快捷键功能）: $e');
   }
 }
 

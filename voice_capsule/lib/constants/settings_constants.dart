@@ -122,7 +122,7 @@ model:
 # 请通过系统设置配置全局快捷键来触发 Nextalk：
 #   GNOME: 设置 → 键盘 → 自定义快捷键 → 添加快捷键
 #   KDE:   系统设置 → 快捷键 → 自定义快捷键
-# 命令设置为: nextalk --toggle
+# 命令设置为: nextalk-toggle
 
 # 音频设置
 audio:
@@ -171,7 +171,7 @@ model:
 # Configure global hotkey via system settings to trigger Nextalk:
 #   GNOME: Settings → Keyboard → Custom Shortcuts → Add Shortcut
 #   KDE:   System Settings → Shortcuts → Custom Shortcuts
-# Set command to: nextalk --toggle
+# Set command to: nextalk-toggle
 
 # Audio Settings
 audio:

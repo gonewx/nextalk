@@ -34,6 +34,20 @@ enum PortalRegistrationResult {
 
   /// backend 支持但注册流程失败（CreateSession/BindShortcuts 出错或超时）——应回退
   failed,
+
+  /// 用户在系统授权对话框中取消了绑定（response=1）——应回退，但允许后续重试
+  cancelled,
+}
+
+/// 用户在系统授权/绑定对话框中取消（Portal Response code=1）。
+///
+/// 与 backend 报错区分：取消是用户主观选择，服务不应把它当作“不支持”而
+/// 永久锁定，允许后续再次尝试注册。
+class PortalUserCancelledException implements Exception {
+  const PortalUserCancelledException();
+
+  @override
+  String toString() => 'PortalUserCancelledException: 用户取消了 Portal 快捷键绑定';
 }
 
 /// 一次快捷键激活事件（backend → service）
@@ -100,9 +114,17 @@ abstract class GlobalShortcutsBackend {
 /// portal 方法返回的是 **Request 对象路径**，真正结果需订阅
 /// `org.freedesktop.portal.Request::Response` 信号从 results 提取。
 class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
-  DBusGlobalShortcutsBackend({DBusClient? client, Duration? timeout})
-      : _client = client ?? DBusClient.session(),
-        _timeout = timeout ?? const Duration(seconds: 2) {
+  DBusGlobalShortcutsBackend({
+    DBusClient? client,
+    Duration? timeout,
+    Duration? interactiveTimeout,
+  })  : _client = client ?? DBusClient.session(),
+        _timeout = timeout ?? const Duration(seconds: 2),
+        // 交互式请求（CreateSession/BindShortcuts）的 Response 只有在用户点掉
+        // 系统授权对话框后才发出——探测用的 2s 短超时会把它必然误判为失败。
+        // 故单独放宽到 60s（覆盖用户操作对话框的时间）。
+        _interactiveTimeout =
+            interactiveTimeout ?? timeout ?? const Duration(seconds: 60) {
     _portalObject = DBusRemoteObject(
       _client,
       name: 'org.freedesktop.portal.Desktop',
@@ -111,7 +133,12 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
   }
 
   final DBusClient _client;
+
+  /// 非交互请求超时（version 探测、closeSession）——短，快速判定接口缺失。
   final Duration _timeout;
+
+  /// 交互请求超时（CreateSession/BindShortcuts 等待用户操作授权框）——长。
+  final Duration _interactiveTimeout;
   late final DBusRemoteObject _portalObject;
   final _random = Random();
   final _usedTokens = <String>{};
@@ -212,6 +239,7 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
     // Activated(session_handle o, shortcut_id s, timestamp t, options a{sv})
     final signalStream = DBusSignalStream(
       _client,
+      sender: 'org.freedesktop.portal.Desktop',
       interface: HotkeyConstants.portalInterface,
       name: 'Activated',
       signature: DBusSignature('osta{sv}'),
@@ -265,6 +293,7 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
 
     final responseStream = DBusSignalStream(
       _client,
+      sender: 'org.freedesktop.portal.Desktop',
       interface: 'org.freedesktop.portal.Request',
       name: 'Response',
       signature: DBusSignature('ua{sv}'),
@@ -280,8 +309,7 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
           completer.complete(results);
           break;
         case 1:
-          completer.completeError(
-              StateError('Portal 请求被用户取消 (response=1)'));
+          completer.completeError(const PortalUserCancelledException());
           break;
         default:
           completer.completeError(
@@ -291,7 +319,7 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
 
     try {
       requestPath = await send();
-      return await completer.future.timeout(_timeout);
+      return await completer.future.timeout(_interactiveTimeout);
     } finally {
       await subscription.cancel();
     }
@@ -346,19 +374,21 @@ class PortalHotkeyService {
           ? PortalRegistrationResult.registered
           : PortalRegistrationResult.failed;
     }
-    _registerAttempted = true;
 
     // 1. 能力探测（AC1/AC4）
     final int version;
     try {
       version = await _backend.getVersion();
     } catch (e) {
+      // 探测失败即视为已尝试（接口缺失不会因重试而改变）
+      _registerAttempted = true;
       return _fallback(
         PortalRegistrationResult.unsupported,
         'GlobalShortcuts 接口不可用: $e',
       );
     }
     if (version < _minVersion) {
+      _registerAttempted = true;
       return _fallback(
         PortalRegistrationResult.unsupported,
         'GlobalShortcuts 版本过低 (version=$version < $_minVersion)',
@@ -375,7 +405,22 @@ class PortalHotkeyService {
           preferredTrigger: _preferredTrigger,
         ),
       ]);
+    } on PortalUserCancelledException {
+      // 用户主动取消：清理 session，但**不锁定** _registerAttempted，
+      // 允许后续再次尝试注册（决策 2A）。
+      final handle = _sessionHandle;
+      _sessionHandle = null;
+      if (handle != null) {
+        await _backend.closeSession(handle);
+      }
+      _registered = false;
+      _fallbackReason = '用户取消了 Portal 快捷键绑定';
+      DiagnosticLogger.instance
+          .info('PortalHotkey', 'ℹ️ 用户取消绑定，暂用系统快捷键（可重试）');
+      return PortalRegistrationResult.cancelled;
     } catch (e) {
+      // 非取消类失败：视为已尝试，避免重复重绑骚扰（GNOME 反复弹窗）
+      _registerAttempted = true;
       // 已开的 session 尽力清理，避免残留
       final handle = _sessionHandle;
       _sessionHandle = null;
@@ -388,12 +433,18 @@ class PortalHotkeyService {
       );
     }
 
+    _registerAttempted = true;
+
     // 3. 监听 Activated → 收敛到 HotkeyController（AC2）
     _activatedSubscription = _backend.onActivated.listen((event) {
       if (event.sessionHandle != _sessionHandle) return;
       if (event.shortcutId != _shortcutId) return;
-      // 交给唯一业务入口，复用其 _isProcessing / 防抖竞态防护（AC6）
-      _onActivated();
+      // 交给唯一业务入口，复用其 _isProcessing 重入保护（AC6）。
+      // fire-and-forget：显式吞掉并记录异常，避免逃逸为未处理的异步错误。
+      unawaited(_onActivated().catchError((Object e) {
+        DiagnosticLogger.instance
+            .warn('PortalHotkey', 'toggle 执行异常: $e');
+      }));
     });
 
     _registered = true;

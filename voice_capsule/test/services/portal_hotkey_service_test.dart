@@ -180,6 +180,47 @@ void main() {
         // 已开 session 必须被关闭，避免残留（AC7）
         expect(backend.closedSessions, contains(backend.sessionHandle));
       });
+
+      test('用户取消绑定 → cancelled 降级，且不锁定可重试（决策 2A）', () async {
+        final backend = FakeGlobalShortcutsBackend(
+          bindError: const PortalUserCancelledException(),
+        );
+        final service = PortalHotkeyService(
+          backend: backend,
+          onActivated: () async {},
+        );
+
+        final result = await service.register();
+
+        expect(result, PortalRegistrationResult.cancelled);
+        expect(service.isRegistered, isFalse);
+        // 已开 session 必须被清理
+        expect(backend.closedSessions, contains(backend.sessionHandle));
+
+        // 取消不锁定 _registerAttempted：再次 register 应真正重新尝试
+        backend.bindError = null;
+        final retry = await service.register();
+        expect(retry, PortalRegistrationResult.registered);
+        expect(service.isRegistered, isTrue);
+        expect(backend.createSessionCalls, 2); // 第二次确实重建了 session
+      });
+
+      test('非取消类失败会锁定，不再重试（避免 GNOME 反复弹窗）', () async {
+        final backend = FakeGlobalShortcutsBackend(
+          bindError: Exception('bind boom'),
+        );
+        final service = PortalHotkeyService(
+          backend: backend,
+          onActivated: () async {},
+        );
+
+        expect(await service.register(), PortalRegistrationResult.failed);
+
+        // 即便后续 backend 恢复，也不再重试（守卫锁定）
+        backend.bindError = null;
+        expect(await service.register(), PortalRegistrationResult.failed);
+        expect(backend.createSessionCalls, 1); // 只尝试过一次
+      });
     });
 
     group('BindShortcuts 参数 (AC1/2.2)', () {

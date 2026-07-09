@@ -33,6 +33,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2025-12-21
+last_updated: 2026-07-09
 project: nextalk_fcitx5_v2
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
@@ -82,7 +83,7 @@ development_status:
   # 2026-01-13: 重构为 libpulse-simple 录音 + libpulse 设备枚举，待用户测试验证
   3-9-audio-device-selection: ready-for-review
   # 2026-07-09: 第四代快捷键方案 - XDG Portal GlobalShortcuts 零配置注册，保留系统快捷键回退
-  3-10-portal-global-shortcuts: review
+  3-10-portal-global-shortcuts: done
   epic-3-retrospective: optional
 
   # ============================================
