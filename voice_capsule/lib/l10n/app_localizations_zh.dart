@@ -100,7 +100,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wizardCheckingStatus => '检查下载状态...';
 
   @override
-  String get wizardPressHotkeyHint => '按下 Right Alt 键开始语音输入';
+  String get wizardPressHotkeyHint => '按下 Alt+Space 开始语音输入';
+
+  @override
+  String get wizardHotkeyFallbackHint =>
+      '若快捷键无效，请在系统设置中将自定义快捷键绑定到命令 nextalk-toggle';
 
   @override
   String get wizardStartUsing => '开始使用';

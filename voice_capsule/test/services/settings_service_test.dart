@@ -179,7 +179,7 @@ void main() {
       expect(yaml.contains('engine:'), isTrue);
       expect(yaml.contains('zipformer:'), isTrue);
       expect(yaml.contains('sensevoice:'), isTrue);
-      expect(yaml.contains('hotkey:'), isTrue);
+      // 注: SCP-002 已移除配置侧快捷键同步，defaultSettingsYaml 不再含 hotkey 块
     });
 
     test('zipformer 配置块包含 type 和 custom_url', () {

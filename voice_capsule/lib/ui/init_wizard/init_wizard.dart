@@ -523,11 +523,24 @@ class _InitWizardState extends State<InitWizard> {
           ),
           const SizedBox(height: 12),
           Text(
-            l10n?.wizardPressHotkeyHint ?? '按下 Right Alt 键开始语音输入',
+            // Story 3-10: 默认快捷键统一为 Alt+Space（Portal 与系统回退共用）
+            l10n?.wizardPressHotkeyHint ?? '按下 Alt+Space 开始语音输入',
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 14,
             ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          // Story 3-10 AC5: 回退模式引导指向 nextalk-toggle（与 deb/rpm postinst 一致）
+          Text(
+            l10n?.wizardHotkeyFallbackHint ??
+                '若快捷键无效，请在系统设置中将自定义快捷键绑定到命令 nextalk-toggle',
+            style: const TextStyle(
+              color: Colors.white38,
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 24),
           ElevatedButton(

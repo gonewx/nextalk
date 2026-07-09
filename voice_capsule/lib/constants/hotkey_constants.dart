@@ -12,6 +12,18 @@ class HotkeyConstants {
   /// 默认修饰键列表
   static const List<String> defaultModifiers = ['alt'];
 
+  // ===== Story 3-10: XDG Portal GlobalShortcuts 常量 =====
+  /// Portal 快捷键稳定 id（backend 按此 id + app_id 记忆用户绑定）
+  static const String portalShortcutId = 'toggle-voice-input';
+
+  /// Portal preferred_trigger 默认值
+  /// 格式遵循 freedesktop Shortcuts 规范（如 "CTRL+SHIFT+A"）；
+  /// 禁用 Meta/Super 键（规范保留给桌面环境）
+  static const String portalDefaultTrigger = 'ALT+SPACE';
+
+  /// GlobalShortcuts D-Bus 接口名
+  static const String portalInterface = 'org.freedesktop.portal.GlobalShortcuts';
+
   // ===== 键名到 Fcitx5 格式映射 =====
   /// 配置文件中的键名到 Fcitx5 按键名称的映射
   static const Map<String, String> keyToFcitx5 = {

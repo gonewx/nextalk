@@ -1,6 +1,10 @@
+---
+baseline_commit: 37cd22883e61768b2d54d940b6f1cd2cff2acf95
+---
+
 # Story 3.10: Portal 全局快捷键（零配置注册）
 
-Status: ready-for-dev
+Status: review
 
 > Ultimate context engine analysis completed - comprehensive developer guide created（代码脉络审计 + Portal 生态 Web 核实双源合成，2026-07-09）
 
@@ -38,26 +42,26 @@ Status: ready-for-dev
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Portal 能力探测 (AC: 1, 4)
-  - [ ] 1.1 【决策已锁定】`xdg_desktop_portal` 0.1.14 **不支持** GlobalShortcuts（源码 22 个 portal 无此实现）——用 `package:dbus` 直接调用；可参考该包 `XdgPortalSession`/`XdgPortalRequest` 的 Request/Response 处理模式
-  - [ ] 1.2 实现探测：`org.freedesktop.DBus.Properties.Get("org.freedesktop.portal.GlobalShortcuts", "version")`，接口不存在时返回明确的 D-Bus 错误（不会挂起），仍加 2s 超时兜底
-- [ ] Task 2: 实现 `PortalHotkeyService` (AC: 1, 2, 3, 7)
-  - [ ] 2.1 CreateSession：注意返回值是 **Request 对象路径**，真正的 session_handle 必须订阅 `org.freedesktop.portal.Request::Response` 信号从 results 中提取（"Invalid session" 是此接口最常见新手坑）
-  - [ ] 2.2 BindShortcuts 注册 "toggle-voice-input"（description 用 i18n 文案；preferred_trigger 默认 `"ALT+SPACE"`，**禁用 Meta/Super 键**——规范保留给桌面环境）；每个 session 只能 BindShortcuts 一次
-  - [ ] 2.3 监听 `Activated(session_handle, shortcut_id, timestamp, options)` 信号 → 调用 `HotkeyController.instance.toggle()`
-  - [ ] 2.4 持久化策略：**规范无 restore token**——每次启动用稳定 shortcut id + app_id 重新 CreateSession+BindShortcuts，backend 负责记忆用户绑定；D-Bus 连接必须全程保活（连接断开 = session 销毁 = 快捷键失效），单次运行内禁止重复重绑（GNOME 会反复弹窗）
-  - [ ] 2.5 dispose 链接入 `main.dart` 的 `TrayService.onBeforeExit`（关闭 session 与 DBusClient）
-- [ ] Task 3: 集成与降级路由 (AC: 4)
-  - [ ] 3.1 `main.dart` 初始化序列中加入 Portal 探测（在 HotkeyController.initialize 之后，不阻塞启动主路径——用后台 Future，探测失败静默）
-  - [ ] 3.2 `HotkeyService` 增加 `hotkeyMode` 状态（portal / system），供托盘与 UI 展示
-  - [ ] 3.3 降级原因写入 `DiagnosticLogger`
-- [ ] Task 4: 引导文案与设置界面更新 (AC: 5)
-  - [ ] 4.1 更新 init wizard / manual_install_guide 中的快捷键引导：优先说明 Portal 自动注册；回退模式下指引 `nextalk-toggle`
-  - [ ] 4.2 l10n 中英文案（`app_localizations_zh/en.dart` 经 arb 流程）
-- [ ] Task 5: 测试 (AC: 2, 6, 7)
-  - [ ] 5.1 `PortalHotkeyService` 单元测试（mock DBusClient：session 创建/信号分发/token 恢复/超时降级）
-  - [ ] 5.2 双触发路径防抖回归测试（single_instance 命令 + portal Activated 并发）
-  - [ ] 5.3 真机验证矩阵记录到 story 完成笔记（KDE / GNOME 新版 / Ubuntu 22.04 降级）
+- [x] Task 1: Portal 能力探测 (AC: 1, 4)
+  - [x] 1.1 【决策已锁定】`xdg_desktop_portal` 0.1.14 **不支持** GlobalShortcuts（源码 22 个 portal 无此实现）——用 `package:dbus` 直接调用；可参考该包 `XdgPortalSession`/`XdgPortalRequest` 的 Request/Response 处理模式
+  - [x] 1.2 实现探测：`org.freedesktop.DBus.Properties.Get("org.freedesktop.portal.GlobalShortcuts", "version")`，接口不存在时返回明确的 D-Bus 错误（不会挂起），仍加 2s 超时兜底
+- [x] Task 2: 实现 `PortalHotkeyService` (AC: 1, 2, 3, 7)
+  - [x] 2.1 CreateSession：注意返回值是 **Request 对象路径**，真正的 session_handle 必须订阅 `org.freedesktop.portal.Request::Response` 信号从 results 中提取（"Invalid session" 是此接口最常见新手坑）
+  - [x] 2.2 BindShortcuts 注册 "toggle-voice-input"（description 用 i18n 文案；preferred_trigger 默认 `"ALT+SPACE"`，**禁用 Meta/Super 键**——规范保留给桌面环境）；每个 session 只能 BindShortcuts 一次
+  - [x] 2.3 监听 `Activated(session_handle, shortcut_id, timestamp, options)` 信号 → 调用 `HotkeyController.instance.toggle()`
+  - [x] 2.4 持久化策略：**规范无 restore token**——每次启动用稳定 shortcut id + app_id 重新 CreateSession+BindShortcuts，backend 负责记忆用户绑定；D-Bus 连接必须全程保活（连接断开 = session 销毁 = 快捷键失效），单次运行内禁止重复重绑（GNOME 会反复弹窗）
+  - [x] 2.5 dispose 链接入 `main.dart` 的 `TrayService.onBeforeExit`（关闭 session 与 DBusClient）
+- [x] Task 3: 集成与降级路由 (AC: 4)
+  - [x] 3.1 `main.dart` 初始化序列中加入 Portal 探测（在 HotkeyController.initialize 之后，不阻塞启动主路径——用后台 Future，探测失败静默）
+  - [x] 3.2 `HotkeyService` 增加 `hotkeyMode` 状态（portal / system），供托盘与 UI 展示
+  - [x] 3.3 降级原因写入 `DiagnosticLogger`
+- [x] Task 4: 引导文案与设置界面更新 (AC: 5)
+  - [x] 4.1 更新 init wizard / manual_install_guide 中的快捷键引导：优先说明 Portal 自动注册；回退模式下指引 `nextalk-toggle`
+  - [x] 4.2 l10n 中英文案（`app_localizations_zh/en.dart` 经 arb 流程）
+- [x] Task 5: 测试 (AC: 2, 6, 7)
+  - [x] 5.1 `PortalHotkeyService` 单元测试（mock DBusClient：session 创建/信号分发/token 恢复/超时降级）
+  - [x] 5.2 双触发路径防抖回归测试（single_instance 命令 + portal Activated 并发）
+  - [~] 5.3 真机验证矩阵记录到 story 完成笔记（KDE / GNOME 新版 / Ubuntu 22.04 降级）— **降级分支已在本机 Ubuntu 24.04+GNOME 46 验证通过**；注册成功分支（KDE / GNOME 48+）待支持环境验证，详见完成笔记
 
 ## Dev Notes
 
@@ -145,8 +149,71 @@ Status: ready-for-dev
 
 ### Agent Model Used
 
+claude-opus-4-8[1m] (Claude Opus 4.8, BMAD dev-story workflow)
+
 ### Debug Log References
+
+- `flutter test test/services/portal_hotkey_service_test.dart` → 16 tests passed
+- `flutter test`（全量回归）→ 665 passed / 6 skipped / **1 failed**
+  - 唯一失败 `settings_service_test.dart:182 defaultSettingsYaml 是有效的 YAML 格式`（断言 `defaultSettingsYaml` 含 `hotkey:`）是**先于本 story 存在的既有失败**：baseline commit `37cd228` 处 `settings_constants.dart` 已不含 `hotkey:`（SCP-002 移除了配置侧快捷键同步），测试未同步更新。与本 story 改动无关，已用 `git show 37cd228` 核实。
+- `flutter analyze lib test` → 本 story 新增/修改文件 0 新增告警（`main.dart:542` 既有 print、`manual_install_guide.dart:306` 既有 withOpacity 均非本次改动）
+- `flutter build linux --debug` → 编译成功，集成无误
 
 ### Completion Notes List
 
+**实现架构**
+- 新增 `PortalHotkeyService`（`voice_capsule/lib/services/portal_hotkey_service.dart`），第四代 Portal GlobalShortcuts 方案。采用**抽象 backend + 依赖注入**设计：`GlobalShortcutsBackend` 接口 + `DBusGlobalShortcutsBackend` 真实实现（package:dbus），使 D-Bus 层在单测中可注入 fake（对齐项目 FakeASREngine 惯例）。
+- `xdg_desktop_portal` 0.1.14 确认不支持 GlobalShortcuts，改用其传递依赖 `package:dbus` 直接调用；已在 pubspec 显式声明 `dbus: ^0.7.8`。
+- Request/Response 处理严格遵循 `xdg_desktop_portal` 包的 `XdgPortalRequest`/`XdgPortalSession` 模式：CreateSession 返回 Request 路径，真正 session_handle 从 `org.freedesktop.portal.Request::Response` 信号 results 提取（规避 "Invalid session" 坑）。
+
+**AC 映射**
+- AC1（注册）：`register()` 探测 version → CreateSession → BindShortcuts（shortcut id `toggle-voice-input`，preferred_trigger `ALT+SPACE`，禁用 Meta/Super）。
+- AC2（触发）：Activated 信号按 session+id 过滤后收敛到 `HotkeyController.instance.toggle()`——不绕过状态机，复用其 `_isProcessing`/防抖防护。
+- AC3（重启重绑）：`_registerAttempted` 守卫保证单次运行只 CreateSession+BindShortcuts 一次（避免 GNOME 反复弹窗）；无 restore token，靠稳定 id + backend 记忆。
+- AC4（回退检测）：接口缺失/版本不足/CreateSession/BindShortcuts 失败/超时均静默降级，原因写入 `DiagnosticLogger`；`main.dart` 用**非阻塞后台 Future** `unawaited(_setupPortalHotkey())` 装配，绝不拖慢启动；`HotkeyService.hotkeyMode`（portal/system）供托盘只读项展示。
+- AC5（引导更新）：init wizard 完成页主提示改为 Alt+Space（旧「Right Alt」为第二代残留），常驻副提示指向 `nextalk-toggle`；l10n 走 arb → gen-l10n 流程新增 `wizardHotkeyFallbackHint`。
+- AC6（冲突共存）：复用 `HotkeyController` 既有防护，补双触发防抖回归测试。
+- AC7（退出清理）：`PortalHotkeyService.dispose()` 接入 `TrayService.onBeforeExit`，关闭 session 与 DBusClient；注册失败/降级路径立即释放连接。
+
+**测试**（`test/services/portal_hotkey_service_test.dart`，16 用例全绿）
+- 探测成功/接口缺失/版本过低；CreateSession/BindShortcuts 失败降级并清理 session；BindShortcuts 参数（稳定 id、ALT+SPACE、禁 Meta）；Activated 按 session+id 过滤；单次运行禁重绑；dispose 清理；双触发防抖回归（并发只生效一次 + 串行各生效一次）。
+
+**AC8 / Task 5.3 真机验证矩阵**：
+
+已在本机（**Ubuntu 24.04 + GNOME Shell 46.0 + Wayland**）验证**降级分支**（2026-07-09）：
+- [x] Ubuntu 24.04 (GNOME 46)：默认会话不支持 GlobalShortcuts → 正确静默降级 ✅
+  - 前置核实：`gdbus call ... GlobalShortcuts version` 返回 `org.freedesktop.DBus.Error.InvalidArgs: 无此接口`（对照 Settings portal 正常返回 version 2），确认 backend 确无该接口
+  - 诊断日志记录降级链路：`[WARN] [PortalHotkey] ⚠️ 降级到系统快捷键: GlobalShortcuts 接口不可用: ...InvalidArgs...` + `[INFO] [main] Portal 不可用，使用系统快捷键回退`
+  - **非阻塞验证**：`应用初始化完成` @16:57:15.657 早于 `Portal 降级判定` @16:57:17.157 约 1.5s——后台 Future 未拖慢启动主路径（AC4 硬要求满足）
+  - 静默降级：仅 WARN/INFO 日志，无错误弹窗、无启动阻塞
+  - 验证方式：隔离 `XDG_RUNTIME_DIR` 使新构建成为主实例（不干扰用户已运行的正式版），保留 `DBUS_SESSION_BUS_ADDRESS` 连真实 session bus
+
+仍待在支持环境验证**注册成功分支**（本机 GNOME 46 无法覆盖，需要更新桌面）：
+- [ ] KDE Plasma 5.27+/6.x：注册成功，系统快捷键设置中可见并记忆，重启不重复弹窗
+- [ ] GNOME 48+：首次绑定弹系统确认对话框，快捷键生效
+- [ ] Ubuntu 22.04 (GNOME 42)：确认同样正确静默降级（预期与 24.04 一致）
+- 验证方法：启动后查看 `~/.local/share/nextalk/logs/diagnostic.log` 的 `PortalHotkey`/`main` 标签（成功时应出现 `✅ Portal 全局快捷键注册成功`），及托盘只读项文案。
+
 ### File List
+
+**新增**
+- `voice_capsule/lib/services/portal_hotkey_service.dart` — Portal GlobalShortcuts 服务（backend 抽象 + D-Bus 实现 + 编排器）
+- `voice_capsule/test/services/portal_hotkey_service_test.dart` — 16 单元/回归测试
+
+**修改**
+- `voice_capsule/pubspec.yaml` — 显式声明 `dbus: ^0.7.8`
+- `voice_capsule/lib/constants/hotkey_constants.dart` — 新增 Portal 常量（shortcut id / 默认 trigger / 接口名）
+- `voice_capsule/lib/services/hotkey_service.dart` — 新增 `HotkeyMode` 枚举与 `hotkeyMode` 字段
+- `voice_capsule/lib/main.dart` — 后台非阻塞装配 Portal（`_setupPortalHotkey` + `unawaited`），接入退出清理链
+- `voice_capsule/lib/services/tray_service.dart` — 托盘新增只读快捷键模式展示项
+- `voice_capsule/lib/services/language_service.dart` — 托盘 hotkey 模式中英文案
+- `voice_capsule/lib/ui/init_wizard/init_wizard.dart` — 完成页快捷键引导（Alt+Space 主提示 + nextalk-toggle 回退副提示）
+- `voice_capsule/lib/l10n/app_zh.arb` / `app_en.arb` — `wizardPressHotkeyHint` 更新 + 新增 `wizardHotkeyFallbackHint`
+- `voice_capsule/lib/l10n/app_localizations.dart` / `app_localizations_zh.dart` / `app_localizations_en.dart` — gen-l10n 自动生成
+
+## Change Log
+
+| 日期 | 变更 | 说明 |
+|------|------|------|
+| 2026-07-09 | 实现 Story 3-10 Portal 全局快捷键（第四代方案） | 新增 `PortalHotkeyService`（package:dbus 直调 GlobalShortcuts），后台非阻塞注册 + 系统快捷键静默回退；16 单元测试全绿，Linux 编译通过；AC8 真机矩阵待用户验证 |
+| 2026-07-09 | AC8 降级分支真机验证 | 本机 Ubuntu 24.04+GNOME 46 (Wayland) 验证通过：接口缺失 → 静默降级、日志记录原因、启动未被阻塞（初始化完成早于降级判定 ~1.5s）；注册成功分支仍待 KDE/GNOME 48+ 环境验证 |

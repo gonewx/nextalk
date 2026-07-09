@@ -8,6 +8,17 @@ import '../constants/settings_constants.dart';
 /// 快捷键按下回调类型
 typedef HotkeyPressedCallback = Future<void> Function();
 
+/// Story 3-10: 当前快捷键触发模式
+///
+/// 用于托盘/设置界面展示用户当前实际生效的快捷键方案。
+enum HotkeyMode {
+  /// Portal 全局快捷键（第四代，应用内注册，零配置）
+  portal,
+
+  /// 系统快捷键 + nextalk-toggle 回退（第三代，需用户手动配置）
+  system,
+}
+
 /// 快捷键配置数据
 class HotkeyConfig {
   final String key;
@@ -77,6 +88,10 @@ class HotkeyService {
 
   HotkeyConfig? _currentConfig;
   bool _isInitialized = false;
+
+  /// Story 3-10: 当前快捷键模式（默认系统快捷键；Portal 注册成功后由
+  /// main.dart 更新为 portal）。供托盘与 UI 展示当前生效方案。
+  HotkeyMode hotkeyMode = HotkeyMode.system;
 
   /// 快捷键按下回调 (由 HotkeyController 注入)
   /// 保留此字段以保持向后兼容
@@ -149,6 +164,7 @@ class HotkeyService {
   Future<void> dispose() async {
     _isInitialized = false;
     _currentConfig = null;
+    hotkeyMode = HotkeyMode.system;
     onHotkeyPressed = null;
   }
 }

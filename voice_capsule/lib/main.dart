@@ -17,6 +17,7 @@ import 'services/hotkey_controller.dart';
 import 'services/hotkey_service.dart';
 import 'services/language_service.dart';
 import 'services/model_manager.dart';
+import 'services/portal_hotkey_service.dart';
 import 'services/settings_service.dart';
 import 'services/single_instance.dart';
 import 'services/tray_service.dart';
@@ -215,6 +216,46 @@ ASREngine? _asrEngine;
 AudioInferencePipeline? _pipeline;
 FcitxClient? _fcitxClient;
 
+/// Story 3-10: Portal 全局快捷键服务 (可选，backend 不支持时保持 null)
+PortalHotkeyService? _portalHotkeyService;
+
+/// Story 3-10: 在后台非阻塞地探测并注册 Portal 全局快捷键。
+///
+/// 关键约束：**不能拖慢启动主路径**——portal backend 可能挂起，因此整个流程
+/// 放在后台 Future 中，失败静默降级到系统快捷键 + nextalk-toggle 回退方案
+/// (AC4)。注册结果只影响 HotkeyService.hotkeyMode 的展示，不影响业务可用性。
+Future<void> _setupPortalHotkey() async {
+  try {
+    final service = PortalHotkeyService();
+    _portalHotkeyService = service;
+    final result = await service.register();
+
+    if (result == PortalRegistrationResult.registered) {
+      HotkeyService.instance.hotkeyMode = HotkeyMode.portal;
+      DiagnosticLogger.instance
+          .info('main', 'Portal 全局快捷键已启用 (Alt+Space)');
+    } else {
+      // 降级：保持系统快捷键模式，记录原因 (AC4)
+      HotkeyService.instance.hotkeyMode = HotkeyMode.system;
+      DiagnosticLogger.instance.info(
+        'main',
+        'Portal 不可用，使用系统快捷键回退 (原因: ${service.fallbackReason})',
+      );
+      // 已降级则无需保活连接，释放
+      await service.dispose();
+      _portalHotkeyService = null;
+    }
+
+    // 刷新托盘菜单以展示最终快捷键模式 (AC4；rebuildMenu 自带初始化守卫)
+    await TrayService.instance.rebuildMenu();
+  } catch (e) {
+    // 探测/注册意外异常也不能影响启动
+    HotkeyService.instance.hotkeyMode = HotkeyMode.system;
+    DiagnosticLogger.instance
+        .warn('main', 'Portal 快捷键装配异常，回退到系统快捷键: $e');
+  }
+}
+
 Future<void> main(List<String> args) async {
   // SCP-002: 处理命令行参数 (--toggle, --show, --hide)
   final shouldContinue = await _handleCommandLineArgs(args);
@@ -395,6 +436,11 @@ Future<void> main(List<String> args) async {
       }
     };
 
+    // 9.2 Story 3-10: 后台非阻塞装配 Portal 全局快捷键 (AC1/AC4)
+    // 放在 HotkeyController.initialize 之后发起，但不 await——portal backend
+    // 可能挂起，绝不能拖慢启动主路径 (延迟优化不倒退)。失败静默降级。
+    unawaited(_setupPortalHotkey());
+
     // 10. 设置托盘回调 (AC12: 释放所有资源, AC16: 重连 Fcitx5)
     TrayService.instance.onBeforeExit = () async {
       DiagnosticLogger.instance.info('main', '开始清理资源...');
@@ -404,6 +450,10 @@ Future<void> main(List<String> args) async {
 
       // 停止单实例服务
       await SingleInstance.instance.dispose();
+
+      // Story 3-10: 关闭 Portal session 与 D-Bus 连接 (AC7)
+      await _portalHotkeyService?.dispose();
+      _portalHotkeyService = null;
 
       // 释放控制器
       await HotkeyController.instance.dispose();

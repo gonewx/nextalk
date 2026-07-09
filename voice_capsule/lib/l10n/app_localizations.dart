@@ -275,8 +275,14 @@ abstract class AppLocalizations {
   /// No description provided for @wizardPressHotkeyHint.
   ///
   /// In zh, this message translates to:
-  /// **'按下 Right Alt 键开始语音输入'**
+  /// **'按下 Alt+Space 开始语音输入'**
   String get wizardPressHotkeyHint;
+
+  /// No description provided for @wizardHotkeyFallbackHint.
+  ///
+  /// In zh, this message translates to:
+  /// **'若快捷键无效，请在系统设置中将自定义快捷键绑定到命令 nextalk-toggle'**
+  String get wizardHotkeyFallbackHint;
 
   /// No description provided for @wizardStartUsing.
   ///

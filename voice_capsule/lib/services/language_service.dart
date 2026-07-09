@@ -125,6 +125,9 @@ class LanguageService {
       // 托盘菜单 (AC5)
       'tray_show_hide': '显示 / 隐藏',
       'tray_reconnect': '重新连接 Fcitx5',
+      // Story 3-10: 快捷键模式展示（只读）
+      'tray_hotkey_mode_portal': '快捷键: Alt+Space (Portal 自动注册)',
+      'tray_hotkey_mode_system': '快捷键: 系统设置 (nextalk-toggle)',
       'tray_model_int8': 'int8 模型 (更快)',
       'tray_model_standard': '标准模型 (更准)',
       'tray_settings': '设置',
@@ -191,6 +194,9 @@ class LanguageService {
       // 托盘菜单 (AC6)
       'tray_show_hide': 'Show / Hide',
       'tray_reconnect': 'Reconnect Fcitx5',
+      // Story 3-10: hotkey mode display (read-only)
+      'tray_hotkey_mode_portal': 'Hotkey: Alt+Space (Portal auto-registered)',
+      'tray_hotkey_mode_system': 'Hotkey: System settings (nextalk-toggle)',
       'tray_model_int8': 'int8 Model (Faster)',
       'tray_model_standard': 'Standard Model (More Accurate)',
       'tray_settings': 'Settings',

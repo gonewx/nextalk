@@ -176,6 +176,13 @@ class TrayService {
         label: lang.tr('tray_reconnect'),
         onClicked: (_) => _reconnectFcitx(),
       ),
+      // Story 3-10: 当前快捷键模式（只读展示，AC4）
+      MenuItemLabel(
+        label: HotkeyService.instance.hotkeyMode == HotkeyMode.portal
+            ? lang.tr('tray_hotkey_mode_portal')
+            : lang.tr('tray_hotkey_mode_system'),
+        enabled: false,
+      ),
       MenuSeparator(),
       // Story 2-7: 模型设置子菜单 (AC6, AC7)
       // 使用 MenuItemLabel + 标记符号代替 MenuItemCheckbox (workaround: system_tray Linux bug)
