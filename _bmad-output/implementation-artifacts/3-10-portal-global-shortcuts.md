@@ -1,6 +1,8 @@
 # Story 3.10: Portal 全局快捷键（零配置注册）
 
-Status: draft（等待 Portal 生态研究结果合入后转 ready-for-dev）
+Status: ready-for-dev
+
+> Ultimate context engine analysis completed - comprehensive developer guide created（代码脉络审计 + Portal 生态 Web 核实双源合成，2026-07-09）
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -27,24 +29,24 @@ Status: draft（等待 Portal 生态研究结果合入后转 ready-for-dev）
 
 1. **AC1 [注册]** Given 桌面环境的 portal backend 支持 GlobalShortcuts（接口可发现且版本满足要求），When 应用首次启动，Then 应用通过 Portal 注册 "toggle-voice-input" 全局快捷键（建议默认 Alt+Space），系统弹出一次授权/配置对话框；用户确认后快捷键立即生效。
 2. **AC2 [触发]** Given Portal 快捷键已绑定，When 用户按下快捷键，Then 应用收到 `Activated` 信号并执行与 `nextalk --toggle` 完全相同的动作（`HotkeyController.instance.toggle()`），端到端行为与现有状态机一致（idle→recording→submitting）。
-3. **AC3 [会话恢复]** Given 用户已授权过快捷键，When 应用重启，Then 不再重复弹出授权对话框，快捷键自动恢复绑定（利用 session restore token 机制，token 持久化到 SettingsService）。
+3. **AC3 [重启重绑]** Given 用户已授权过快捷键，When 应用重启，Then 应用以稳定的 shortcut id + app_id 重新 CreateSession + BindShortcuts，由 portal backend 匹配用户已保存的绑定（**规范无 restore token 机制**，持久化是 backend 按 app_id 的责任）；KDE 上不应重复弹对话框，GNOME 上允许 backend 决定是否再次确认，应用侧不得在一次运行中反复重绑（避免弹窗骚扰）。
 4. **AC4 [回退检测]** Given portal backend 不支持 GlobalShortcuts（接口不存在、版本不足、CreateSession/BindShortcuts 失败或超时），When 应用启动，Then 静默降级到现状方案（不弹错误、不阻塞启动），并在诊断日志记录降级原因；托盘/设置界面显示当前快捷键模式（Portal / 系统快捷键）。
 5. **AC5 [引导更新]** Given 应用处于回退模式，When 用户查看快捷键设置引导（init wizard / 托盘设置 / 安装完成提示），Then 引导文案指向 `nextalk-toggle` 命令（而非旧的 `nextalk --toggle`），与 deb/rpm postinst 提示一致。
 6. **AC6 [冲突共存]** Given 用户同时配置了系统快捷键和 Portal 快捷键，When 两者都触发 toggle，Then 现有的 `_debounceMs`/`_isProcessing` 防抖与竞态防护保证不会产生双重触发的状态错乱（复用 `HotkeyController` 既有防护，需补测试）。
 7. **AC7 [退出清理]** When 应用正常退出，Then Portal session 正确关闭（`Closed`），无泄漏的 D-Bus 连接；异常退出后重启不受残留 session 影响。
-8. **AC8 [平台矩阵]** 在支持矩阵内实测通过：KDE Plasma（支持版本）+ GNOME（支持版本）注册成功；Ubuntu 22.04 GNOME 42 正确降级到回退方案。
+8. **AC8 [平台矩阵]** 在支持矩阵内实测通过：KDE Plasma（5.27+/6.x）与 GNOME 48+ 注册成功；**Ubuntu 22.04 (GNOME 42) 与 Ubuntu 24.04 (GNOME 46) 的默认 GNOME 会话均不支持该 portal**，必须验证两者正确静默降级到系统快捷键方案。
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Portal 能力探测与依赖决策 (AC: 1, 4)
-  - [ ] 1.1 确认 `xdg_desktop_portal` Dart 包是否支持 GlobalShortcuts；不支持则用 `package:dbus` 直接实现（研究结论合入后锁定）
-  - [ ] 1.2 实现 `PortalShortcutsProbe`：通过 D-Bus Properties 读取 `org.freedesktop.portal.GlobalShortcuts` 的 `version` 属性探测可用性，带 2s 超时
+- [ ] Task 1: Portal 能力探测 (AC: 1, 4)
+  - [ ] 1.1 【决策已锁定】`xdg_desktop_portal` 0.1.14 **不支持** GlobalShortcuts（源码 22 个 portal 无此实现）——用 `package:dbus` 直接调用；可参考该包 `XdgPortalSession`/`XdgPortalRequest` 的 Request/Response 处理模式
+  - [ ] 1.2 实现探测：`org.freedesktop.DBus.Properties.Get("org.freedesktop.portal.GlobalShortcuts", "version")`，接口不存在时返回明确的 D-Bus 错误（不会挂起），仍加 2s 超时兜底
 - [ ] Task 2: 实现 `PortalHotkeyService` (AC: 1, 2, 3, 7)
-  - [ ] 2.1 CreateSession（携带 restore token，若有）
-  - [ ] 2.2 BindShortcuts 注册 "toggle-voice-input"（description 用 i18n 文案，preferred_trigger 默认 Alt+Space）
-  - [ ] 2.3 监听 `Activated` 信号 → 调用 `HotkeyController.instance.toggle()`
-  - [ ] 2.4 session token 持久化到 `SettingsService`（新增 key），重启恢复
-  - [ ] 2.5 dispose 链接入 `main.dart` 的 `TrayService.onBeforeExit`
+  - [ ] 2.1 CreateSession：注意返回值是 **Request 对象路径**，真正的 session_handle 必须订阅 `org.freedesktop.portal.Request::Response` 信号从 results 中提取（"Invalid session" 是此接口最常见新手坑）
+  - [ ] 2.2 BindShortcuts 注册 "toggle-voice-input"（description 用 i18n 文案；preferred_trigger 默认 `"ALT+SPACE"`，**禁用 Meta/Super 键**——规范保留给桌面环境）；每个 session 只能 BindShortcuts 一次
+  - [ ] 2.3 监听 `Activated(session_handle, shortcut_id, timestamp, options)` 信号 → 调用 `HotkeyController.instance.toggle()`
+  - [ ] 2.4 持久化策略：**规范无 restore token**——每次启动用稳定 shortcut id + app_id 重新 CreateSession+BindShortcuts，backend 负责记忆用户绑定；D-Bus 连接必须全程保活（连接断开 = session 销毁 = 快捷键失效），单次运行内禁止重复重绑（GNOME 会反复弹窗）
+  - [ ] 2.5 dispose 链接入 `main.dart` 的 `TrayService.onBeforeExit`（关闭 session 与 DBusClient）
 - [ ] Task 3: 集成与降级路由 (AC: 4)
   - [ ] 3.1 `main.dart` 初始化序列中加入 Portal 探测（在 HotkeyController.initialize 之后，不阻塞启动主路径——用后台 Future，探测失败静默）
   - [ ] 3.2 `HotkeyService` 增加 `hotkeyMode` 状态（portal / system），供托盘与 UI 展示
@@ -85,9 +87,37 @@ Status: draft（等待 Portal 生态研究结果合入后转 ready-for-dev）
 - `voice_capsule/lib/ui/init_wizard/manual_install_guide.dart`（UPDATE）：快捷键引导文案
 - `voice_capsule/test/services/portal_hotkey_service_test.dart`（NEW）
 
-### 平台支持矩阵与技术规范（待 Portal 研究结果合入）
+### 平台支持矩阵与技术规范（2026-07-09 Web 核实）
 
-<!-- PORTAL-RESEARCH-PLACEHOLDER：接口版本/方法签名/DE 支持矩阵/restore token 行为/已知坑/参考实现 -->
+**D-Bus 接口**：`org.freedesktop.portal.GlobalShortcuts`，当前 version 2
+（规范：https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html）
+
+- `CreateSession(options a{sv}) → handle o`（options: `handle_token`、`session_handle_token`；返回 Request 路径，session_handle 从 Response 信号 results 取）
+- `BindShortcuts(session_handle o, shortcuts a(sa{sv}), parent_window s, options a{sv})`（shortcut vardict: `description s` 必填、`preferred_trigger s` 可选，格式遵循 freedesktop Shortcuts 规范如 `"CTRL+SHIFT+A"`）
+- `ListShortcuts(session_handle o, options a{sv})`
+- 信号：`Activated` / `Deactivated` / `ShortcutsChanged`；property：`version u`
+
+**桌面环境支持矩阵**：
+
+| 后端 | 支持 | 说明 |
+|------|------|------|
+| KDE Plasma (xdg-desktop-portal-kde) | ✅ | Plasma 5.27 起，参考实现基准，系统快捷键设置中可见并记忆 |
+| GNOME (xdg-desktop-portal-gnome) | ✅ GNOME 48 起 | 首次绑定弹系统确认对话框（MR gnome/xdg-desktop-portal-gnome!208） |
+| Hyprland | ✅ | 已实现 |
+| wlroots/Sway (xdg-desktop-portal-wlr) | ❌ | 长期未实现（issue #240） |
+| **Ubuntu 22.04 (GNOME 42) / 24.04 (GNOME 46)** | ❌ | **两个 LTS 默认会话均不支持**——本项目 NFR3 基线是 Ubuntu 22.04+，故 Portal 只能作为渐进增强，回退路径是硬需求 |
+
+**已知坑（实现时逐条对照）**：
+1. "Invalid session"：CreateSession 返回 Request handle ≠ session_handle（KDE Discuss #12370）
+2. 探测用 version property，接口缺失返回明确 D-Bus 错误，不挂起
+3. session 生命周期 = D-Bus 连接生命周期，连接必须保活
+4. 每 session 仅一次 BindShortcuts；改绑定需重开 session（本应用固定 1 个快捷键，无影响）
+5. 无 restore token；KDE 按 app_id 记忆（KDE 6.0.3 曾有跨会话不持久 bug #484682）；GNOME 可能每次启动再确认——不算缺陷，属 backend 行为
+6. 避免频繁重绑（Chrome 134 接入初期因弹窗骚扰被投诉，chromium #404298968）
+
+**参考实现**：KDE `xdg-portal-test-kde`（最权威用法参考）、Chromium 134+ 的 portal 集成、obs-wayland-hotkeys 插件源码、规范原始 PR flatpak/xdg-desktop-portal#711。
+
+**Dart 生态结论**：`xdg_desktop_portal` 0.1.14（canonical）未实现 GlobalShortcuts（已核对源码 portal 清单），用其底层依赖 `package:dbus` 直接调用；该包的 Session/Request 封装模式可作代码参考。
 
 ### 测试标准
 
