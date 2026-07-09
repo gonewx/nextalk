@@ -422,6 +422,22 @@ class AudioInferencePipeline {
       }
     }
 
+    // 排空按停瞬间仍滞留在服务端的尾音 (~300ms)：包含最后几个字的收尾
+    // 音频，也为流式模型提供敲定最后 token 所需的尾部上下文。
+    // VAD 触发的停止已含足够静音，无需排空。
+    if (!_vadTriggeredStop) {
+      for (var i = 0; i < 3; i++) {
+        final drained = await _audioCapture.readAsync(
+            _audioCapture.buffer, AudioConfig.framesPerBuffer);
+        if (drained <= 0) break;
+        _asrEngine.acceptWaveform(
+            AudioConfig.sampleRate, _audioCapture.buffer, drained);
+        while (_asrEngine.isReady()) {
+          _asrEngine.decode();
+        }
+      }
+    }
+
     // 获取最终识别结果
     _asrEngine.inputFinished();
     while (_asrEngine.isReady()) {
@@ -580,8 +596,10 @@ class AudioInferencePipeline {
     final chunkStartTime = DateTime.now();
 
     // 零拷贝: 直接使用 AudioCapture 的内部缓冲区
+    // 异步读取: 阻塞等待碎片发生在后台 isolate，UI 可实时渲染部分结果
     final buffer = _audioCapture.buffer;
-    final samplesRead = _audioCapture.read(buffer, AudioConfig.framesPerBuffer);
+    final samplesRead =
+        await _audioCapture.readAsync(buffer, AudioConfig.framesPerBuffer);
 
     // 错误检查: read() 返回 -1 表示错误
     if (samplesRead == -1) {

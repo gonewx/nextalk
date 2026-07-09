@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 import '../ffi/libpulse_simple_ffi.dart';
 
@@ -11,6 +12,33 @@ class PulseAudioConfig {
   /// 录音流 fragsize (字节)：与单次 read() 的量同源 (100ms Float32)，
   /// 保证服务端投递粒度与采集循环节拍对齐
   static final int fragsizeBytes = framesPerBuffer * sizeOf<Float>();
+}
+
+/// 在后台 isolate 中执行阻塞的 pa_simple_read
+///
+/// pa_simple_read 会阻塞到请求字节数凑齐 (~fragsize 周期)，放在主 isolate
+/// 会饿死事件循环（部分识别结果无法渲染、动画冻结）。跨 isolate 只传地址
+/// 与长度 (int)，在目标 isolate 内重建绑定；音频写入进程共享内存，
+/// await 返回后主 isolate 直接可见。
+///
+/// 返回 0 表示成功，非 0 为 pa 错误码（-1 表示失败但未取到错误码）。
+int _blockingRead((int streamAddr, int bufferAddr, int bytes) args) {
+  final bindings = LibPulseSimpleBindings();
+  final errPtr = calloc<Int32>();
+  try {
+    final result = bindings.simpleRead(
+      Pointer<PaSimple>.fromAddress(args.$1),
+      Pointer<Void>.fromAddress(args.$2),
+      args.$3,
+      errPtr,
+    );
+    if (result < 0) {
+      return errPtr.value != 0 ? errPtr.value : -1;
+    }
+    return 0;
+  } finally {
+    calloc.free(errPtr);
+  }
 }
 
 /// PulseAudio 录音错误类型
@@ -39,6 +67,9 @@ class PulseAudioCapture {
   bool _isInitialized = false;
   bool _isCapturing = false;
   String? _lastError;
+
+  /// 在飞的后台读取（dispose 时须等它完成才能释放 stream）
+  Future<int>? _pendingRead;
 
   /// 检查 libpulse-simple 是否可用
   static bool isAvailable() {
@@ -202,6 +233,31 @@ class PulseAudioCapture {
     return samples;
   }
 
+  /// 异步读取音频数据（阻塞发生在后台 isolate，主事件循环保持自由）
+  ///
+  /// 返回实际读取的样本数，失败返回 -1
+  Future<int> readAsync(Pointer<Float> buffer, int samples) async {
+    if (!_isInitialized || !_isCapturing || _stream == null) {
+      return -1;
+    }
+
+    final args = (_stream!.address, buffer.address, samples * sizeOf<Float>());
+    final pending = Isolate.run(() => _blockingRead(args));
+    _pendingRead = pending;
+    final errorCode = await pending;
+    if (identical(_pendingRead, pending)) {
+      _pendingRead = null;
+    }
+
+    if (errorCode != 0) {
+      _lastError = 'pa_simple_read 失败 (code=$errorCode)';
+      // ignore: avoid_print
+      print('[PulseAudioCapture] ❌ $_lastError');
+      return -1;
+    }
+    return samples;
+  }
+
   /// 获取内部缓冲区（零拷贝接口）
   Pointer<Float>? get buffer => _buffer;
 
@@ -219,7 +275,13 @@ class PulseAudioCapture {
     // ignore: avoid_print
     print('[PulseAudioCapture] 🗑️ 释放资源');
     stop();
-    _cleanup();
+    // 后台读取在飞时不能立刻 free stream，等它返回后再清理
+    final pending = _pendingRead;
+    if (pending != null) {
+      pending.whenComplete(_cleanup);
+    } else {
+      _cleanup();
+    }
   }
 
   void _cleanup() {

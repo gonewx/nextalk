@@ -71,6 +71,11 @@ context: []
 
 ## Spec Change Log
 
+- 2026-07-09 用户真机验证反馈（大幅改善但句尾丢字、实时显示消失）触发追加修复：
+  ① pa_simple_read 全程阻塞主 isolate 饿死事件循环（旧 PortAudio 的等待在定时器休眠、UI 自由）——经用户批准改为 `Isolate.run` 后台读取（解除上轮 Ask First 门禁）；
+  ② `pipeline.stop()` 不排空服务端滞留尾音（~300ms 含最后几个字）——inputFinished 前追加 3 碎片排空，VAD 停止路径除外。
+  KEEP：fragsize=100ms 缓冲属性与共用配置构造保持不变。
+
 ## Design Notes
 
 - PulseAudio 录音流按 fragsize 投递；不设置时默认值大，`pa_simple_read` 阻塞到碎片凑齐——即"说了几秒才蹦出结果"的机制。6400 bytes 恰为一次 `read()` 的量，与循环节拍对齐，阻塞恢复到旧 PortAudio 路径同量级。`pa_simple_new` 带 attr 时内部自动 `PA_STREAM_ADJUST_LATENCY`。

@@ -595,6 +595,28 @@ class AudioCapture {
   /// 返回值:
   /// - > 0: 实际读取的样本数
   /// - -1: 读取失败 (检查 [lastReadError] 获取详细错误类型)
+  /// 异步读取音频数据
+  ///
+  /// PulseAudio 路径把阻塞的 pa_simple_read 移到后台 isolate，主事件循环
+  /// 保持自由（部分识别结果可实时渲染）；PortAudio 路径的读取由回调线程
+  /// 填充的环形缓冲支撑、近乎即时，直接走同步 read。
+  Future<int> readAsync(Pointer<Float> buffer, int samples) async {
+    if (_usePulse && _pulseCapture != null) {
+      if (!_isCapturing) {
+        _lastReadError = AudioCaptureError.readFailed;
+        return -1;
+      }
+      final result = await _pulseCapture!.readAsync(buffer, samples);
+      if (result < 0) {
+        _lastReadError = AudioCaptureError.readFailed;
+        return -1;
+      }
+      _lastReadError = AudioCaptureError.none;
+      return result;
+    }
+    return read(buffer, samples);
+  }
+
   int read(Pointer<Float> buffer, int samples) {
     // 如果使用 PulseAudio
     if (_usePulse && _pulseCapture != null) {
