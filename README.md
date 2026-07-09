@@ -39,14 +39,16 @@ Fcitx5 will automatically restart after installation to load the plugin.
 
 ### Configure Hotkey
 
-The app is triggered via system global hotkey, manual configuration required:
+**Works out of the box (supported environments):** On KDE Plasma 5.27+, GNOME 48+, and Hyprland, the app auto-registers a global shortcut (default `Alt+Space`) via XDG Desktop Portal on first launch. The system shows a one-time authorization dialog — confirm it and the shortcut takes effect immediately, no manual setup required.
+
+**Fallback (manual configuration):** On environments without Portal GlobalShortcuts support (GNOME <48, wlroots/Sway, and the default sessions of Ubuntu 22.04/24.04), the app silently falls back to the system shortcut. Configure it manually and bind the `nextalk-toggle` command:
 
 **GNOME:**
 
 1. Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts
 2. Click "Add Shortcut"
 3. Name: `Nextalk Voice Input`
-4. Command: `nextalk --toggle`
+4. Command: `nextalk-toggle`
 5. Shortcut: Press `Alt+Space` (recommended)
 
 **KDE Plasma:**
@@ -54,7 +56,9 @@ The app is triggered via system global hotkey, manual configuration required:
 1. System Settings → Shortcuts → Custom Shortcuts
 2. Edit → New → Global Shortcut → Command/URL
 3. Trigger: Set to `Alt+Space`
-4. Action: `nextalk --toggle`
+4. Action: `nextalk-toggle`
+
+> The current hotkey mode (Portal / system) is shown as a read-only item in the tray menu.
 
 ### Usage
 
@@ -148,7 +152,7 @@ audio:
 - Use `nextalk audio` command or system tray menu to select devices interactively
 
 **Hotkey Configuration:**
-Hotkeys are configured through your desktop environment's native settings, not through this config file. See [Configure Hotkey](#configure-hotkey) section for setup instructions.
+On supported environments the hotkey is auto-registered via XDG Desktop Portal (no config needed); otherwise it is configured through your desktop environment's native settings, not through this config file. See [Configure Hotkey](#configure-hotkey) section for details.
 
 ## Build from Source
 
@@ -284,15 +288,15 @@ If app crashes after installing AppIndicator extension, disable tray functionali
 NEXTALK_NO_TRAY=1 nextalk
 ```
 
-When configuring system shortcut:
+When configuring system shortcut (fallback mode):
 
 ```bash
-env NEXTALK_NO_TRAY=1 /opt/nextalk/nextalk --toggle
+nextalk-toggle
 ```
 
 ### Hotkey Not Responding
 
-1. Confirm hotkey is configured in system settings (command: `nextalk --toggle`)
+1. Confirm hotkey is configured in system settings (command: `nextalk-toggle`)
 2. Confirm Nextalk app is running (check system tray)
 3. Test command line: `nextalk --toggle`
 

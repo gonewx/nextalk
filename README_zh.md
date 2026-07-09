@@ -39,14 +39,16 @@ sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
 
 ### 配置快捷键
 
-应用通过系统全局快捷键触发，需手动配置：
+**开箱即用（支持的桌面环境）：** 在 KDE Plasma 5.27+、GNOME 48+、Hyprland 上，应用首次启动会经 XDG Desktop Portal 自动注册全局快捷键（默认 `Alt+Space`）。系统会弹出一次授权对话框，确认后立即生效，**无需进入系统设置手动配置**。
+
+**回退（手动配置）：** 在不支持 Portal GlobalShortcuts 的环境（GNOME <48、wlroots/Sway、Ubuntu 22.04/24.04 默认会话）下，应用会静默降级到系统快捷键。此时需手动配置并绑定 `nextalk-toggle` 命令：
 
 **GNOME:**
 
 1. 设置 → 键盘 → 查看和自定义快捷键 → 自定义快捷键
 2. 点击"添加快捷键"
 3. 名称: `Nextalk 语音输入`
-4. 命令: `nextalk --toggle`
+4. 命令: `nextalk-toggle`
 5. 快捷键: 按下 `Alt+Space` (推荐)
 
 **KDE Plasma:**
@@ -54,7 +56,9 @@ sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
 1. 系统设置 → 快捷键 → 自定义快捷键
 2. 编辑 → 新建 → 全局快捷键 → 命令/URL
 3. 触发器: 设置为 `Alt+Space`
-4. 动作: `nextalk --toggle`
+4. 动作: `nextalk-toggle`
+
+> 当前快捷键模式（Portal / 系统）会在托盘菜单中以只读项显示。
 
 ### 使用
 
@@ -148,7 +152,7 @@ audio:
 - 使用 `nextalk audio` 命令或系统托盘菜单交互式选择设备
 
 **快捷键配置:**
-快捷键通过桌面环境的原生设置配置，不在此配置文件中。请参阅 [配置快捷键](#配置快捷键) 章节了解设置方法。
+支持的桌面环境下经 XDG Desktop Portal 自动注册（无需配置）；否则通过桌面环境的原生设置配置，不在此配置文件中。请参阅 [配置快捷键](#配置快捷键) 章节了解设置方法。
 
 ## 从源码构建
 
@@ -284,15 +288,15 @@ nextalk --toggle  # 切换录音状态
 NEXTALK_NO_TRAY=1 nextalk
 ```
 
-配置系统快捷键时使用：
+配置系统快捷键时使用（回退模式）：
 
 ```bash
-env NEXTALK_NO_TRAY=1 /opt/nextalk/nextalk --toggle
+nextalk-toggle
 ```
 
 ### 快捷键不响应
 
-1. 确认已在系统设置中配置快捷键 (命令: `nextalk --toggle`)
+1. 确认已在系统设置中配置快捷键 (命令: `nextalk-toggle`)
 2. 确认 Nextalk 应用正在运行 (检查系统托盘)
 3. 测试命令行: `nextalk --toggle`
 

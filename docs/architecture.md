@@ -7,6 +7,7 @@
 | 2025-12-21 | 1.1 | Complete architecture design (Flutter/C++ hybrid, dynamic model download) | Architect (Winston) |
 | 2025-12-28 | 2.0 | Minimal architecture refactor (SCP-002: Remove hotkey listener, use system native shortcuts) | Architect (Winston) |
 | 2026-07-09 | 2.1 | Brownfield calibration to v0.2.8: documented dual-engine ASR architecture (SenseVoice default), silero VAD, layered audio capture (libpulse-simple primary / PortAudio fallback), concurrency model conclusion, actual IPC constraints, model verification status, build/versioning conventions | Architect (Winston) |
+| 2026-07-09 | 2.2 | Added 4th-generation hotkey scheme (Story 3-10): XDG Desktop Portal `GlobalShortcuts` in-app auto-registration + silent fallback to system shortcuts (progressive enhancement, additive not replacing) | Architect (Winston) |
 
 ## 1. Introduction
 
@@ -46,8 +47,9 @@ graph TD
         IPC_Server -- "commitString" --> TargetApp[Most Recent Input Context]
     end
 
-    subgraph "System Shortcuts"
-        SystemShortcut[GNOME/KDE Shortcut Settings] -- "nextalk --toggle" --> SingleInstance
+    subgraph "Global Shortcuts"
+        Portal[XDG Portal GlobalShortcuts] -- "Activated signal" --> Logic
+        SystemShortcut[GNOME/KDE Shortcut Settings] -- "nextalk-toggle" --> SingleInstance
     end
 
     subgraph "Fallback Path"
@@ -56,7 +58,11 @@ graph TD
     end
 ```
 
-> **SCP-002 Change Note**: Hotkey listening has been removed from the Fcitx5 plugin, replaced with system native shortcut configuration (e.g., GNOME Settings → Keyboard → Custom Shortcuts) calling `nextalk --toggle`. The app itself performs no global key listening.
+> **SCP-002 Change Note**: Hotkey listening has been removed from the Fcitx5 plugin. The app performs no client-side global key grabbing (forbidden by Wayland architecture); triggering now goes through two coexisting paths:
+> 1. **4th generation (Story 3-10, progressive enhancement)**: `PortalHotkeyService` auto-registers a global shortcut in-app (default Alt+Space) via XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts`; the desktop environment shows a system authorization dialog to complete binding, and the Activated signal converges to `HotkeyController.instance.toggle()`.
+> 2. **3rd generation (fallback, hard requirement)**: system native shortcut settings bound to the `nextalk-toggle` trigger command. When the Portal backend is unsupported (GNOME <48, wlroots, Ubuntu LTS default sessions), it silently degrades to this path.
+>
+> The two are **additive, not mutually exclusive**: Portal is progressive enhancement, the system-shortcut fallback is always retained (the NFR3 baseline Ubuntu 22.04+ does not support Portal GlobalShortcuts).
 
 ### 2.2 Directory Structure (Monorepo)
 
@@ -107,7 +113,8 @@ nextalk/
         │   ├── model_manager.dart           # Download & management of three model classes
         │   ├── settings_service.dart        # Config management (SharedPreferences + YAML)
         │   ├── hotkey_controller.dart       # Business state machine (idle/recording/submitting)
-        │   ├── hotkey_service.dart          # Hotkey config loading (hint text only)
+        │   ├── hotkey_service.dart          # Hotkey config loading + hotkeyMode state (portal/system)
+        │   ├── portal_hotkey_service.dart   # 4th-gen Portal GlobalShortcuts auto-registration (Story 3-10)
         │   ├── single_instance.dart         # Single instance + command forwarding socket
         │   ├── fcitx_client.dart            # Text submission client + clipboard fallback
         │   ├── tray_service.dart            # System tray
@@ -171,10 +178,23 @@ The plugin uses a single Unix Domain Socket for communication:
 
 #### 4.1.2 Hotkey Scheme
 
-**SCP-002 Change**: Hotkey listening removed from the Fcitx5 plugin, replaced with the system native shortcut scheme:
+**Evolution**: Hotkey listening was removed from the Fcitx5 plugin (SCP-002). Wayland architecture forbids client-side global key grabbing, so the app performs no key listening itself; triggering goes through two coexisting paths that both converge on `HotkeyController.instance.toggle()`:
+
+**4th generation — Portal auto-registration (Story 3-10, progressive enhancement)**:
+
+* **Service**: `PortalHotkeyService` (`lib/services/portal_hotkey_service.dart`), calling `org.freedesktop.portal.GlobalShortcuts` directly via `package:dbus` (`xdg_desktop_portal` 0.1.14 does not implement this portal).
+* **Flow**: probe the `version` property → `CreateSession` (the real session_handle is extracted from the `Request::Response` signal, not the method return) → `BindShortcuts` registering `toggle-voice-input` (default `ALT+SPACE`, Meta/Super disabled) → listen for the `Activated` signal.
+* **Wiring**: `main.dart` launches it as a **non-blocking background Future** (`unawaited(_setupPortalHotkey())`); a hung portal backend never slows the startup main path.
+* **Timeout layering**: probing uses a short timeout (2s, to quickly detect a missing interface); `CreateSession`/`BindShortcuts` use a long timeout (60s, to cover the time the user spends on the system authorization dialog).
+* **Lifecycle**: no restore token (not provided by the spec); each launch re-registers with a stable shortcut id + app_id and the backend remembers the user's binding; the D-Bus connection must stay alive throughout (connection drop = session destroyed = shortcut lost); a single run never re-binds repeatedly (avoids GNOME dialog spam), but a user-initiated cancel in the authorization dialog (`Response` code=1) does not lock and allows a later retry. `dispose` is wired into `TrayService.onBeforeExit` to close the session and connection.
+
+**3rd generation — system shortcut (fallback, hard requirement)**:
 
 * **Configuration**: GNOME Settings → Keyboard → Custom Shortcuts (or equivalent in KDE/other DEs)
-* **Command**: `nextalk --toggle` (also `--show`/`--hide`)
+* **Command**: `nextalk-toggle` (lightweight trigger, installed as `/usr/bin/nextalk-toggle` by deb/rpm; equivalent to `nextalk --toggle` underneath, with `--show`/`--hide` also available)
+* **Trigger condition**: when the Portal backend is unsupported (interface missing, version too low, CreateSession/BindShortcuts failure or timeout), `PortalHotkeyService` silently degrades to this path, writes the reason to `DiagnosticLogger`, and the tray shows the current hotkey mode (Portal / system) as a read-only item.
+
+**Support matrix**: KDE Plasma 5.27+, GNOME 48+, and Hyprland support Portal auto-registration; wlroots/Sway and the default sessions of Ubuntu 22.04 (GNOME 42)/24.04 (GNOME 46) do not, and fall back to the system shortcut.
 
 **Single Instance Management**:
 * App checks for an existing instance on startup
@@ -332,7 +352,7 @@ model:
     language: auto
     custom_url: ""
 
-# Hotkey: configured via system settings (command: nextalk --toggle);
+# Hotkey: Portal auto-registration (supported environments) or configured via system settings (command: nextalk-toggle);
 # this file contains no hotkey field
 
 audio:

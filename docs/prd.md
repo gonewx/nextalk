@@ -20,6 +20,7 @@ Linux users lack beautiful and practical voice input tools. This project **Nexta
 | 2025-12-21 | 1.0 | Official release: Lock Flutter+Sherpa solution, confirm C++ plugin ready | PM (John) |
 | 2025-12-28 | 1.1 | SCP-002: Hotkey scheme changed to system native shortcuts, added clipboard fallback | PM (John) |
 | 2026-07-09 | 1.2 | Aligned with v0.2.8 codebase: dual-engine ASR (SenseVoice default), silero VAD, libpulse-simple audio stack, new model management / error handling / i18n / device selection / packaging requirements (FR8–FR12), NFR1/NFR2 corrections, Epic list synced to epics.md | PM (John) |
+| 2026-07-09 | 1.3 | FR6 Global Hotkey adds the 4th-generation Portal scheme (Story 3-10): XDG Desktop Portal `GlobalShortcuts` in-app auto-registration + silent fallback to system shortcuts (progressive enhancement, fallback command unified to `nextalk-toggle`) | PM (John) |
 
 ## 2. Requirements
 
@@ -47,11 +48,14 @@ Linux users lack beautiful and practical voice input tools. This project **Nexta
 * **FR5 [System]: Tray Management** *(v1.2 expanded)*
     * Window show/hide/exit.
     * Engine and model variant switching, audio input device selection, UI language switching, open config directory.
-* **FR6 [System]: Global Hotkey**
+* **FR6 [System]: Global Hotkey** *(v1.3 update, Story 3-10)*
     * **Logic**: Press to wake/start recording; press again to stop/submit/hide.
-    * **Implementation**: System native shortcuts (e.g., GNOME Settings → Keyboard → Custom Shortcuts) bound to `nextalk --toggle`; the app also provides `--show`/`--hide` commands.
+    * **Implementation (progressive enhancement, two additive coexisting paths)**:
+        * **4th generation — Portal auto-registration (preferred)**: On supported desktops (KDE 5.27+, GNOME 48+, Hyprland), the app auto-registers a global shortcut (default Alt+Space) on first launch via XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts`; the system shows a one-time authorization dialog, and it takes effect immediately once confirmed — **works out of the box, no manual configuration in system settings needed**.
+        * **3rd generation — system shortcut (fallback, hard requirement)**: When Portal is unsupported (GNOME <48, wlroots, Ubuntu 22.04/24.04 default sessions), it silently degrades; the user binds the `nextalk-toggle` command in system settings; the app also provides `--show`/`--hide` commands.
     * Single-instance mechanism: a new process forwards the command to the running instance via an internal Unix Socket.
-    * > **SCP-002 Change**: Original Fcitx5 plugin-side hotkey listening removed; the app itself performs no global key listening (hotkey hint text in the UI comes from built-in app defaults).
+    * Degradation is transparent to the user: no error dialog, no startup blocking; the reason is written to the diagnostic log, and the tray shows the current hotkey mode (Portal / system) as a read-only item.
+    * > **Change history**: The original Fcitx5 plugin-side hotkey listening (2nd generation) was removed with SCP-002; the app performs no client-side global key grabbing (forbidden by Wayland architecture). The Portal scheme is Wayland's official evolution direction, and the system-shortcut fallback is always retained because the NFR3 baseline (Ubuntu 22.04+) does not support Portal.
 * **FR7 [System]: Clipboard Fallback** *(SCP-002 New)*
     * When the Fcitx5 plugin is unavailable (socket missing or submission fails), recognized text is automatically copied to the system clipboard.
     * UI shows prompt: "Copied to clipboard, please paste"; window auto-hides after 2 seconds.

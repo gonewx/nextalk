@@ -7,6 +7,7 @@
 | 2025-12-21 | 1.1  | 完整架构设计 (Flutter/C++混合架构，模型动态下载) | 架构师 (Winston) |
 | 2025-12-28 | 2.0  | 极简架构重构 (SCP-002: 移除快捷键监听，使用系统原生快捷键) | 架构师 (Winston) |
 | 2026-07-09 | 2.1  | 棕地校准至 v0.2.8：补记双引擎 ASR 架构（SenseVoice 默认）、silero VAD、音频采集分层（libpulse-simple 主/PortAudio 回退）、并发模型结论、IPC 实际约束、模型校验现状、构建/版本管理约定 | 架构师 (Winston) |
+| 2026-07-09 | 2.2  | 新增第四代快捷键方案（Story 3-10）：XDG Desktop Portal `GlobalShortcuts` 应用内自动注册 + 系统快捷键静默降级（渐进增强，叠加不取代） | 架构师 (Winston) |
 
 ## 1. 简介 (Introduction)
 
@@ -46,8 +47,9 @@ graph TD
         IPC_Server -- "commitString" --> TargetApp[最近输入上下文]
     end
 
-    subgraph "系统快捷键"
-        SystemShortcut[GNOME/KDE 快捷键设置] -- "nextalk --toggle" --> SingleInstance
+    subgraph "全局快捷键"
+        Portal[XDG Portal GlobalShortcuts] -- "Activated 信号" --> Logic
+        SystemShortcut[GNOME/KDE 快捷键设置] -- "nextalk-toggle" --> SingleInstance
     end
 
     subgraph "降级路径"
@@ -56,7 +58,11 @@ graph TD
     end
 ```
 
-> **SCP-002 变更说明**: 快捷键监听已从 Fcitx5 插件中移除，改为系统原生快捷键配置（如 GNOME 设置 → 键盘 → 自定义快捷键）调用 `nextalk --toggle` 命令。应用自身不做任何全局按键监听。
+> **SCP-002 变更说明**: 快捷键监听已从 Fcitx5 插件中移除。应用自身不做任何客户端全局按键抓取（Wayland 架构禁止），改由两条并存路径触发：
+> 1. **第四代（Story 3-10，渐进增强）**：`PortalHotkeyService` 通过 XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts` 在应用内自动注册全局快捷键（默认 Alt+Space），由桌面环境弹系统授权对话框完成绑定，Activated 信号收敛到 `HotkeyController.instance.toggle()`。
+> 2. **第三代（回退，硬需求）**：系统原生快捷键设置绑定 `nextalk-toggle` 触发器命令。Portal backend 不支持时（GNOME <48、wlroots、Ubuntu LTS 默认会话）静默降级到此路径。
+>
+> 两者**叠加不取代**：Portal 是渐进增强，系统快捷键回退始终保留（NFR3 基线 Ubuntu 22.04+ 不支持 Portal GlobalShortcuts）。
 
 ### 2.2 目录结构 (Monorepo)
 
@@ -107,7 +113,8 @@ nextalk/
         │   ├── model_manager.dart           # 三类模型下载与管理
         │   ├── settings_service.dart        # 配置管理 (SharedPreferences + YAML)
         │   ├── hotkey_controller.dart       # 业务状态机 (idle/recording/submitting)
-        │   ├── hotkey_service.dart          # 快捷键配置加载 (仅提示文案)
+        │   ├── hotkey_service.dart          # 快捷键配置加载 + hotkeyMode 状态 (portal/system)
+        │   ├── portal_hotkey_service.dart   # 第四代 Portal GlobalShortcuts 自动注册 (Story 3-10)
         │   ├── single_instance.dart         # 单实例 + 命令转发 socket
         │   ├── fcitx_client.dart            # 文本上屏客户端 + 剪贴板回退
         │   ├── tray_service.dart            # 系统托盘
@@ -171,10 +178,23 @@ nextalk/
 
 #### 4.1.2 快捷键方案
 
-**SCP-002 变更**: 快捷键监听已从 Fcitx5 插件移除，改为系统原生快捷键方案：
+**演进**: 快捷键监听已从 Fcitx5 插件移除（SCP-002）。Wayland 架构禁止客户端全局抓键，故应用自身不做任何按键监听，改由两条并存路径触发 `HotkeyController.instance.toggle()`：
+
+**第四代 — Portal 自动注册（Story 3-10，渐进增强）**:
+
+* **服务**: `PortalHotkeyService`（`lib/services/portal_hotkey_service.dart`），经 `package:dbus` 直调 `org.freedesktop.portal.GlobalShortcuts`（`xdg_desktop_portal` 0.1.14 未实现该 portal）。
+* **流程**: 探测 `version` 属性 → `CreateSession`（真正 session_handle 从 `Request::Response` 信号提取，非方法返回值）→ `BindShortcuts` 注册 `toggle-voice-input`（默认 `ALT+SPACE`，禁用 Meta/Super）→ 监听 `Activated` 信号。
+* **装配**: `main.dart` 用**非阻塞后台 Future**（`unawaited(_setupPortalHotkey())`）发起，portal backend 挂起不拖慢启动主路径。
+* **超时分层**: 探测用短超时（2s，快速判定接口缺失），`CreateSession`/`BindShortcuts` 用长超时（60s，覆盖用户操作系统授权对话框的时间）。
+* **生命周期**: 无 restore token（规范不提供），每次启动用稳定 shortcut id + app_id 重新注册，backend 负责记忆用户绑定；D-Bus 连接必须全程保活（连接断开 = session 销毁 = 快捷键失效）；单次运行禁重复重绑（避免 GNOME 反复弹窗），但用户在授权框主动取消（`Response` code=1）不锁定，允许后续重试。`dispose` 接入 `TrayService.onBeforeExit` 关闭 session 与连接。
+
+**第三代 — 系统快捷键（回退，硬需求）**:
 
 * **配置方式**: GNOME 设置 → 键盘 → 自定义快捷键（或 KDE 等桌面环境的等价设置）
-* **命令**: `nextalk --toggle`（另有 `--show`/`--hide`）
+* **命令**: `nextalk-toggle`（轻量触发器，随 deb/rpm 安装为 `/usr/bin/nextalk-toggle`；底层等价 `nextalk --toggle`，另有 `--show`/`--hide`）
+* **触发条件**: Portal backend 不支持（接口缺失、版本不足、CreateSession/BindShortcuts 失败或超时）时，`PortalHotkeyService` 静默降级到此路径，降级原因写入 `DiagnosticLogger`，托盘只读项展示当前快捷键模式（Portal / 系统）。
+
+**支持矩阵**: KDE Plasma 5.27+、GNOME 48+、Hyprland 支持 Portal 自动注册；wlroots/Sway、Ubuntu 22.04 (GNOME 42)/24.04 (GNOME 46) 默认会话不支持，走系统快捷键回退。
 
 **单实例管理**:
 * 应用启动时检测已有实例
@@ -331,7 +351,7 @@ model:
     language: auto
     custom_url: ""
 
-# 快捷键：经系统设置配置 (命令: nextalk --toggle)，本文件不含快捷键字段
+# 快捷键：Portal 自动注册（支持环境）或经系统设置配置 (命令: nextalk-toggle)，本文件不含快捷键字段
 
 audio:
   # 输入设备: "default" 或系统设置中显示的设备名
