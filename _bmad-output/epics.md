@@ -4,8 +4,9 @@ inputDocuments:
   - docs/prd.md
   - docs/architecture.md
   - docs/front-end-spec.md
-lastUpdated: 2025-12-28
+lastUpdated: 2026-07-09
 scp002Applied: true
+prdVersionSynced: "1.2"
 ---
 
 # Nextalk - Epic Breakdown
@@ -23,30 +24,52 @@ FR1 [UI/交互]: 悬浮胶囊窗口
 - 激活时显示无边框、真透明胶囊窗口
 - 实时反馈：用户说话时，文字逐字显示在预览区
 
-FR2 [核心]: 实时语音识别 (ASR)
-- 模型：sherpa-onnx-streaming-zipformer-bilingual-zh-en (流式双语)
-- 采集：通过 Dart FFI + PortAudio 采集 16k 单声道音频
+FR2 [核心]: 语音识别 (ASR) — 双引擎架构 (PRD v1.2)
+- SenseVoice 离线引擎（默认）：VAD 分段后整段识别，高精度、多语言、支持 ITN
+- Zipformer 流式引擎（可选）：sherpa-onnx-streaming-zipformer-bilingual-zh-en，int8/standard 双版本
+- 引擎与模型版本可经托盘热切换
+- 采集：libpulse-simple 主路径 + PortAudio 回退，16k 单声道
 
-FR3 [核心]: 智能端点检测 (VAD)
-- 使用 Sherpa 内置 VAD (默认停顿 ~1.5s 触发)
+FR3 [核心]: 智能端点检测 (PRD v1.2)
+- SenseVoice 路径：独立 silero VAD 模型分段
+- Zipformer 路径：sherpa-onnx 内置端点规则 (rule1/2/3)
 - 检测到静音后，自动提交预览区文本
 
 FR4 [集成]: 文本上屏
 - 客户端通过 Unix Domain Socket 连接 $XDG_RUNTIME_DIR/nextalk-fcitx5.sock
 - 协议：[4字节长度 (LE)] + [UTF-8 文本]
+- 提交到 Fcitx5 最近输入上下文；提交失败保留文本可复制/重试
 
 FR5 [系统]: 托盘管理
-- 支持显示/隐藏/退出
+- 显示/隐藏/退出、引擎与模型切换、音频设备选择、语言切换、打开配置目录
 
 FR6 [系统]: 全局快捷键
-- 默认键位：Right Alt
+- 系统原生快捷键绑定 `nextalk --toggle`（SCP-002；应用自身不做全局按键监听）
 - 逻辑：按下唤醒/开始录音；再次按下停止/上屏/隐藏
-- 支持配置文件自定义
+
+FR7 [系统]: 剪贴板 Fallback (SCP-002)
+- Fcitx5 不可用时自动复制识别文本到剪贴板并提示
+
+FR8 [核心]: 模型管理 (PRD v1.2)
+- 首次运行下载，XDG 路径，三类模型 (Zipformer/SenseVoice/silero VAD)
+- GitHub Releases 下载源，custom_url 自定义，进度/取消，完整性校验
+
+FR9 [系统]: 初始化向导与错误处理 (PRD v1.2, Story 3.7)
+- 首次运行向导；麦克风/模型/下载/Fcitx5/socket 故障可视化处理
+
+FR10 [系统]: 国际化 (PRD v1.2, Story 3.8)
+- 中英双语 UI，托盘切换即时生效
+
+FR11 [系统]: 音频输入设备选择 (PRD v1.2, Story 3.9)
+- 托盘菜单选择 + `nextalk audio` CLI 子命令
+
+FR12 [发布]: 打包与分发 (PRD v1.2, Epic 4)
+- DEB/RPM、安装/卸载脚本、桌面集成、Docker 跨发行版构建
 
 ### NonFunctional Requirements
 
-NFR1: 端到端延迟 < 20ms
-NFR2: 纯离线推理，无网络请求（运行时）
+NFR1: 上屏链路延迟 < 20ms；流式识别 RTF < 1（PRD v1.2 修正）
+NFR2: 识别推理全程离线；仅模型首次下载需一次性联网（PRD v1.2 修正）
 NFR3: 兼容 Ubuntu 22.04+ (X11/Wayland 原生支持，快捷键和文本提交均支持 Wayland)
 NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 
@@ -55,11 +78,11 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 **架构需求:**
 - [结构] Monorepo 结构：/addons (C++ 插件) + /voice_capsule (Flutter 客户端)
 - [模型] 首次运行下载策略 (Download-on-Demand)，存储在 ~/.local/share/nextalk/models
-- [模型] 下载后必须校验 SHA256，防止文件损坏
-- [性能] 零拷贝 FFI 音频流水线设计
+- [模型] 有官方校验值的模型（Zipformer 压缩包）下载后必须校验 SHA256；无官方校验值的模型（SenseVoice/silero VAD）做存在性/结构检查
+- [性能] 零拷贝 FFI 音频流水线设计（流式路径）
 - [安全] Socket 文件权限必须设为 0600
 - [构建] RPATH 配置确保运行时库查找 ($ORIGIN/lib)
-- [构建] libportaudio.so 系统动态链接，libsherpa-onnx-c-api.so 打包
+- [构建] libsherpa-onnx-c-api.so / libonnxruntime.so / libportaudio.so.2 打包捆绑；libpulse 系统动态加载
 
 **UX 需求:**
 - [视觉] Dark Mode Only 策略
@@ -76,11 +99,17 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 | FR | 史诗 | 描述 |
 |----|------|------|
 | FR1 | Epic 3 | 悬浮胶囊窗口 - UI/交互 |
-| FR2 | Epic 2 | 实时语音识别 (ASR) |
-| FR3 | Epic 2 | 智能端点检测 (VAD) |
+| FR2 | Epic 2 | 语音识别 (ASR) — 双引擎架构 |
+| FR3 | Epic 2 | 智能端点检测 |
 | FR4 | Epic 1 | 文本上屏 - IPC 集成 |
 | FR5 | Epic 3 | 托盘管理 |
 | FR6 | Epic 3 | 全局快捷键 |
+| FR7 | Epic 3 | 剪贴板 Fallback (Story 3.6/3.7) |
+| FR8 | Epic 2 | 模型管理 (Story 2.4/2.7) |
+| FR9 | Epic 3 | 初始化向导与错误处理 (Story 3.7) |
+| FR10 | Epic 3 | 国际化 (Story 3.8) |
+| FR11 | Epic 3 | 音频输入设备选择 (Story 3.9) |
+| FR12 | Epic 4 | 打包与分发 |
 
 ## Epic List
 
@@ -104,13 +133,14 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 
 **用户成果**：用户可以说话，系统实时将语音转换为文本。
 
-**FRs 覆盖**：FR2, FR3
+**FRs 覆盖**：FR2, FR3, FR8
 
 **范围说明**：
 - 配置 Flutter Linux 构建环境，链接原生库
-- 实现 Dart FFI 绑定 (Sherpa + PortAudio)
+- 实现 Dart FFI 绑定 (Sherpa 流式/离线/VAD + libpulse + PortAudio)
 - 实现音频采集 → AI 推理的数据流水线
-- 实现 VAD 端点检测与自动提交
+- 实现端点检测与自动提交（silero VAD / 内置端点规则）
+- 多引擎 ASR 支持 (SenseVoice 默认 + Zipformer 可选)
 - 模型管理：首次运行下载策略
 
 **完成标志**：可以识别语音并获得文本结果
@@ -121,13 +151,14 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 
 **用户成果**：用户获得无缝、美观的语音输入体验，支持快捷键唤醒、视觉反馈和系统集成。
 
-**FRs 覆盖**：FR1, FR5, FR6
+**FRs 覆盖**：FR1, FR5, FR6, FR7, FR9, FR10, FR11
 
 **范围说明**：
 - 实现真透明无边框胶囊窗口 UI
-- 串联完整业务流：Right Alt → 录音 → 识别 → 上屏
-- 实现全局快捷键监听
+- 串联完整业务流：快捷键 → 录音 → 识别 → 上屏
+- 系统原生快捷键方案 (`nextalk --toggle`) 与单实例命令转发
 - 完善托盘与窗口显隐逻辑
+- 初始化向导与错误处理、国际化、音频设备选择
 - 实现所有 UX 规范中的动画效果
 
 **完成标志**：完整的生产级语音输入工具
@@ -597,6 +628,38 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 
 ---
 
+### Story 3.7: 初始化向导与错误处理系统
+
+> **回填说明 (2026-07-09)**: 本 Story 实施时仅存在于 implementation-artifacts，此处回填正式条目。完整验收标准（AC1–AC19）见 `implementation-artifacts/3-7-init-wizard-error-handling.md`。
+
+**As a** 用户,
+**I want** 首次运行有引导向导，且所有故障（模型/音频/Fcitx5/运行时）都有清晰的视觉反馈和恢复路径,
+**So that** 我不需要查看日志或命令行就能完成初始化并从错误中恢复。
+
+**Acceptance Criteria (摘要):**
+
+**Given** 首次运行检测到模型缺失
+**When** 应用启动
+**Then** 显示初始化向导，提供"自动下载"（含进度/失败重试）与"手动安装"（含链接复制、目录打开、放置检测）两种路径 (AC1–AC7)
+
+**Given** 模型不完整或加载失败
+**When** 引擎初始化
+**Then** 显示具体原因并提供可操作的恢复按钮（重新下载等）(AC8–AC10)
+
+**Given** 麦克风缺失/被占用/运行中断开
+**When** 录音或尝试录音
+**Then** 显示对应提示；运行中断开时保存已识别文本并警告 (AC11–AC13)
+
+**Given** Fcitx5 未运行或提交失败
+**When** 文本上屏
+**Then** 显示提示、保护用户文本（"复制文本"按钮）、托盘提供"重新连接 Fcitx5" (AC14–AC16)
+
+**Given** 未处理异常
+**When** 运行时发生
+**Then** 全局错误边界捕获，致命错误弹对话框而非崩溃，托盘图标显示连接状态角标 (AC17–AC19)
+
+---
+
 ### Story 3.8: 中英双语国际化与托盘语言切换
 
 **As a** 用户,
@@ -669,6 +732,8 @@ NFR4: 窗口启动无黑框闪烁 (基于 C++ Runner 改造)
 ---
 
 ## Epic 4: 打包发布 (Distribution)
+
+**FRs 覆盖**：FR12
 
 用户可以通过标准的 DEB 或 RPM 包安装 Nextalk，覆盖主流 Linux 发行版，实现一键部署。
 

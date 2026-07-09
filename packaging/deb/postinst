@@ -49,6 +49,8 @@ case "$1" in
     configure)
         # Create /usr/bin/nextalk symlink
         ln -sf /opt/nextalk/nextalk /usr/bin/nextalk
+        # Lightweight hotkey trigger (fast path for system keyboard shortcuts)
+        ln -sf /opt/nextalk/nextalk-toggle /usr/bin/nextalk-toggle
 
         echo ""
         echo "═══════════════════════════════════════════════════════════"
@@ -70,10 +72,16 @@ case "$1" in
         if is_chinese; then
             echo "运行 'nextalk' 启动应用。"
             echo ""
+            echo "⌨️  快捷键设置："
+            echo "   在系统设置 → 键盘 → 自定义快捷键中，将命令设为: nextalk-toggle"
+            echo ""
             echo "💡 温馨提示："
             echo "   如果遇到问题，请尝试重新登录或重启系统。"
         else
             echo "Run 'nextalk' to start the application."
+            echo ""
+            echo "⌨️  Hotkey setup:"
+            echo "   In System Settings → Keyboard → Custom Shortcuts, set the command to: nextalk-toggle"
             echo ""
             echo "💡 Tip:"
             echo "   If you encounter issues, try logging out and back in, or restart your system."

@@ -24,6 +24,7 @@ OUTPUT_DIR="$PROJECT_ROOT/dist"
 
 # Package info
 PACKAGE_VERSION=""
+APP_VERSION=""
 PACKAGE_ARCH=""
 
 # ==============================================================================
@@ -185,6 +186,7 @@ extract_version() {
     fi
 
     # Format: 0.2.4-1 (version-build)
+    APP_VERSION="$app_version"
     PACKAGE_VERSION="${app_version}-${app_build:-1}"
     success "Package version: $PACKAGE_VERSION (from version.yaml)"
 }
@@ -198,7 +200,7 @@ build_flutter() {
     (
         cd "$VOICE_CAPSULE_DIR" || exit 1
 
-        if ! flutter build linux --release 2>&1; then
+        if ! flutter build linux --release --dart-define=APP_VERSION="$APP_VERSION" 2>&1; then
             error "Flutter build failed"
             exit 1
         fi
@@ -291,6 +293,11 @@ assemble_common() {
     else
         warn "libonnxruntime.so not found in libs/"
     fi
+
+    # Copy lightweight hotkey trigger (symlinked to /usr/bin/nextalk-toggle at install)
+    info "  Copying hotkey trigger..."
+    cp "$SCRIPT_DIR/nextalk-toggle.sh" "$staging_dir/opt/nextalk/nextalk-toggle"
+    chmod 755 "$staging_dir/opt/nextalk/nextalk-toggle"
 
     # Copy Fcitx5 plugin
     info "  Copying Fcitx5 plugin..."

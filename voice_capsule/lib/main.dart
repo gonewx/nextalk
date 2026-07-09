@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
+import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 
 import 'app/nextalk_app.dart';
@@ -171,9 +173,36 @@ Future<void> _preInitializeEngine(ModelManager modelManager) async {
     final error = await _asrEngine!.initialize(config);
     if (error == ASRError.none) {
       DiagnosticLogger.instance.info('main', '✅ ASR 引擎预初始化完成');
+      _warmupEngineWithSilence();
     } else {
       DiagnosticLogger.instance.warn('main', '⚠️ ASR 引擎预初始化失败: $error');
     }
+  }
+}
+
+/// 用静音数据跑一轮真实推理，触发 onnxruntime 的懒初始化
+/// (内存 arena 分配、图优化、量化 kernel 选择均发生在首次 Run)，
+/// 避免用户第一次按快捷键时首块推理明显偏慢。
+void _warmupEngineWithSilence() {
+  final engine = _asrEngine;
+  if (engine == null || !engine.isInitialized) return;
+
+  const warmupSamples = 12800; // 0.8s @ 16kHz，足以凑满流式模型首个 chunk
+  final silence = calloc<Float>(warmupSamples); // calloc 归零即静音
+  try {
+    final sw = Stopwatch()..start();
+    engine.acceptWaveform(16000, silence, warmupSamples);
+    while (engine.isReady()) {
+      engine.decode();
+    }
+    engine.reset(); // 清空流状态，不影响首次真实识别
+    sw.stop();
+    DiagnosticLogger.instance
+        .info('main', '✅ 引擎推理预热完成 (${sw.elapsedMilliseconds}ms)');
+  } catch (e) {
+    DiagnosticLogger.instance.warn('main', '⚠️ 引擎推理预热失败(不影响使用): $e');
+  } finally {
+    calloc.free(silence);
   }
 }
 

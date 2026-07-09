@@ -45,8 +45,9 @@ Nextalk 是一款专为 Linux 设计的高性能离线语音输入应用，
 cp -a %{_builddir}/staging/* %{buildroot}/
 
 %post
-# Create symlink
+# Create symlinks
 ln -sf /opt/nextalk/nextalk /usr/bin/nextalk
+ln -sf /opt/nextalk/nextalk-toggle /usr/bin/nextalk-toggle
 
 # Detect language (Chinese if LANG starts with zh)
 is_chinese() {
@@ -102,8 +103,8 @@ fi
 echo ""
 
 %preun
-# Clean symlink
-rm -f /usr/bin/nextalk
+# Clean symlinks
+rm -f /usr/bin/nextalk /usr/bin/nextalk-toggle
 
 # Detect language (Chinese if LANG starts with zh)
 is_chinese() {
@@ -155,6 +156,7 @@ fi
 %files
 %dir /opt/nextalk
 /opt/nextalk/nextalk
+/opt/nextalk/nextalk-toggle
 /opt/nextalk/lib/*
 /opt/nextalk/data/*
 %{_libdir}/fcitx5/libnextalk.so

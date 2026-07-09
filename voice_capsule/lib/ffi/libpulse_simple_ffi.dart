@@ -50,6 +50,11 @@ typedef PaSimpleReadC = Int32 Function(
 
 typedef PaSimpleFreeC = Void Function(Pointer<PaSimple> s);
 
+typedef PaSimpleFlushC = Int32 Function(
+  Pointer<PaSimple> s,
+  Pointer<Int32> error,
+);
+
 typedef PaStrerrorC = Pointer<Utf8> Function(Int32 error);
 
 // ===== Dart 函数签名 =====
@@ -75,6 +80,11 @@ typedef PaSimpleReadDart = int Function(
 
 typedef PaSimpleFreeDart = void Function(Pointer<PaSimple> s);
 
+typedef PaSimpleFlushDart = int Function(
+  Pointer<PaSimple> s,
+  Pointer<Int32> error,
+);
+
 typedef PaStrerrorDart = Pointer<Utf8> Function(int error);
 
 // ===== PulseAudio Simple 绑定类 =====
@@ -85,6 +95,7 @@ class LibPulseSimpleBindings {
   late final PaSimpleNewDart simpleNew;
   late final PaSimpleReadDart simpleRead;
   late final PaSimpleFreeDart simpleFree;
+  late final PaSimpleFlushDart simpleFlush;
   late final PaStrerrorDart strerror;
 
   LibPulseSimpleBindings() {
@@ -93,6 +104,7 @@ class LibPulseSimpleBindings {
     simpleNew = _lib.lookupFunction<PaSimpleNewC, PaSimpleNewDart>('pa_simple_new');
     simpleRead = _lib.lookupFunction<PaSimpleReadC, PaSimpleReadDart>('pa_simple_read');
     simpleFree = _lib.lookupFunction<PaSimpleFreeC, PaSimpleFreeDart>('pa_simple_free');
+    simpleFlush = _lib.lookupFunction<PaSimpleFlushC, PaSimpleFlushDart>('pa_simple_flush');
     strerror = _lib.lookupFunction<PaStrerrorC, PaStrerrorDart>('pa_strerror');
   }
 

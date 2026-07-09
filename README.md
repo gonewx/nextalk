@@ -12,12 +12,12 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 
 ## Features
 
-- **Offline Recognition** - Based on Sherpa-onnx streaming bilingual model (Chinese/English), data never leaves your device
-- **Ultra-low Latency** - End-to-end latency < 20ms for real-time transcription
+- **Offline Recognition** - Dual-engine ASR based on Sherpa-onnx: SenseVoice offline engine (default — high accuracy, multilingual, auto punctuation) and Zipformer streaming engine (optional — real-time, character by character); data never leaves your device
+- **Low Latency** - Streaming engine transcribes as you speak; text commit path latency < 20ms
 - **Transparent Floating Window** - Borderless capsule UI with breathing animation, minimal workflow disruption
 - **Native Wayland Support** - System shortcuts and text submission both support Wayland
-- **Focus Lock** - Switch windows while recording, text still submits to the original window
-- **Model Options** - Switch between int8 (fast) / standard (high accuracy) models
+- **Bilingual UI** - Simplified Chinese / English interface, switchable from the tray menu
+- **Engine & Model Options** - Hot-switch engines and Zipformer int8/standard variants from the tray menu
 
 ## Quick Start
 
@@ -26,13 +26,13 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 **Ubuntu/Debian:**
 
 ```bash
-sudo dpkg -i nextalk_0.1.0-1_amd64.deb
+sudo dpkg -i nextalk_0.2.8-1_amd64.deb
 ```
 
 **Fedora/CentOS/RHEL:**
 
 ```bash
-sudo rpm -i nextalk-0.1.0-1.x86_64.rpm
+sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
 ```
 
 Fcitx5 will automatically restart after installation to load the plugin.
@@ -90,8 +90,9 @@ If Fcitx5 is not installed, the app automatically uses clipboard mode:
 The app supports system tray (on supported desktop environments), right-click menu provides:
 
 - Show/Hide window
-- Switch model version
+- Switch ASR engine (SenseVoice / Zipformer) and model version
 - **Audio input device** - Select from available audio input devices
+- Switch UI language (中文 / English)
 - Open config directory
 - Exit app
 
@@ -108,14 +109,16 @@ The app supports system tray (on supported desktop environments), right-click me
 
 ## Configuration
 
-### Model Settings
+### Engine & Model Settings
 
 Switch via system tray menu:
 
-| Version | Description |
-|---------|-------------|
-| `int8` | Quantized version, faster, smaller memory footprint (default) |
-| `standard` | Standard version, higher recognition accuracy |
+| Engine | Description |
+|--------|-------------|
+| `sensevoice` (default) | Offline engine: recognizes per VAD segment, higher accuracy, auto punctuation, multilingual (zh/en/ja/ko/yue) |
+| `zipformer` | Streaming engine: recognize-while-listening, text appears character by character |
+
+Zipformer variants: `int8` (faster, smaller memory) / `standard` (higher accuracy).
 
 ### Config File
 
@@ -123,8 +126,17 @@ Advanced configuration: `~/.config/nextalk/settings.yaml`
 
 ```yaml
 model:
-  custom_url: ""    # Custom model download URL
-  type: int8        # Model version: int8 | standard
+  # ASR engine: zipformer | sensevoice
+  engine: sensevoice
+
+  zipformer:
+    type: int8        # Model variant: int8 | standard
+    custom_url: ""    # Custom model download URL (empty = default)
+
+  sensevoice:
+    use_itn: true     # Inverse text normalization
+    language: auto    # auto | zh | en | ja | ko | yue
+    custom_url: ""
 
 audio:
   input_device: "default"  # Audio input device: "default" or device name
@@ -301,7 +313,10 @@ Configure custom download URL or use proxy:
 ```yaml
 # ~/.config/nextalk/settings.yaml
 model:
-  custom_url: "https://your-mirror/model.tar.bz2"
+  zipformer:
+    custom_url: "https://your-mirror/zipformer-model.tar.bz2"
+  sensevoice:
+    custom_url: "https://your-mirror/sensevoice-model.tar.bz2"
 ```
 
 ### Audio Device Issues

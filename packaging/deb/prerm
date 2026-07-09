@@ -40,13 +40,13 @@ restart_fcitx5() {
 
 case "$1" in
     upgrade)
-        # During upgrade, just clean symlink silently - postinst will recreate it
-        rm -f /usr/bin/nextalk
+        # During upgrade, just clean symlinks silently - postinst will recreate them
+        rm -f /usr/bin/nextalk /usr/bin/nextalk-toggle
         ;;
 
     remove|deconfigure)
-        # Clean symlink
-        rm -f /usr/bin/nextalk
+        # Clean symlinks
+        rm -f /usr/bin/nextalk /usr/bin/nextalk-toggle
 
         echo ""
         echo "═══════════════════════════════════════════════════════════"

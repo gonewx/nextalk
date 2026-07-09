@@ -754,12 +754,10 @@ models/$_modelName/
 
   /// 从配置获取引擎的自定义 URL
   String? _getCustomUrlForEngine(EngineType engineType) {
-    // 后续 Task 5 会扩展 settings.yaml 支持多引擎配置
-    // 目前仅支持 Zipformer 的 custom_url
-    if (engineType == EngineType.zipformer) {
-      return SettingsService.instance.customModelUrl;
-    }
-    return null;
+    return switch (engineType) {
+      EngineType.zipformer => SettingsService.instance.zipformerCustomUrl,
+      EngineType.sensevoice => SettingsService.instance.senseVoiceCustomUrl,
+    };
   }
 
   /// 获取引擎模型的期望目录结构描述

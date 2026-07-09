@@ -122,14 +122,34 @@ class PulseAudioCapture {
   }
 
   /// 开始录音
+  ///
+  /// 关键：录音流在 warmup 时创建后常开，停止期间无人 read，
+  /// 服务端缓冲会持续积压陈旧音频。此处必须 flush 丢弃积压，
+  /// 否则本次录音的前若干块读到的是"几秒前"的声音，
+  /// 且主循环按 1x 实时速率消化，转录会恒定滞后积压时长。
   PulseAudioError start() {
     if (!_isInitialized) {
       return PulseAudioError.notInitialized;
     }
+    flush();
     _isCapturing = true;
     // ignore: avoid_print
     print('[PulseAudioCapture] ▶️ 开始录音');
     return PulseAudioError.none;
+  }
+
+  /// 丢弃服务端缓冲中积压的音频数据
+  void flush() {
+    if (!_isInitialized || _stream == null || _stream!.address == 0) return;
+    final result = _bindings!.simpleFlush(_stream!, _errorPtr!);
+    if (result < 0) {
+      final errorMsg = _bindings!.strerror(_errorPtr!.value).toDartString();
+      // ignore: avoid_print
+      print('[PulseAudioCapture] ⚠️ pa_simple_flush 失败: $errorMsg');
+    } else {
+      // ignore: avoid_print
+      print('[PulseAudioCapture] 🚿 已清空积压音频缓冲');
+    }
   }
 
   /// 停止录音
