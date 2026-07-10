@@ -448,7 +448,7 @@ class AudioCapture {
 
     // 如果使用 PulseAudio
     if (_usePulse && _pulseCapture != null) {
-      final result = _pulseCapture!.start();
+      final result = await _pulseCapture!.start();
       if (result == PulseAudioError.none) {
         _isCapturing = true;
         return AudioCaptureError.none;

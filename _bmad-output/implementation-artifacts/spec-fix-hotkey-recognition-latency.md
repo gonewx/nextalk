@@ -75,6 +75,14 @@ context: []
   ① pa_simple_read 全程阻塞主 isolate 饿死事件循环（旧 PortAudio 的等待在定时器休眠、UI 自由）——经用户批准改为 `Isolate.run` 后台读取（解除上轮 Ask First 门禁）；
   ② `pipeline.stop()` 不排空服务端滞留尾音（~300ms 含最后几个字）——inputFinished 前追加 3 碎片排空，VAD 停止路径除外。
   KEEP：fragsize=100ms 缓冲属性与共用配置构造保持不变。
+- 2026-07-09 二次验证反馈"什么都不显示"触发根因再定位（虚拟麦克风+受控 GUI 实例复现）：
+  **总根因＝PipeWire 上 `pa_simple_flush` 对录音流是 no-op**（返回成功但服务端队列原封不动）。
+  录音流"warmup 后常开"设计下，空闲期积压持续增长，录音按 1x 速率只能读到"积压时长之前"的旧数据：
+  定量实证——应用静置 20 秒后录音，前 199 块（19.9s）全为陈旧静音，第 200 块起才出现真实语音。
+  这一并解释了 0.2.6 以来全部症状（迟滞、需反复按键、上一句下次才出现、句尾丢字、无实时显示）。
+  修复：废弃 flush 方案，改为 **start() 重建全新录音流、stop() 释放流**（实测重建仅 4-12ms）；
+  `PulseAudioCapture.start()` 变为 async（等待在飞后台读取后再释放旧流），facade 调用点加 await。
+  前两轮的 fragsize/预热/后台读取/尾音排空修复仍然有效且保留。
 
 ## Design Notes
 
