@@ -129,24 +129,26 @@ clean-addon:
 # ============================================================
 
 # 构建发布包 (DEB)
+# 注意: 必须 --rebuild。build-pkg.sh 默认"bundle 存在即跳过构建"，
+# 曾导致陈旧二进制配新版本号发布（0.2.9/0.2.10 事故）
 package: sync-version build
 	@echo "📦 构建发布包..."
-	./scripts/build-pkg.sh
+	./scripts/build-pkg.sh --rebuild
 
 # 构建 DEB 包
 package-deb: sync-version
 	@echo "📦 构建 DEB 包..."
-	./scripts/build-pkg.sh --deb
+	./scripts/build-pkg.sh --deb --rebuild
 
 # 构建 RPM 包
 package-rpm: sync-version
 	@echo "📦 构建 RPM 包..."
-	./scripts/build-pkg.sh --rpm
+	./scripts/build-pkg.sh --rpm --rebuild
 
 # 构建所有包格式
 package-all: sync-version
 	@echo "📦 构建所有包格式..."
-	./scripts/build-pkg.sh --all
+	./scripts/build-pkg.sh --all --rebuild
 
 # ============================================================
 # 发布目标
