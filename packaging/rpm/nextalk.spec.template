@@ -26,6 +26,7 @@ Key Features:
 - Offline speech recognition (Sherpa-onnx streaming bilingual model)
 - Transparent borderless capsule floating window UI
 - Text input via Fcitx5 input method framework
+- GNOME Shell extension backend for ibus-based GNOME desktops (enable + re-login)
 - End-to-end latency < 200ms
 
 Supports Chinese and English bilingual voice recognition.
@@ -38,6 +39,7 @@ Nextalk 是一款专为 Linux 设计的高性能离线语音输入应用，
 - 离线语音识别（基于 Sherpa-onnx 流式双语模型）
 - 真透明无边框胶囊悬浮窗 UI
 - 通过 Fcitx5 输入法框架实现文本上屏
+- GNOME Shell 扩展后端支持 ibus 桌面直接上屏（启用扩展后重登生效）
 - 端到端延迟 < 200ms
 
 支持中英文双语语音识别。
@@ -88,6 +90,11 @@ if is_chinese; then
     echo ""
     echo "运行 'nextalk' 启动应用。"
     echo ""
+    echo "🖥️  GNOME (ibus) 桌面（如 Fedora 默认会话，未运行 fcitx5）："
+    echo "   需启用扩展并重新登录才能直接上屏，否则退回剪贴板模式："
+    echo "   gnome-extensions enable nextalk@gonewx.com"
+    echo "   （扩展仅对 Wayland 原生窗口生效；X11/XWayland 应用自动退回剪贴板）"
+    echo ""
     echo "💡 温馨提示："
     echo "   如果遇到问题，请尝试重新登录或重启系统。"
 else
@@ -98,6 +105,12 @@ else
     restart_fcitx5
     echo ""
     echo "Run 'nextalk' to start the application."
+    echo ""
+    echo "🖥️  GNOME (ibus) desktops (e.g. Fedora default session, no fcitx5 running):"
+    echo "   Enable the extension and re-login for direct text injection"
+    echo "   (falls back to clipboard mode otherwise):"
+    echo "   gnome-extensions enable nextalk@gonewx.com"
+    echo "   (Wayland-native windows only; X11/XWayland apps fall back to clipboard)"
     echo ""
     echo "💡 Tip:"
     echo "   If you encounter issues, try logging out and back in, or restart your system."
@@ -164,6 +177,9 @@ fi
 %{_libdir}/fcitx5/libnextalk.so
 %{_datadir}/fcitx5/addon/nextalk.conf
 %{_datadir}/applications/com.gonewx.nextalk.desktop
+%dir %{_datadir}/gnome-shell/extensions/nextalk@gonewx.com
+%{_datadir}/gnome-shell/extensions/nextalk@gonewx.com/extension.js
+%{_datadir}/gnome-shell/extensions/nextalk@gonewx.com/metadata.json
 %{_datadir}/icons/hicolor/48x48/apps/nextalk.png
 %{_datadir}/icons/hicolor/128x128/apps/nextalk.png
 %{_datadir}/icons/hicolor/256x256/apps/nextalk.png

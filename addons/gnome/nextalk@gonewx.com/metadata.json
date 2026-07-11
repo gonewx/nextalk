@@ -1,0 +1,7 @@
+{
+  "uuid": "nextalk@gonewx.com",
+  "name": "Nextalk Text Injector",
+  "description": "Commit text recognized by Nextalk via GNOME Shell's input method channel (works regardless of the input method framework, e.g. ibus on Fedora).",
+  "shell-version": ["45", "46", "47", "48", "49"],
+  "url": "https://github.com/gonewx/nextalk"
+}

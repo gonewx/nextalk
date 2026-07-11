@@ -17,3 +17,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-fix-hotkey-recognition-latency.md`
   summary: 单元测试将 PortalHotkey 日志写入真实 ~/.local/share/nextalk/logs/diagnostic.log（测试未隔离 DiagnosticLogger）
   evidence: 用户诊断日志中出现 2026-07-09 17:23:29 毫秒级密集的 "bind boom"/"unsupported" 等测试桩记录，污染真机排障信号
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-fedora-inject-clipboard-fallback.md`
+  summary: GNOME 注入扩展的 D-Bus CommitText 对 session bus 上任意同用户进程开放，无调用方校验，应评估 sender 校验或在安全文档中显式声明风险边界
+  evidence: 对抗评审发现（blind-hunter #2）：任何有 session bus 访问权的进程可向焦点窗口注入文本；同用户非沙箱进程本就有等价能力、Flatpak 默认无 org.gnome.Shell talk 权限，故降级为文档/加固课题而非本 spec 阻塞项
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-fedora-inject-clipboard-fallback.md`
+  summary: hotkey_controller 提交编排（隐藏窗口/等焦点/中断/失败恢复窗口→剪贴板）缺单测，需为 WindowService/TrayService 单例引入可注入缝隙后补编排级测试
+  evidence: 对抗评审发现（blind-hunter #7）：fcitx 与 GNOME 两条编排路径均零覆盖；受限于 WindowService.instance 静态单例（先于本 story 存在的可测性限制），需先做 DI 改造，超出本 spec 范围

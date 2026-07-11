@@ -16,6 +16,7 @@ Description: High-performance offline voice input for Linux
   - Offline speech recognition (Sherpa-onnx streaming bilingual model)
   - Transparent borderless capsule floating window UI
   - Text input via Fcitx5 input method framework
+  - GNOME Shell extension backend for ibus-based GNOME desktops (enable + re-login)
   - End-to-end latency < 200ms
  .
  Supports Chinese and English bilingual voice recognition.

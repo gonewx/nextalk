@@ -306,6 +306,15 @@ assemble_common() {
     cp "$addon_build_dir/nextalk.conf" "$staging_dir/usr/share/fcitx5/addon/"
     chmod 644 "$staging_dir/usr/share/fcitx5/addon/nextalk.conf"
 
+    # Copy GNOME Shell injection extension (GNOME/ibus environments without fcitx5)
+    info "  Copying GNOME Shell extension..."
+    local gnome_ext_src="$PROJECT_ROOT/addons/gnome/nextalk@gonewx.com"
+    local gnome_ext_dst="$staging_dir/usr/share/gnome-shell/extensions/nextalk@gonewx.com"
+    mkdir -p "$gnome_ext_dst"
+    cp "$gnome_ext_src/extension.js" "$gnome_ext_dst/"
+    cp "$gnome_ext_src/metadata.json" "$gnome_ext_dst/"
+    chmod 644 "$gnome_ext_dst/extension.js" "$gnome_ext_dst/metadata.json"
+
     # Copy desktop entry (ensure world-readable)
     info "  Installing desktop entry..."
     cp "$PACKAGING_DIR/deb/com.gonewx.nextalk.desktop" "$staging_dir/usr/share/applications/"

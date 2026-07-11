@@ -7,6 +7,7 @@ import 'audio_inference_pipeline.dart';
 import 'tray_service.dart';
 import 'window_service.dart';
 import 'fcitx_client.dart';
+import 'gnome_inject_client.dart';
 import 'hotkey_service.dart';
 import '../state/capsule_state.dart';
 
@@ -15,6 +16,32 @@ enum HotkeyState {
   idle, // 空闲 (窗口隐藏)
   recording, // 录音中 (窗口显示，红灯呼吸)
   submitting, // 提交中 (处理文本上屏)
+}
+
+/// 注入后端（三级注入链决策结果）
+enum InjectBackend {
+  fcitx, // fcitx5 socket 直接上屏
+  gnome, // GNOME Shell 扩展 D-Bus 上屏 (Fedora/ibus 等无 fcitx5 环境)
+  clipboard, // 剪贴板 fallback
+}
+
+/// 三级注入链决策：fcitx5 socket → GNOME 扩展 → 剪贴板
+///
+/// 纯逻辑函数，供单测覆盖 spec I/O 矩阵。探测按需短路：
+/// - fcitx5 可用时不探测 GNOME（Debian 路径零回归）
+/// - 空文本不探测 GNOME（不调用注入后端，走剪贴板路径直接收尾）
+///
+/// 注：剪贴板模式的组合语义（"任一直接注入后端可用即非剪贴板模式"）
+/// 在此层体现；FcitxClient.isClipboardMode 保持只反映 fcitx5 自身状态。
+Future<InjectBackend> decideInjectBackend({
+  required String text,
+  required Future<bool> Function() fcitxAvailable,
+  required Future<bool> Function() gnomeAvailable,
+}) async {
+  if (await fcitxAvailable()) return InjectBackend.fcitx;
+  if (text.isEmpty) return InjectBackend.clipboard;
+  if (await gnomeAvailable()) return InjectBackend.gnome;
+  return InjectBackend.clipboard;
 }
 
 /// 快捷键业务控制器 - Story 3-5 (重构版)
@@ -41,6 +68,7 @@ class HotkeyController {
   // === 依赖服务 ===
   AudioInferencePipeline? _pipeline;
   FcitxClient? _fcitxClient;
+  GnomeInjectClient? _gnomeClient;
   StreamController<CapsuleStateData>? _stateController;
 
   // === 状态管理 ===
@@ -134,14 +162,19 @@ class HotkeyController {
 
     final text = _lastRecognizedText!;
     _state = HotkeyState.submitting;
+    _submitInterrupted = false; // 重置中断标志 (GNOME 路径会检查此标志)
     _updateState(CapsuleStateData.processing());
 
-    // 检查 Fcitx5 是否可用
-    final fcitxAvailable = await _fcitxClient!.isAvailable();
+    // 三级注入链决策：fcitx5 → GNOME 扩展 → 剪贴板
+    final backend = await decideInjectBackend(
+      text: text,
+      fcitxAvailable: _fcitxClient!.isAvailable,
+      gnomeAvailable: _gnomeClient!.isAvailable,
+    );
 
-    if (!fcitxAvailable) {
-      // 剪贴板模式
-      await _copyToClipboardWithPrompt(text);
+    if (backend != InjectBackend.fcitx) {
+      // GNOME 扩展或剪贴板模式
+      await _submitViaGnomeOrClipboard(text, backend);
       TrayService.instance.updateStatus(TrayStatus.normal);
       return;
     }
@@ -202,11 +235,14 @@ class HotkeyController {
     required AudioInferencePipeline pipeline,
     required FcitxClient fcitxClient,
     required StreamController<CapsuleStateData> stateController,
+    GnomeInjectClient? gnomeInjectClient,
   }) async {
     if (_isInitialized) return;
 
     _pipeline = pipeline;
     _fcitxClient = fcitxClient;
+    // GNOME 扩展注入后端（三级注入链第二级）；缺省内部创建，懒连接
+    _gnomeClient = gnomeInjectClient ?? GnomeInjectClient();
     _stateController = stateController;
 
     // 注册快捷键回调
@@ -324,14 +360,18 @@ class HotkeyController {
       return;
     }
 
-    // 4. SCP-002: 检查 Fcitx5 是否可用，决定提交方式
-    final fcitxAvailable = await _fcitxClient!.isAvailable();
+    // 4. SCP-002: 三级注入链决策 (fcitx5 → GNOME 扩展 → 剪贴板)
+    final backend = await decideInjectBackend(
+      text: finalText,
+      fcitxAvailable: _fcitxClient!.isAvailable,
+      gnomeAvailable: _gnomeClient!.isAvailable,
+    );
 
-    if (!fcitxAvailable) {
-      // 剪贴板模式：保持窗口显示，直接复制
+    if (backend != InjectBackend.fcitx) {
+      // GNOME 扩展或剪贴板模式
       // ignore: avoid_print
-      print('[HotkeyController] 📋 Fcitx5 不可用，使用剪贴板模式');
-      await _copyToClipboardWithPrompt(finalText);
+      print('[HotkeyController] Fcitx5 不可用，注入后端: $backend');
+      await _submitViaGnomeOrClipboard(finalText, backend);
       return;
     }
 
@@ -361,6 +401,52 @@ class HotkeyController {
     _updateState(CapsuleStateData.idle());
   }
 
+  /// GNOME 扩展或剪贴板提交 (fcitx5 不可用时的二级注入链)
+  ///
+  /// GNOME 路径复用 fcitx5 的"隐藏窗口 → 等待焦点恢复 → 中断检查"流程
+  /// （焦点不在目标应用时 Main.inputMethod.commit 无效）；
+  /// 任何失败恢复窗口并走剪贴板 fallback，保证文本不丢失。
+  /// 剪贴板模式与现状一致：保持窗口显示，直接复制。
+  Future<void> _submitViaGnomeOrClipboard(
+    String text,
+    InjectBackend backend,
+  ) async {
+    if (backend != InjectBackend.gnome) {
+      // 剪贴板模式：保持窗口显示，直接复制（空文本在其内部直接收尾）
+      await _copyToClipboardWithPrompt(text);
+      return;
+    }
+
+    // GNOME 模式：先隐藏窗口，等待焦点恢复 (与 fcitx5 路径一致)
+    await WindowService.instance.hide();
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    // 焦点等待期间可能被用户快速重按打断
+    if (_submitInterrupted) {
+      // ignore: avoid_print
+      print('[HotkeyController] ⚡ GNOME 提交在焦点等待期间被中断');
+      if (text.isNotEmpty) {
+        _lastRecognizedText = text;
+      }
+      return;
+    }
+
+    if (await _gnomeClient!.commitText(text)) {
+      _lastRecognizedText = null; // 成功后清空
+      // ignore: avoid_print
+      print('[HotkeyController] ✅ 文本已通过 GNOME 扩展提交');
+      _state = HotkeyState.idle;
+      _updateState(CapsuleStateData.idle());
+      return;
+    }
+
+    // 失败：恢复窗口，走剪贴板 fallback (文本不丢失)
+    // ignore: avoid_print
+    print('[HotkeyController] ❌ GNOME 扩展提交失败，降级剪贴板');
+    await WindowService.instance.show();
+    await _copyToClipboardWithPrompt(text);
+  }
+
   /// 提交文本到 Fcitx5 (仅用于 Fcitx5 可用时)
   /// Story 3-7: 增强错误处理，保护提交失败的文本 (AC15)
   Future<void> _submitTextToFcitx(String text) async {
@@ -372,10 +458,18 @@ class HotkeyController {
       // ignore: avoid_print
       print('[HotkeyController] ✅ 文本已提交');
     } on FcitxError catch (e) {
-      // 连接失败时使用剪贴板 fallback
+      // 连接失败时先尝试 GNOME 扩展，再降级剪贴板 (三级注入链)
       if (e == FcitxError.connectionFailed ||
           e == FcitxError.reconnectFailed ||
           e == FcitxError.socketNotFound) {
+        // 此时窗口已隐藏、焦点已回到目标应用，可直接尝试 GNOME 提交
+        if (await _gnomeClient!.isAvailable() &&
+            await _gnomeClient!.commitText(text)) {
+          _lastRecognizedText = null; // 成功后清空
+          // ignore: avoid_print
+          print('[HotkeyController] ✅ 文本已通过 GNOME 扩展提交 (fcitx5 fallback)');
+          return;
+        }
         // 重新显示窗口（已隐藏），使用剪贴板模式
         await WindowService.instance.show();
         await _copyToClipboardWithPrompt(text);
@@ -490,16 +584,21 @@ class HotkeyController {
   /// SCP-002: 同样支持剪贴板模式
   Future<void> _submitFromVad(String finalText) async {
     _state = HotkeyState.submitting;
+    _submitInterrupted = false; // 重置中断标志 (GNOME 路径会检查此标志)
 
     // 1. 更新 UI 状态
     _updateState(CapsuleStateData.processing());
 
-    // 2. 检查 Fcitx5 是否可用
-    final fcitxAvailable = await _fcitxClient!.isAvailable();
+    // 2. 三级注入链决策 (fcitx5 → GNOME 扩展 → 剪贴板)
+    final backend = await decideInjectBackend(
+      text: finalText,
+      fcitxAvailable: _fcitxClient!.isAvailable,
+      gnomeAvailable: _gnomeClient!.isAvailable,
+    );
 
-    if (!fcitxAvailable) {
-      // 剪贴板模式：保持窗口显示
-      await _copyToClipboardWithPrompt(finalText);
+    if (backend != InjectBackend.fcitx) {
+      // GNOME 扩展或剪贴板模式
+      await _submitViaGnomeOrClipboard(finalText, backend);
       return;
     }
 
@@ -617,6 +716,8 @@ class HotkeyController {
   Future<void> dispose() async {
     await _endpointSubscription?.cancel();
     await _resultSubscription?.cancel();
+    await _gnomeClient?.dispose();
+    _gnomeClient = null;
     HotkeyService.instance.onHotkeyPressed = null;
     _isInitialized = false;
     _isProcessing = false;

@@ -64,6 +64,10 @@ class FcitxClient {
 
   /// 剪贴板模式标志：当 Fcitx5 不可用时为 true
   /// UI 层可以通过此属性判断是否需要显示剪贴板提示
+  ///
+  /// 注意：此标志只反映 fcitx5 自身可用性（职责单一，不感知 GNOME 后端）。
+  /// 三级注入链的组合语义（"任一直接注入后端可用即非剪贴板模式"）由
+  /// hotkey_controller.dart 的 decideInjectBackend 在调用方层体现。
   bool _isClipboardMode = false;
 
   /// 是否处于剪贴板模式（Fcitx5 不可用）

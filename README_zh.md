@@ -41,6 +41,18 @@ sudo dnf install ./nextalk-0.2.13-1.x86_64.rpm
 
 安装后 Fcitx5 会自动重启以加载插件。
 
+**GNOME (ibus) 发行版（如 Fedora）:**
+
+Fedora 等默认使用 ibus 的 GNOME 桌面上，fcitx5 未作为会话输入法运行，识别文本需通过随包安装的 GNOME Shell 扩展直接上屏。启用扩展并**注销重新登录**后生效：
+
+```bash
+gnome-extensions enable nextalk@gonewx.com
+```
+
+未启用扩展时应用自动退回剪贴板模式（见[非 Fcitx5 环境](#非-fcitx5-环境)）。**fcitx5 用户无需任何操作**。
+
+> 注意：扩展仅在 **Wayland 会话**中对**原生 Wayland 窗口**生效；焦点在 X11/XWayland 应用（或 Xorg 会话）时会自动退回剪贴板模式，属预期行为。
+
 **运行时依赖:**
 
 | 依赖 | 说明 |
@@ -99,7 +111,7 @@ sudo dnf install ./nextalk-0.2.13-1.x86_64.rpm
 
 ### 非 Fcitx5 环境
 
-如果未安装 Fcitx5，应用自动使用剪贴板模式：
+未运行 Fcitx5 时，GNOME 桌面可启用随包安装的 Shell 扩展直接上屏（见上文 [GNOME (ibus) 发行版](#快速开始)）；扩展不可用（或焦点在 X11/XWayland 应用）时应用自动使用剪贴板模式：
 - 识别的文字会复制到系统剪贴板
 - UI 显示"已复制到剪贴板"提示
 - 手动粘贴 (`Ctrl+V`) 到目标应用

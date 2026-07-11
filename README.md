@@ -52,6 +52,18 @@ sudo dnf install ./nextalk-0.2.13-1.x86_64.rpm
 
 Fcitx5 will automatically restart after installation to load the plugin.
 
+**GNOME (ibus) distros (e.g. Fedora):**
+
+On GNOME desktops that default to ibus (such as Fedora), fcitx5 is not the session input method, so recognized text is committed directly through the bundled GNOME Shell extension. Enable it and **log out and back in** for it to take effect:
+
+```bash
+gnome-extensions enable nextalk@gonewx.com
+```
+
+Without the extension enabled, the app automatically falls back to clipboard mode (see [Non-Fcitx5 Environment](#non-fcitx5-environment)). **Fcitx5 users need no action.**
+
+> Note: the extension only works in **Wayland sessions** for **native Wayland windows**; when the focused app is X11/XWayland (or in an Xorg session), the app automatically falls back to clipboard mode — this is expected behavior.
+
 ### Configure Hotkey
 
 **Works out of the box (supported environments):** On KDE Plasma 5.27+, GNOME 48+, and Hyprland, the app auto-registers a global shortcut (default `Super+Z`) via XDG Desktop Portal on first launch. The system shows a one-time authorization dialog — confirm it and the shortcut takes effect immediately, no manual setup required.
@@ -99,7 +111,7 @@ Fcitx5 will automatically restart after installation to load the plugin.
 
 ### Non-Fcitx5 Environment
 
-If Fcitx5 is not installed, the app automatically uses clipboard mode:
+When Fcitx5 is not running, GNOME desktops can commit text directly via the bundled Shell extension (see [GNOME (ibus) distros](#quick-start) above); if the extension is unavailable (or the focused app is X11/XWayland), the app automatically uses clipboard mode:
 - Recognized text is copied to system clipboard
 - UI shows "Copied to clipboard" prompt
 - Manually paste (`Ctrl+V`) to target application
