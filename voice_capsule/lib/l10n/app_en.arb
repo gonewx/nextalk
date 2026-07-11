@@ -33,7 +33,7 @@
   "wizardVerify": "Verify Model",
   "wizardAutoDownload": "Auto Download",
   "wizardCheckingStatus": "Checking download status...",
-  "wizardPressHotkeyHint": "Press Alt+Space to start voice input",
+  "wizardPressHotkeyHint": "Press Super+Z to start voice input",
   "wizardHotkeyFallbackHint": "If the hotkey does not work, bind a custom shortcut to the command nextalk-toggle in your system settings",
   "wizardStartUsing": "Start Using",
   "wizardTitle": "Voice Model Installation",

@@ -4,8 +4,8 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Installed-Size: {{INSTALLED_SIZE}}
-Depends: fcitx5 (>= 5.0), libgtk-3-0 (>= 3.24), libc6 (>= 2.31)
-Recommends: pulseaudio | pipewire-pulse
+Depends: fcitx5 (>= 5.0), libgtk-3-0 (>= 3.24), libc6 (>= 2.31), libayatana-appindicator3-1
+Recommends: pulseaudio | pipewire-pulse, gnome-shell-extension-appindicator
 Maintainer: Nextalk Team <lgq502@gmail.com>
 Homepage: https://github.com/gonewx/nextalk
 Description: High-performance offline voice input for Linux

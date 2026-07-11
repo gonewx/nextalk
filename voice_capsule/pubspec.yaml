@@ -1,7 +1,7 @@
 name: voice_capsule
 description: "Nextalk Voice Capsule - Linux 高性能离线语音输入应用的 Flutter 前端"
 publish_to: 'none' # 私有项目，不发布到 pub.dev
-version: 0.2.10+1
+version: 0.2.13+1
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -33,7 +33,16 @@ dependencies:
   cupertino_icons: ^1.0.8
   xdg_desktop_portal: ^0.1.13
   dbus: ^0.7.8  # D-Bus 直接调用 (Story 3-10: Portal GlobalShortcuts，xdg_desktop_portal 传递依赖显式声明)
+  meta: ^1.9.0  # @visibleForTesting (Flutter SDK 传递依赖显式声明)
   screen_retriever: ^0.2.0
+
+# vendored 补丁版 system_tray:上游 2.0.3 的 tray.cc 硬编码 dlopen 旧版
+# libappindicator3.so.1,在 Fedora(无 ayatana 兼容 symlink、存在废弃的
+# libappindicator-12.10.1)上 InitSystemTray 段错误;补丁改为优先 dlopen
+# libayatana-appindicator3.so.1(见 third_party/system_tray/linux/tray.cc)
+dependency_overrides:
+  system_tray:
+    path: ../third_party/system_tray
 
 dev_dependencies:
   flutter_test:

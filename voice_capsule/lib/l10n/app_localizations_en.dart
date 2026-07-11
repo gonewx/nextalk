@@ -101,7 +101,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get wizardCheckingStatus => 'Checking download status...';
 
   @override
-  String get wizardPressHotkeyHint => 'Press Alt+Space to start voice input';
+  String get wizardPressHotkeyHint => 'Press Super+Z to start voice input';
 
   @override
   String get wizardHotkeyFallbackHint =>

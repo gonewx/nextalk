@@ -100,7 +100,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get wizardCheckingStatus => '检查下载状态...';
 
   @override
-  String get wizardPressHotkeyHint => '按下 Alt+Space 开始语音输入';
+  String get wizardPressHotkeyHint => '按下 Super+Z 开始语音输入';
 
   @override
   String get wizardHotkeyFallbackHint =>

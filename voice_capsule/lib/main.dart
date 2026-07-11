@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'app/nextalk_app.dart';
 import 'services/animation_ticker_service.dart';
+import 'constants/hotkey_constants.dart';
 import 'constants/settings_constants.dart';
 import 'services/asr/asr_engine.dart';
 import 'services/asr/asr_engine_factory.dart';
@@ -230,7 +231,8 @@ Future<void> _setupPortalHotkey() async {
     if (result == PortalRegistrationResult.registered) {
       HotkeyService.instance.hotkeyMode = HotkeyMode.portal;
       DiagnosticLogger.instance
-          .info('main', 'Portal 全局快捷键已启用 (Alt+Space)');
+          .info('main',
+              'Portal 全局快捷键已启用 (${HotkeyConstants.portalDefaultTrigger})');
     } else {
       // 降级（不支持 / 失败 / 用户取消）：保持系统快捷键模式，记录原因 (AC4)
       HotkeyService.instance.hotkeyMode = HotkeyMode.system;

@@ -51,7 +51,7 @@ Linux 用户缺乏美观且实用的语音输入工具。本项目 **Nextalk** �
 *   **FR6 [系统]: 全局快捷键** *(v1.3 更新，Story 3-10)*
     *   **逻辑**：按下唤醒/开始录音；再次按下停止/上屏/隐藏。
     *   **实现方式（渐进增强，两条路径叠加不取代）**：
-        *   **第四代 — Portal 自动注册（首选）**：支持的桌面环境（KDE 5.27+、GNOME 48+、Hyprland）下，应用首次启动经 XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts` 自动注册全局快捷键（默认 Alt+Space），系统弹一次授权对话框，确认后立即生效——**开箱即用，无需进入系统设置手动配置**。
+        *   **第四代 — Portal 自动注册（首选）**：支持的桌面环境（KDE 5.27+、GNOME 48+、Hyprland）下，应用首次启动经 XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts` 自动注册全局快捷键（默认 Super+Z），系统弹一次授权对话框，确认后立即生效——**开箱即用，无需进入系统设置手动配置**。
         *   **第三代 — 系统快捷键（回退，硬需求）**：Portal 不支持时（GNOME <48、wlroots、Ubuntu 22.04/24.04 默认会话）静默降级，用户在系统设置绑定 `nextalk-toggle` 命令触发；应用另提供 `--show`/`--hide` 命令。
     *   单实例机制：新进程将命令经内部 Unix Socket 转发给运行中的实例。
     *   降级对用户无感：不弹错误、不阻塞启动，降级原因写入诊断日志，托盘只读项显示当前快捷键模式（Portal / 系统）。

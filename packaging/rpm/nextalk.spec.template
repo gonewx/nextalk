@@ -15,6 +15,8 @@ Requires:       gtk3 >= 3.24
 Requires:       glibc >= 2.31
 Requires:       libayatana-appindicator-gtk3
 Recommends:     pulseaudio
+# GNOME 桌面显示托盘图标需要此扩展(装后需启用并重登会话);KDE 原生支持 SNI 无需扩展
+Recommends:     gnome-shell-extension-appindicator
 
 %description
 Nextalk is a high-performance offline voice-to-text application designed
@@ -161,7 +163,7 @@ fi
 /opt/nextalk/data/*
 %{_libdir}/fcitx5/libnextalk.so
 %{_datadir}/fcitx5/addon/nextalk.conf
-%{_datadir}/applications/nextalk.desktop
+%{_datadir}/applications/com.gonewx.nextalk.desktop
 %{_datadir}/icons/hicolor/48x48/apps/nextalk.png
 %{_datadir}/icons/hicolor/128x128/apps/nextalk.png
 %{_datadir}/icons/hicolor/256x256/apps/nextalk.png

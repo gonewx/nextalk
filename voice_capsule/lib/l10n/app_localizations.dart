@@ -275,7 +275,7 @@ abstract class AppLocalizations {
   /// No description provided for @wizardPressHotkeyHint.
   ///
   /// In zh, this message translates to:
-  /// **'按下 Alt+Space 开始语音输入'**
+  /// **'按下 Super+Z 开始语音输入'**
   String get wizardPressHotkeyHint;
 
   /// No description provided for @wizardHotkeyFallbackHint.

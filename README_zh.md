@@ -26,20 +26,35 @@
 **Ubuntu/Debian:**
 
 ```bash
-sudo dpkg -i nextalk_0.2.8-1_amd64.deb
+# 推荐: apt 会自动安装依赖
+sudo apt install ./nextalk_0.2.13-1_amd64.deb
 ```
+
+> 若使用 `sudo dpkg -i` 安装，dpkg 不会解析依赖，提示缺依赖时需再执行 `sudo apt -f install` 补齐。
 
 **Fedora/CentOS/RHEL:**
 
 ```bash
-sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
+# 推荐: dnf 会自动安装依赖
+sudo dnf install ./nextalk-0.2.13-1.x86_64.rpm
 ```
 
 安装后 Fcitx5 会自动重启以加载插件。
 
+**运行时依赖:**
+
+| 依赖 | 说明 |
+|------|------|
+| `fcitx5` (≥ 5.0) | 必需，文本上屏通道（deb/rpm 已声明，包管理器自动安装） |
+| `libgtk-3-0` / `gtk3` | 必需（包管理器自动安装） |
+| PulseAudio 或 PipeWire (`pipewire-pulse`) | 音频采集，主流发行版默认自带 |
+| `xdg-desktop-portal` + 桌面对应 backend | 快捷键自动注册所需（GNOME 48+/KDE 5.27+ 自带，无需手装） |
+| `libayatana-appindicator3-1` / `libayatana-appindicator-gtk3` | 托盘运行库（0.2.13 起 deb/rpm 已声明，包管理器自动安装） |
+| `gnome-shell-extension-appindicator` | **仅 GNOME**：显示托盘图标所需的扩展，装后需启用并重登会话（详见[常见问题](#系统托盘图标不显示-gnomefedora)）；KDE 原生支持无需安装 |
+
 ### 配置快捷键
 
-**开箱即用（支持的桌面环境）：** 在 KDE Plasma 5.27+、GNOME 48+、Hyprland 上，应用首次启动会经 XDG Desktop Portal 自动注册全局快捷键（默认 `Alt+Space`）。系统会弹出一次授权对话框，确认后立即生效，**无需进入系统设置手动配置**。
+**开箱即用（支持的桌面环境）：** 在 KDE Plasma 5.27+、GNOME 48+、Hyprland 上，应用首次启动会经 XDG Desktop Portal 自动注册全局快捷键（默认 `Super+Z`）。系统会弹出一次授权对话框，确认后立即生效，**无需进入系统设置手动配置**。
 
 **回退（手动配置）：** 在不支持 Portal GlobalShortcuts 的环境（GNOME <48、wlroots/Sway、Ubuntu 22.04/24.04 默认会话）下，应用会静默降级到系统快捷键。此时需手动配置并绑定 `nextalk-toggle` 命令：
 
@@ -49,13 +64,13 @@ sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
 2. 点击"添加快捷键"
 3. 名称: `Nextalk 语音输入`
 4. 命令: `nextalk-toggle`
-5. 快捷键: 按下 `Alt+Space` (推荐)
+5. 快捷键: 按下 `Super+Z` (推荐；`Alt+Space` 已被 GNOME 窗口菜单占用，勿用)
 
 **KDE Plasma:**
 
 1. 系统设置 → 快捷键 → 自定义快捷键
 2. 编辑 → 新建 → 全局快捷键 → 命令/URL
-3. 触发器: 设置为 `Alt+Space`
+3. 触发器: 设置为 `Super+Z`
 4. 动作: `nextalk-toggle`
 
 > 当前快捷键模式（Portal / 系统）会在托盘菜单中以只读项显示。
@@ -94,13 +109,15 @@ sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
 应用支持系统托盘（在支持的桌面环境中），右键菜单提供:
 
 - 显示/隐藏窗口
-- 切换 ASR 引擎 (SenseVoice / Zipformer) 与模型版本
-- **音频输入设备** - 选择可用的音频输入设备
+- **重新连接 Fcitx5** - 输入法通道断开时手动重连
+- **快捷键模式（只读）** - 显示当前生效的快捷键方式：`快捷键: Super+Z (Portal 自动注册)` 或 `快捷键: 系统设置 (nextalk-toggle)`
+- 模型设置 - 切换 ASR 引擎 (SenseVoice / Zipformer) 与 Zipformer 模型版本 (int8 / 标准)
 - 切换界面语言 (中文 / English)
-- 打开配置目录
+- **音频输入设备** - 选择可用的音频输入设备
+- 设置 - 打开配置目录
 - 退出应用
 
-> **注意**: GNOME 桌面不显示托盘图标是正常的，应用仍可通过 `nextalk --toggle` 命令使用。
+> **注意**: GNOME 桌面需安装并启用 `gnome-shell-extension-appindicator` 扩展才会显示托盘图标（KDE 原生支持），详见[常见问题](#系统托盘图标不显示-gnomefedora)。无托盘时应用仍可通过 `nextalk --toggle` 命令使用。
 
 ## 系统要求
 
@@ -108,7 +125,7 @@ sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
 |------|------|
 | **操作系统** | Linux (Ubuntu 22.04+ 推荐) |
 | **显示服务** | X11 或 Wayland |
-| **音频系统** | ALSA 或 PulseAudio |
+| **音频系统** | PulseAudio 或 PipeWire（`pipewire-pulse`） |
 | **输入法** | Fcitx5 |
 
 ## 配置
@@ -272,17 +289,33 @@ make help       # 查看所有命令
 
 ### 系统托盘图标不显示 (GNOME/Fedora)
 
-GNOME 桌面默认不显示系统托盘图标，这是正常现象。应用仍可通过命令行正常使用：
+GNOME 桌面默认不显示 AppIndicator 托盘图标，需要安装并启用 `gnome-shell-extension-appindicator` 扩展：
+
+```bash
+# Debian/Ubuntu
+sudo apt install gnome-shell-extension-appindicator
+
+# Fedora
+sudo dnf install gnome-shell-extension-appindicator
+```
+
+安装后**注销并重新登录**（Wayland 会话必须重登才能加载扩展），然后确认扩展已启用：
+
+```bash
+gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+```
+
+重启 Nextalk 后托盘图标即出现。KDE Plasma 原生支持托盘，无需任何配置。
+
+不装扩展时托盘不可见，但应用功能不受影响，仍可通过命令行使用：
 
 ```bash
 nextalk --toggle  # 切换录音状态
 ```
 
-> **⚠️ 注意**: 不建议安装 AppIndicator 扩展，可能导致应用崩溃。如果已安装且出现崩溃，请参考下一节。
-
 ### 应用启动时崩溃 (段错误)
 
-如果安装了 AppIndicator 扩展后应用崩溃，可禁用托盘功能：
+0.2.13 已修复 Fedora 上因旧版 `libappindicator` 库导致的启动段错误（托盘插件已改为优先加载 ayatana 实现）。如仍遇到托盘相关崩溃，可临时禁用托盘功能排查：
 
 ```bash
 NEXTALK_NO_TRAY=1 nextalk

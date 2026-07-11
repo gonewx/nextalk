@@ -26,20 +26,35 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 **Ubuntu/Debian:**
 
 ```bash
-sudo dpkg -i nextalk_0.2.8-1_amd64.deb
+# Recommended: apt installs dependencies automatically
+sudo apt install ./nextalk_0.2.13-1_amd64.deb
 ```
+
+> If you install with `sudo dpkg -i`, dpkg does not resolve dependencies; run `sudo apt -f install` afterwards if it complains about missing ones.
 
 **Fedora/CentOS/RHEL:**
 
 ```bash
-sudo rpm -i nextalk-0.2.8-1.x86_64.rpm
+# Recommended: dnf installs dependencies automatically
+sudo dnf install ./nextalk-0.2.13-1.x86_64.rpm
 ```
+
+**Runtime dependencies:**
+
+| Dependency | Notes |
+|------|------|
+| `fcitx5` (≥ 5.0) | Required, text commit channel (declared by deb/rpm, installed automatically by the package manager) |
+| `libgtk-3-0` / `gtk3` | Required (installed automatically by the package manager) |
+| PulseAudio or PipeWire (`pipewire-pulse`) | Audio capture, shipped by default on mainstream distros |
+| `xdg-desktop-portal` + your desktop's backend | Needed for shortcut auto-registration (bundled with GNOME 48+/KDE 5.27+, no manual install) |
+| `libayatana-appindicator3-1` / `libayatana-appindicator-gtk3` | Tray runtime library (declared by deb/rpm since 0.2.13, installed automatically) |
+| `gnome-shell-extension-appindicator` | **GNOME only**: extension required to show the tray icon; enable it and re-log after installing (see [FAQ](#system-tray-icon-not-showing-gnomefedora)); KDE supports the tray natively |
 
 Fcitx5 will automatically restart after installation to load the plugin.
 
 ### Configure Hotkey
 
-**Works out of the box (supported environments):** On KDE Plasma 5.27+, GNOME 48+, and Hyprland, the app auto-registers a global shortcut (default `Alt+Space`) via XDG Desktop Portal on first launch. The system shows a one-time authorization dialog — confirm it and the shortcut takes effect immediately, no manual setup required.
+**Works out of the box (supported environments):** On KDE Plasma 5.27+, GNOME 48+, and Hyprland, the app auto-registers a global shortcut (default `Super+Z`) via XDG Desktop Portal on first launch. The system shows a one-time authorization dialog — confirm it and the shortcut takes effect immediately, no manual setup required.
 
 **Fallback (manual configuration):** On environments without Portal GlobalShortcuts support (GNOME <48, wlroots/Sway, and the default sessions of Ubuntu 22.04/24.04), the app silently falls back to the system shortcut. Configure it manually and bind the `nextalk-toggle` command:
 
@@ -49,13 +64,13 @@ Fcitx5 will automatically restart after installation to load the plugin.
 2. Click "Add Shortcut"
 3. Name: `Nextalk Voice Input`
 4. Command: `nextalk-toggle`
-5. Shortcut: Press `Alt+Space` (recommended)
+5. Shortcut: Press `Super+Z` (recommended; do NOT use `Alt+Space` — GNOME's window-menu key already occupies it)
 
 **KDE Plasma:**
 
 1. System Settings → Shortcuts → Custom Shortcuts
 2. Edit → New → Global Shortcut → Command/URL
-3. Trigger: Set to `Alt+Space`
+3. Trigger: Set to `Super+Z`
 4. Action: `nextalk-toggle`
 
 > The current hotkey mode (Portal / system) is shown as a read-only item in the tray menu.
@@ -94,13 +109,15 @@ If Fcitx5 is not installed, the app automatically uses clipboard mode:
 The app supports system tray (on supported desktop environments), right-click menu provides:
 
 - Show/Hide window
-- Switch ASR engine (SenseVoice / Zipformer) and model version
-- **Audio input device** - Select from available audio input devices
+- **Reconnect Fcitx5** - manually reconnect when the input-method channel drops
+- **Hotkey mode (read-only)** - shows the active hotkey path: `Hotkey: Super+Z (Portal auto-registered)` or `Hotkey: System settings (nextalk-toggle)`
+- Model settings - switch ASR engine (SenseVoice / Zipformer) and Zipformer model version (int8 / standard)
 - Switch UI language (中文 / English)
-- Open config directory
+- **Audio input device** - Select from available audio input devices
+- Settings - open the config directory
 - Exit app
 
-> **Note**: It's normal that GNOME desktop doesn't show tray icon, the app can still be used via `nextalk --toggle` command.
+> **Note**: On GNOME the tray icon only shows after installing and enabling the `gnome-shell-extension-appindicator` extension (KDE supports it natively) — see the [FAQ](#system-tray-icon-not-showing-gnomefedora). Without a tray the app still works via the `nextalk --toggle` command.
 
 ## System Requirements
 
@@ -108,7 +125,7 @@ The app supports system tray (on supported desktop environments), right-click me
 |-----------|-------------|
 | **OS** | Linux (Ubuntu 22.04+ recommended) |
 | **Display Server** | X11 or Wayland |
-| **Audio System** | ALSA or PulseAudio |
+| **Audio System** | PulseAudio or PipeWire (`pipewire-pulse`) |
 | **Input Method** | Fcitx5 |
 
 ## Configuration
@@ -272,17 +289,33 @@ make help       # Show all commands
 
 ### System Tray Icon Not Showing (GNOME/Fedora)
 
-GNOME desktop doesn't show system tray icons by default, this is normal. The app can still be used via command line:
+GNOME desktop doesn't show AppIndicator tray icons by default; install and enable the `gnome-shell-extension-appindicator` extension:
+
+```bash
+# Debian/Ubuntu
+sudo apt install gnome-shell-extension-appindicator
+
+# Fedora
+sudo dnf install gnome-shell-extension-appindicator
+```
+
+**Log out and back in** after installing (a Wayland session must be re-logged to load the extension), then make sure it is enabled:
+
+```bash
+gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+```
+
+Restart Nextalk and the tray icon appears. KDE Plasma supports the tray natively with no configuration.
+
+Without the extension the tray is invisible, but the app still works fully via the command line:
 
 ```bash
 nextalk --toggle  # Toggle recording state
 ```
 
-> **⚠️ Note**: Installing AppIndicator extension is not recommended, may cause app crashes. If already installed and experiencing crashes, see next section.
-
 ### App Crashes on Startup (Segfault)
 
-If app crashes after installing AppIndicator extension, disable tray functionality:
+0.2.13 fixes the startup segfault on Fedora caused by the legacy `libappindicator` library (the tray plugin now prefers the ayatana implementation). If you still hit a tray-related crash, temporarily disable the tray to isolate it:
 
 ```bash
 NEXTALK_NO_TRAY=1 nextalk

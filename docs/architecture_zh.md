@@ -8,6 +8,7 @@
 | 2025-12-28 | 2.0  | 极简架构重构 (SCP-002: 移除快捷键监听，使用系统原生快捷键) | 架构师 (Winston) |
 | 2026-07-09 | 2.1  | 棕地校准至 v0.2.8：补记双引擎 ASR 架构（SenseVoice 默认）、silero VAD、音频采集分层（libpulse-simple 主/PortAudio 回退）、并发模型结论、IPC 实际约束、模型校验现状、构建/版本管理约定 | 架构师 (Winston) |
 | 2026-07-09 | 2.2  | 新增第四代快捷键方案（Story 3-10）：XDG Desktop Portal `GlobalShortcuts` 应用内自动注册 + 系统快捷键静默降级（渐进增强，叠加不取代） | 架构师 (Winston) |
+| 2026-07-10 | 2.3  | Portal 方案 Debian 13/GNOME 48 实测校准：默认触发键改为 `LOGO+z` (Super+Z)、兼容 xdg-desktop-portal-gnome 48.0 假失败 bug、授权对话框等待放宽到 10 分钟、session token 字符约束、app_id 合规要求（desktop 文件反向 DNS 命名） | 架构师 (Winston) |
 
 ## 1. 简介 (Introduction)
 
@@ -59,7 +60,7 @@ graph TD
 ```
 
 > **SCP-002 变更说明**: 快捷键监听已从 Fcitx5 插件中移除。应用自身不做任何客户端全局按键抓取（Wayland 架构禁止），改由两条并存路径触发：
-> 1. **第四代（Story 3-10，渐进增强）**：`PortalHotkeyService` 通过 XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts` 在应用内自动注册全局快捷键（默认 Alt+Space），由桌面环境弹系统授权对话框完成绑定，Activated 信号收敛到 `HotkeyController.instance.toggle()`。
+> 1. **第四代（Story 3-10，渐进增强）**：`PortalHotkeyService` 通过 XDG Desktop Portal `org.freedesktop.portal.GlobalShortcuts` 在应用内自动注册全局快捷键（默认 Super+Z），由桌面环境弹系统授权对话框完成绑定，Activated 信号收敛到 `HotkeyController.instance.toggle()`。
 > 2. **第三代（回退，硬需求）**：系统原生快捷键设置绑定 `nextalk-toggle` 触发器命令。Portal backend 不支持时（GNOME <48、wlroots、Ubuntu LTS 默认会话）静默降级到此路径。
 >
 > 两者**叠加不取代**：Portal 是渐进增强，系统快捷键回退始终保留（NFR3 基线 Ubuntu 22.04+ 不支持 Portal GlobalShortcuts）。
@@ -183,10 +184,12 @@ nextalk/
 **第四代 — Portal 自动注册（Story 3-10，渐进增强）**:
 
 * **服务**: `PortalHotkeyService`（`lib/services/portal_hotkey_service.dart`），经 `package:dbus` 直调 `org.freedesktop.portal.GlobalShortcuts`（`xdg_desktop_portal` 0.1.14 未实现该 portal）。
-* **流程**: 探测 `version` 属性 → `CreateSession`（真正 session_handle 从 `Request::Response` 信号提取，非方法返回值）→ `BindShortcuts` 注册 `toggle-voice-input`（默认 `ALT+SPACE`，禁用 Meta/Super）→ 监听 `Activated` 信号。
+* **流程**: 探测 `version` 属性 → `CreateSession`（真正 session_handle 从 `Request::Response` 信号提取，非方法返回值；session token 只允许 `[A-Za-z0-9_]`，其余字符须替换，否则被 `xdp_is_valid_token` 以 InvalidArgument 拒绝）→ `BindShortcuts` 注册 `toggle-voice-input`（默认 `LOGO+z` 即 Super+Z——不可用 `ALT+SPACE`，它是 GNOME `activate-window-menu` 默认键，mutter 拒绝 grab 已被 WM 占用的组合）→ 监听 `Activated` 信号。
 * **装配**: `main.dart` 用**非阻塞后台 Future**（`unawaited(_setupPortalHotkey())`）发起，portal backend 挂起不拖慢启动主路径。
-* **超时分层**: 探测用短超时（2s，快速判定接口缺失），`CreateSession`/`BindShortcuts` 用长超时（60s，覆盖用户操作系统授权对话框的时间）。
-* **生命周期**: 无 restore token（规范不提供），每次启动用稳定 shortcut id + app_id 重新注册，backend 负责记忆用户绑定；D-Bus 连接必须全程保活（连接断开 = session 销毁 = 快捷键失效）；单次运行禁重复重绑（避免 GNOME 反复弹窗），但用户在授权框主动取消（`Response` code=1）不锁定，允许后续重试。`dispose` 接入 `TrayService.onBeforeExit` 关闭 session 与连接。
+* **app_id 合规（GNOME 硬约束）**: gnome-control-center 的 GlobalShortcutsProvider 会丢弃 app_id 非法（无 `.` 的非反向 DNS 名）或为空的绑定请求（journal: "Discarded shortcut bind request from application with an invalid app_id"）。因此 desktop 文件必须命名为 `com.gonewx.nextalk.desktop`，且进程需运行在合规 systemd 单元内（如 gnome-shell/gio 启动的 `app[-<launcher>]-com.gonewx.nextalk[-<rand>].scope/.service`）——从终端裸启动时 app_id 为空，Portal 注册必然失败（走系统快捷键回退）。
+* **超时分层**: 探测用短超时（2s，快速判定接口缺失），`CreateSession`/`BindShortcuts` 用长超时（10 分钟）。授权对话框会一直挂着等用户操作、`Response` 在用户点按钮时必然发出，长超时仅兜底"既不弹框也不回复"的异常 backend；实测 60s 会在首启用户未及时处理授权框时超时锁定，用户稍后批准也无法在本次会话生效。
+* **GNOME 48.0 假失败兼容**: xdg-desktop-portal-gnome 48.0（Debian 13 在售版本）`shell_grab_accelerators_done()` 成功路径漏赋 response（未初始化栈值，上游 commit `27511907` 已修复但 Debian 13 未收录），静默授权绑定实际已生效却回 `Response` code=2。`bindShortcuts` 捕获 `PortalRequestFailedException` 后用 `shortcutsActuallyBound()` 判定：results 携带覆盖全部请求 id 的非空 shortcuts 数组 = 实际绑定成功，按成功处理（真失败路径 results 为空 vardict，不会误判）。
+* **生命周期**: 无 restore token（规范不提供），每次启动用稳定 shortcut id + app_id 重新注册，backend 负责记忆用户绑定（GNOME 存于 dconf `/org/gnome/settings-daemon/global-shortcuts/`：`applications` 键为索引，per-app 子路径存快捷键本体；请求与已存储一致时静默批准不弹框）；D-Bus 连接必须全程保活（连接断开 = session 销毁 = 快捷键失效）；单次运行禁重复重绑（避免 GNOME 反复弹窗），但用户在授权框主动取消（`Response` code=1）不锁定，允许后续重试。`dispose` 接入 `TrayService.onBeforeExit` 关闭 session 与连接。
 
 **第三代 — 系统快捷键（回退，硬需求）**:
 

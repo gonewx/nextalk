@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dbus/dbus.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:voice_capsule/constants/hotkey_constants.dart';
 import 'package:voice_capsule/services/portal_hotkey_service.dart';
@@ -224,7 +225,7 @@ void main() {
     });
 
     group('BindShortcuts 参数 (AC1/2.2)', () {
-      test('绑定使用稳定 id 与默认 ALT+SPACE trigger，禁用 Meta 键', () async {
+      test('绑定使用稳定 id 与默认 Super+Z trigger（避开 WM 占用键）', () async {
         final backend = FakeGlobalShortcutsBackend();
         final service = PortalHotkeyService(
           backend: backend,
@@ -237,8 +238,8 @@ void main() {
         expect(bound, hasLength(1));
         expect(bound.first.id, HotkeyConstants.portalShortcutId);
         expect(bound.first.preferredTrigger, HotkeyConstants.portalDefaultTrigger);
-        expect(bound.first.preferredTrigger, isNot(contains('SUPER')));
-        expect(bound.first.preferredTrigger, isNot(contains('META')));
+        // ALT+space 与 GNOME activate-window-menu 冲突，默认键不得使用它
+        expect(bound.first.preferredTrigger, isNot(equals('ALT+space')));
       });
     });
 
@@ -419,6 +420,65 @@ void main() {
         await Future.delayed(const Duration(milliseconds: 5));
 
         expect(effectiveRuns, 2);
+      });
+    });
+
+    group('GNOME 48.0 假失败识别 (portal-gnome 上游 27511907)', () {
+      const binding = PortalShortcutBinding(
+        id: 'toggle-voice-input',
+        description: 'Toggle Nextalk voice input',
+      );
+
+      /// 构造 portal Response results 里的 shortcuts 数组（(sa{sv}) 结构）
+      DBusArray shortcutsArray(List<String> ids) => DBusArray(
+            DBusSignature('(sa{sv})'),
+            ids
+                .map((id) => DBusStruct([
+                      DBusString(id),
+                      DBusDict.stringVariant(const {}),
+                    ]))
+                .toList(),
+          );
+
+      test('response=2 但 results 携带全部请求 id → 判为实际绑定成功', () {
+        final results = <String, DBusValue>{
+          'shortcuts': shortcutsArray(['toggle-voice-input']),
+        };
+        expect(
+          DBusGlobalShortcutsBackend.shortcutsActuallyBound(
+              results, const [binding]),
+          isTrue,
+        );
+      });
+
+      test('results 为空 vardict（真失败路径）→ 不误判', () {
+        expect(
+          DBusGlobalShortcutsBackend.shortcutsActuallyBound(
+              const {}, const [binding]),
+          isFalse,
+        );
+      });
+
+      test('shortcuts 数组缺请求 id → 不误判', () {
+        final results = <String, DBusValue>{
+          'shortcuts': shortcutsArray(['other-shortcut']),
+        };
+        expect(
+          DBusGlobalShortcutsBackend.shortcutsActuallyBound(
+              results, const [binding]),
+          isFalse,
+        );
+      });
+
+      test('shortcuts 为空数组 → 不误判', () {
+        final results = <String, DBusValue>{
+          'shortcuts': shortcutsArray(const []),
+        };
+        expect(
+          DBusGlobalShortcutsBackend.shortcutsActuallyBound(
+              results, const [binding]),
+          isFalse,
+        );
       });
     });
   });

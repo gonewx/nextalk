@@ -15,7 +15,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Expected paths (installed locations)
-DESKTOP_FILE="/usr/share/applications/nextalk.desktop"
+DESKTOP_FILE="/usr/share/applications/com.gonewx.nextalk.desktop"
 ICON_256="/usr/share/icons/hicolor/256x256/apps/nextalk.png"
 ICON_128="/usr/share/icons/hicolor/128x128/apps/nextalk.png"
 ICON_48="/usr/share/icons/hicolor/48x48/apps/nextalk.png"
@@ -23,7 +23,7 @@ APP_BINARY="/opt/nextalk/nextalk"
 SYMLINK_PATH="/usr/bin/nextalk"
 
 # Source file path (for pre-installation validation)
-SOURCE_DESKTOP="$PROJECT_ROOT/packaging/deb/nextalk.desktop"
+SOURCE_DESKTOP="$PROJECT_ROOT/packaging/deb/com.gonewx.nextalk.desktop"
 SOURCE_ICON="$PROJECT_ROOT/voice_capsule/assets/icons/icon.png"
 
 # ==============================================================================

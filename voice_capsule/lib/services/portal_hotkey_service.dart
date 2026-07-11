@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:dbus/dbus.dart';
+import 'package:meta/meta.dart';
 
 import '../constants/hotkey_constants.dart';
 import '../utils/diagnostic_logger.dart';
@@ -48,6 +49,21 @@ class PortalUserCancelledException implements Exception {
 
   @override
   String toString() => 'PortalUserCancelledException: 用户取消了 Portal 快捷键绑定';
+}
+
+/// Portal 请求失败（Response code≥2），携带 results 供调用方细判。
+///
+/// 保留 results 是因为 xdg-desktop-portal-gnome 48.0 存在未初始化变量 bug
+/// （上游 27511907 已修复）：静默授权绑定成功后仍回 response=2，但 results
+/// 里带着已绑定的 shortcuts——调用方需要 results 才能识别这种"假失败"。
+class PortalRequestFailedException implements Exception {
+  final int code;
+  final Map<String, DBusValue> results;
+
+  const PortalRequestFailedException(this.code, this.results);
+
+  @override
+  String toString() => 'PortalRequestFailedException: Portal 请求失败 (response=$code)';
 }
 
 /// 一次快捷键激活事件（backend → service）
@@ -122,9 +138,12 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
         _timeout = timeout ?? const Duration(seconds: 2),
         // 交互式请求（CreateSession/BindShortcuts）的 Response 只有在用户点掉
         // 系统授权对话框后才发出——探测用的 2s 短超时会把它必然误判为失败。
-        // 故单独放宽到 60s（覆盖用户操作对话框的时间）。
+        // 首启用户往往不会立刻处理弹出的授权框（实测 60s 会超时锁定，用户
+        // 稍后点"添加"也无法在本次会话生效）；GNOME 对话框会一直挂着等操作，
+        // Response 在用户点按钮时必然发出，故放宽到 10 分钟——超时仅兜底
+        // "backend 既不弹框也不回复"的异常平台。
         _interactiveTimeout =
-            interactiveTimeout ?? timeout ?? const Duration(seconds: 60) {
+            interactiveTimeout ?? timeout ?? const Duration(minutes: 10) {
     _portalObject = DBusRemoteObject(
       _client,
       name: 'org.freedesktop.portal.Desktop',
@@ -170,10 +189,14 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
 
   @override
   Future<String> createSession(String sessionToken) async {
+    // xdg-desktop-portal 的 xdp_is_valid_token 只允许 [A-Za-z0-9_]——token 会
+    // 拼进 session 对象路径。连字符等一律替换，否则 CreateSession 直接被
+    // InvalidArgument ("Invalid token") 拒绝（shortcut id 无此限制，可保留连字符）。
+    final safeToken = sessionToken.replaceAll(RegExp(r'[^A-Za-z0-9_]'), '_');
     final results = await _sendRequest(() async {
       final options = <String, DBusValue>{
         'handle_token': DBusString(_generateToken()),
-        'session_handle_token': DBusString(sessionToken),
+        'session_handle_token': DBusString(safeToken),
       };
       final result = await _portalObject.callMethod(
         HotkeyConstants.portalInterface,
@@ -207,20 +230,46 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
       return DBusStruct([DBusString(s.id), DBusDict.stringVariant(vardict)]);
     }).toList();
 
-    await _sendRequest(() async {
-      final result = await _portalObject.callMethod(
-        HotkeyConstants.portalInterface,
-        'BindShortcuts',
-        [
-          DBusObjectPath(sessionHandle),
-          DBusArray(DBusSignature('(sa{sv})'), shortcutStructs),
-          const DBusString(''), // parent_window
-          DBusDict.stringVariant(const {}),
-        ],
-        replySignature: DBusSignature('o'),
-      );
-      return result.returnValues[0].asObjectPath();
-    });
+    try {
+      await _sendRequest(() async {
+        final result = await _portalObject.callMethod(
+          HotkeyConstants.portalInterface,
+          'BindShortcuts',
+          [
+            DBusObjectPath(sessionHandle),
+            DBusArray(DBusSignature('(sa{sv})'), shortcutStructs),
+            const DBusString(''), // parent_window
+            DBusDict.stringVariant(const {}),
+          ],
+          replySignature: DBusSignature('o'),
+        );
+        return result.returnValues[0].asObjectPath();
+      });
+    } on PortalRequestFailedException catch (e) {
+      // xdg-desktop-portal-gnome 48.0（Debian 13 在售版本）成功路径漏赋
+      // response（上游 27511907 修复）：静默授权绑定实际已生效（grab 成功、
+      // ShortcutsChanged 已发出），却回 response=2。特征是 results 仍带
+      // 非空 shortcuts——真失败路径 results 为空 vardict，可安全区分。
+      if (!shortcutsActuallyBound(e.results, shortcuts)) rethrow;
+    }
+  }
+
+  /// 判定 BindShortcuts 的"假失败"：results 携带的已绑定列表覆盖了全部
+  /// 请求的 shortcut id 时视为绑定成功。
+  @visibleForTesting
+  static bool shortcutsActuallyBound(
+    Map<String, DBusValue> results,
+    List<PortalShortcutBinding> requested,
+  ) {
+    final bound = results['shortcuts'];
+    if (bound is! DBusArray || bound.children.isEmpty) return false;
+    final boundIds = bound.children
+        .whereType<DBusStruct>()
+        .map((s) => s.children.isNotEmpty ? s.children[0] : null)
+        .whereType<DBusString>()
+        .map((s) => s.value)
+        .toSet();
+    return requested.every((s) => boundIds.contains(s.id));
   }
 
   @override
@@ -312,8 +361,7 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
           completer.completeError(const PortalUserCancelledException());
           break;
         default:
-          completer.completeError(
-              StateError('Portal 请求失败 (response=$code)'));
+          completer.completeError(PortalRequestFailedException(code, results));
       }
     });
 

@@ -17,9 +17,16 @@ class HotkeyConstants {
   static const String portalShortcutId = 'toggle-voice-input';
 
   /// Portal preferred_trigger 默认值
-  /// 格式遵循 freedesktop Shortcuts 规范（如 "CTRL+SHIFT+A"）；
-  /// 禁用 Meta/Super 键（规范保留给桌面环境）
-  static const String portalDefaultTrigger = 'ALT+SPACE';
+  /// 格式遵循 freedesktop Shortcuts 规范：修饰键名 + XKB keysym 小写。
+  /// Super 键在规范里写作 `LOGO`（GNOME backend 映射为 `<super>`）。
+  /// 不用 ALT+space —— 它是 GNOME `activate-window-menu` 默认键，mutter
+  /// 拒绝 grab 已被 WM 占用的组合，导致 BindShortcuts response=2。
+  ///
+  /// 改此值时须同步以下硬编码的人类可读键名（如 "Super+Z"）：
+  /// - language_service.dart `tray_hotkey_mode_portal`（中/英托盘文案）
+  /// - l10n/app_zh.arb & app_en.arb `wizardPressHotkeyHint`（向导提示）
+  /// - README.md / README_zh.md、docs/prd*.md、docs/architecture*.md
+  static const String portalDefaultTrigger = 'LOGO+z';
 
   /// GlobalShortcuts D-Bus 接口名
   static const String portalInterface = 'org.freedesktop.portal.GlobalShortcuts';

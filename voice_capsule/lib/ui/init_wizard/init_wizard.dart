@@ -524,7 +524,7 @@ class _InitWizardState extends State<InitWizard> {
           const SizedBox(height: 12),
           Text(
             // Story 3-10: 默认快捷键统一为 Alt+Space（Portal 与系统回退共用）
-            l10n?.wizardPressHotkeyHint ?? '按下 Alt+Space 开始语音输入',
+            l10n?.wizardPressHotkeyHint ?? '按下 Super+Z 开始语音输入',
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 14,

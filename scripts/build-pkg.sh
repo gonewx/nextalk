@@ -308,8 +308,8 @@ assemble_common() {
 
     # Copy desktop entry (ensure world-readable)
     info "  Installing desktop entry..."
-    cp "$PACKAGING_DIR/deb/nextalk.desktop" "$staging_dir/usr/share/applications/"
-    chmod 644 "$staging_dir/usr/share/applications/nextalk.desktop"
+    cp "$PACKAGING_DIR/deb/com.gonewx.nextalk.desktop" "$staging_dir/usr/share/applications/"
+    chmod 644 "$staging_dir/usr/share/applications/com.gonewx.nextalk.desktop"
 
     # Process icon (multi-size for better desktop integration)
     info "  Processing icons..."
