@@ -185,6 +185,7 @@ build_flutter() {
     if docker run "${DOCKER_RUN_ARGS[@]}" "$IMAGE_NAME" /bin/bash -c "
         mkdir -p /tmp/builder && \
         git config --global --add safe.directory /opt/flutter && \
+        ./scripts/check-cmake-cache.sh voice_capsule/build/linux/x64/release voice_capsule/build/linux/x64/debug && \
         cd voice_capsule && \
         rm -rf .dart_tool && \
         ${clean_cmd}flutter pub get && \
@@ -212,6 +213,7 @@ build_plugin() {
     fi
 
     if docker run "${DOCKER_RUN_ARGS[@]}" "$IMAGE_NAME" /bin/bash -c "
+        ./scripts/check-cmake-cache.sh addons/fcitx5/build && \
         cd addons/fcitx5 && \
         ${clean_cmd}mkdir -p build && cd build && \
         cmake .. -DCMAKE_BUILD_TYPE=Release && \

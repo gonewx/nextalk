@@ -25,18 +25,21 @@ sync-version:
 # 构建 Flutter 客户端 (Release)
 build-flutter: sync-version
 	@echo "🔨 构建 Flutter 客户端..."
+	@./scripts/check-cmake-cache.sh voice_capsule/build/linux/x64/release
 	@APP_VER=$$(grep -E "^app_version:" version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/'); \
 	cd voice_capsule && flutter build linux --release --dart-define=APP_VERSION=$$APP_VER
 
 # 构建 Flutter 客户端 (Debug)
 build-flutter-debug: sync-version
 	@echo "🔨 构建 Flutter 客户端 (Debug)..."
+	@./scripts/check-cmake-cache.sh voice_capsule/build/linux/x64/debug
 	@APP_VER=$$(grep -E "^app_version:" version.yaml | sed 's/app_version:[[:space:]]*"\?\([0-9.]*\)"\?/\1/'); \
 	cd voice_capsule && flutter build linux --debug --dart-define=APP_VERSION=$$APP_VER
 
 # 构建 Fcitx5 插件
 build-addon:
 	@echo "🔨 构建 Fcitx5 插件..."
+	@./scripts/check-cmake-cache.sh addons/fcitx5/build
 	mkdir -p addons/fcitx5/build
 	cd addons/fcitx5/build && cmake .. && make -j$$(nproc)
 
