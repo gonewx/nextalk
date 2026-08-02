@@ -26,6 +26,12 @@ class ZipformerEngine implements ASREngine {
   /// 当前使用的模型类型 (用于热切换判断)
   bool _useInt8Model = true;
 
+  /// 初始化时使用的采样率 (供 finalizeUtterance 生成静音 padding 用)
+  int _sampleRate = 16000;
+
+  /// 标记上次 _recreateStream() 失败，需要在下一次发话前重试流创建
+  bool _needsStreamRecovery = false;
+
   /// 是否启用调试日志
   final bool enableDebugLog;
 
@@ -102,6 +108,7 @@ class ZipformerEngine implements ASREngine {
 
     // 2. 查找模型文件
     _useInt8Model = config.useInt8Model;
+    _sampleRate = config.sampleRate;
     final encoderPath = _findModelFile(config.modelDir, 'encoder',
         useInt8: config.useInt8Model);
     final decoderPath = _findModelFile(config.modelDir, 'decoder',
@@ -336,6 +343,105 @@ class ZipformerEngine implements ASREngine {
     SherpaOnnxBindings.reset(_recognizer!, _stream!);
   }
 
+  /// 收尾时补的静音时长 (秒)。
+  ///
+  /// 流式 transducer 的 `IsReady()` 判定是
+  /// `已处理帧 + ChunkSize < 就绪帧`，不检查输入是否结束，所以末尾不足一个
+  /// chunk 的尾帧永远进不了解码循环 —— 这正是"最后几个字不上屏"的根因。
+  /// 补一段静音把真实尾音顶过 chunk 边界，尾帧才会被解码。
+  ///
+  /// 取值 0.6s：chunk 窗口约 32 帧 (约 320ms)，0.3s≈30 帧仍不足一窗，余量太小；
+  /// 0.6s 经真机实测可稳定解出尾字。
+  static const double _tailPaddingSeconds = 0.6;
+
+  @override
+  ASRResult finalizeUtterance() {
+    if (!_isInitialized || _recognizer == null || _stream == null) {
+      return ASRResult.empty();
+    }
+
+    // 1. 补静音 padding，把尾音顶过 chunk 边界后跑干解码
+    final padCount = (_sampleRate * _tailPaddingSeconds).round();
+    final pad = calloc<Float>(padCount);
+    try {
+      // calloc 已置零，直接作为静音使用
+      SherpaOnnxBindings.onlineStreamAcceptWaveform(
+          _stream!, _sampleRate, pad, padCount);
+      while (isReady()) {
+        decode();
+      }
+    } finally {
+      calloc.free(pad);
+    }
+
+    // 2. 取最终结果 (此时尾帧已解码)
+    final result = getResult();
+
+    // 3. 重建 OnlineStream 隔离会话。
+    //    不能依赖 reset(): 上游 Reset() 只推进 start_frame_index_，
+    //    明确不清特征提取器，未消费的残留帧会被下一次发话当作开头解出来。
+    _recreateStream();
+
+    return result;
+  }
+
+  /// 销毁并重建 OnlineStream，确保下一次发话不携带上一次的残留帧。
+  ///
+  /// 重建失败时不把引擎留在"静默失效"状态：`initialize()` 会因
+  /// `_isInitialized` 早退而不再重建流，若此处放任 `_stream` 为 null，
+  /// 所有音频接口都会判空早退 —— 用户表现为按键无反应且无任何报错，
+  /// 只能重启应用。因此失败时标记 `_needsStreamRecovery`，由
+  /// [ensureStreamReady] 在下一次发话开始前重试。
+  void _recreateStream() {
+    if (_recognizer == null || _recognizer == nullptr) return;
+
+    if (_stream != null && _stream != nullptr) {
+      SherpaOnnxBindings.destroyOnlineStream(_stream!);
+    }
+    _stream = null;
+
+    final fresh = SherpaOnnxBindings.createOnlineStream(_recognizer!);
+    if (fresh == nullptr) {
+      // 保持 _stream 为 null 避免野指针，但标记待恢复，下次发话前重试
+      _lastError = ASRError.streamCreateFailed;
+      _needsStreamRecovery = true;
+      if (enableDebugLog) {
+        // ignore: avoid_print
+        print('[ZipformerEngine] ❌ 重建 OnlineStream 失败，已标记待恢复');
+      }
+      return;
+    }
+    _needsStreamRecovery = false;
+    _stream = fresh;
+  }
+
+  @override
+  bool ensureStreamReady() {
+    if (!_isInitialized || _recognizer == null || _recognizer == nullptr) {
+      return false;
+    }
+    if (_stream != null && _stream != nullptr) {
+      return true; // 流健康，无需恢复
+    }
+
+    // 上一次收尾时重建失败，这里重试一次
+    final fresh = SherpaOnnxBindings.createOnlineStream(_recognizer!);
+    if (fresh == nullptr) {
+      _lastError = ASRError.streamCreateFailed;
+      _needsStreamRecovery = true;
+      return false;
+    }
+    _stream = fresh;
+    _needsStreamRecovery = false;
+    _lastError = ASRError.none;
+    if (enableDebugLog) {
+      // ignore: avoid_print
+      print('[ZipformerEngine] ✅ OnlineStream 已恢复');
+    }
+    return true;
+  }
+
+  @Deprecated('收尾请使用 finalizeUtterance()，它对流式引擎才真正有效')
   @override
   void inputFinished() {
     if (!_isInitialized || _stream == null) return;

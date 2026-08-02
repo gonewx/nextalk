@@ -370,6 +370,13 @@ class AudioInferencePipeline {
       return _lastError;
     }
 
+    // initialize() 在已初始化时早退，不会重建流。若上一次收尾时流重建失败，
+    // 必须在这里恢复，否则引擎会静默失效（按键无反应且无报错）。
+    if (!_asrEngine.ensureStreamReady()) {
+      _setError(PipelineError.recognizerFailed);
+      return _lastError;
+    }
+
     // 3. 启动 AudioCapture
     final audioError = await _audioCapture.start();
     if (audioError != AudioCaptureError.none) {
@@ -438,12 +445,16 @@ class AudioInferencePipeline {
       }
     }
 
-    // 获取最终识别结果
-    _asrEngine.inputFinished();
-    while (_asrEngine.isReady()) {
-      _asrEngine.decode();
-    }
-    final finalResult = _asrEngine.getResult();
+    // 结束本次发话并取最终结果。
+    // 由引擎自行处理尾帧: 流式模型末尾不足一个 chunk 的音频进不了解码循环，
+    // 必须补静音 padding 才能解出最后几个字，同时重建流避免残留串入下一次。
+    //
+    // VAD 触发的停止已在 _handleEndpoint() 收过尾并重建了流，此处不得重复
+    // 收尾 —— 否则会给全新空流再灌一遍 padding、多跑一次解码和流重建，
+    // 也违反 finalizeUtterance() "一次发话只调用一次"的契约。
+    final finalResult = _vadTriggeredStop
+        ? _asrEngine.getResult()
+        : _asrEngine.finalizeUtterance();
 
     // Story 2-6: 发送手动停止事件 (仅当不是 VAD 触发时)
     if (!_vadTriggeredStop && !_isDisposed && !_endpointController.isClosed) {
@@ -462,8 +473,8 @@ class AudioInferencePipeline {
     // 停止音频采集
     await _audioCapture.stop();
 
-    // 重置 ASR 流状态 (保留模型，只清空缓冲区)
-    _asrEngine.reset();
+    // 注意: 不再调用 _asrEngine.reset() —— 会话隔离已由 finalizeUtterance()
+    // 内部的流重建承担。上游 Reset() 不清特征提取器，残留帧会串入下一次发话。
 
     // 重置状态
     _stopRequested = false;
@@ -562,9 +573,10 @@ class AudioInferencePipeline {
     }
 
     // Story 2-6: VAD 自动停止时的清理逻辑
+    // 注意: 不再调用 _asrEngine.reset() —— VAD 端点路径的 _handleEndpoint()
+    // 已通过 finalizeUtterance() 重建了流，此时 stream 是全新的，无需 reset。
     if (_vadTriggeredStop && _state == PipelineState.running) {
       await _audioCapture.stop();
-      _asrEngine.reset();
       _stopRequested = false;
       _lastEmittedText = '';
       _vadTriggeredStop = false;
@@ -668,13 +680,10 @@ class AudioInferencePipeline {
     // 1. 尝试获取当前已识别的文本
     String preservedText = _lastEmittedText;
 
-    // 尝试从 ASREngine 获取最新结果
+    // 尝试从 ASREngine 获取最新结果。设备丢失同样是一次发话的终结，
+    // 走 finalizeUtterance() 才能连尾字一起保住，并让下一次录音从干净流开始。
     try {
-      _asrEngine.inputFinished();
-      while (_asrEngine.isReady()) {
-        _asrEngine.decode();
-      }
-      final result = _asrEngine.getResult();
+      final result = _asrEngine.finalizeUtterance();
       if (result.text.isNotEmpty) {
         preservedText = result.text;
       }
@@ -715,15 +724,13 @@ class AudioInferencePipeline {
       final isPttAccumulateMode =
           !_vadConfig.autoStopOnEndpoint && !_vadConfig.autoReset;
 
-      if (!isPttAccumulateMode) {
-        // 非 PTT 累积模式：调用 inputFinished() 确保最终解码
-        _asrEngine.inputFinished();
-        while (_asrEngine.isReady()) {
-          _asrEngine.decode();
-        }
-      }
-
-      final finalResult = _asrEngine.getResult();
+      // 非 PTT 累积模式：结束本次发话段，拿含尾帧的完整结果。
+      // finalizeUtterance() 在引擎内补静音 padding 解出尾字、重建流隔离下一次
+      // 发话，替换原来的 inputFinished() → decode 循环 → reset()。
+      // PTT 累积模式则只读当前结果，绝不收尾，否则后续音频无法继续累积。
+      final finalResult = isPttAccumulateMode
+          ? _asrEngine.getResult()
+          : _asrEngine.finalizeUtterance();
 
       // 2. 计算录音时长
       final durationMs = _recordingStartTime != null
@@ -752,7 +759,8 @@ class AudioInferencePipeline {
         _vadTriggeredStop = true; // 标记 VAD 触发，防止 stop() 重复发送事件
         _stopRequested = true;
       } else if (_vadConfig.autoReset) {
-        _asrEngine.reset();
+        // 流已由上面的 finalizeUtterance() 重建，无需再 reset()。
+        // (autoReset 必然走非 PTT 累积分支，所以收尾一定已发生。)
         _lastEmittedText = '';
         _recordingStartTime = DateTime.now();
       }

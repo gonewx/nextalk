@@ -820,8 +820,11 @@ class SenseVoiceEngine implements ASREngine {
     _hasEndpoint = false;
   }
 
-  @override
-  void inputFinished() {
+  /// flush VAD 并处理最后一个语音段。
+  ///
+  /// 离线引擎的结果全靠 VAD 分段后推理产出，所以这一步是出结果的必要环节
+  /// (与流式 transducer 不同，那边的 inputFinished 是空操作)。
+  void _flushVadAndProcess() {
     if (!_isInitialized || _vad == null) return;
 
     // 刷新 VAD，处理剩余缓冲区数据
@@ -829,6 +832,25 @@ class SenseVoiceEngine implements ASREngine {
 
     // 处理可能的最后一个语音段
     _processVadSegments();
+  }
+
+  @override
+  ASRResult finalizeUtterance() {
+    if (!_isInitialized || _vad == null) return ASRResult.empty();
+
+    _flushVadAndProcess();
+    return getResult();
+  }
+
+  /// 离线引擎没有 OnlineStream，收尾只重置 VAD 状态、不销毁任何原生对象，
+  /// 因此不存在流重建失败的恢复场景 —— 只要引擎已初始化即为就绪。
+  @override
+  bool ensureStreamReady() => _isInitialized && _vad != null;
+
+  @Deprecated('收尾请使用 finalizeUtterance()，它对流式引擎才真正有效')
+  @override
+  void inputFinished() {
+    _flushVadAndProcess();
   }
 
   /// 销毁 VAD

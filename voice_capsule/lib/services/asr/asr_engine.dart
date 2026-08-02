@@ -266,7 +266,38 @@ abstract class ASREngine {
   /// 重置识别状态 (清空缓冲区，保留模型)
   void reset();
 
+  /// 结束当前这一次发话，返回包含尾部内容的最终结果。
+  ///
+  /// 调用方须在一次发话结束时调用且仅调用一次；返回后引擎可安全接收下一次发话。
+  ///
+  /// 实现契约:
+  /// - 必须保证音频末尾的内容被完整解码后才返回结果
+  /// - 必须使引擎与上一次发话隔离，不得把残留内容带入下一次发话
+  ///
+  /// 各引擎语义差异:
+  /// - ZipformerEngine: 流式 transducer 的 `IsReady()` 判定为
+  ///   `已处理帧 + ChunkSize < 就绪帧`，不检查输入是否结束，因此末尾不足一个
+  ///   chunk 的尾帧永远进不了解码循环。实现方式为补静音 padding 把尾音顶过
+  ///   chunk 边界，解码后重建 OnlineStream 隔离会话。
+  /// - SenseVoiceEngine: 离线引擎，flush VAD 并处理最后一个语音段。
+  ASRResult finalizeUtterance();
+
+  /// 确保流就绪，必要时恢复。
+  ///
+  /// 偶发的流创建/重建失败（如内存碎片导致 FFI 返回 null）不应使引擎
+  /// 永久静默失效。调用方在每次发话 [start] 前调用，若流已被上一次
+  /// [finalizeUtterance] 重建成功则立刻返回 `true`；若处于恢复待决
+  /// 状态则重试一次。
+  ///
+  /// 返回 `true` 表示流已准备好接受音频输入。
+  bool ensureStreamReady();
+
   /// 标记输入结束
+  ///
+  /// 对流式 transducer (Zipformer) 是**空操作**: 上游 `IsReady()` 不检查
+  /// `input_finished_`，调用后不会多解出任何内容。收尾请改用
+  /// [finalizeUtterance]，它按引擎语义正确处理尾帧。
+  @Deprecated('收尾请使用 finalizeUtterance()，它对流式引擎才真正有效')
   void inputFinished();
 
   /// 释放资源

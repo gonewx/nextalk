@@ -92,12 +92,26 @@ class MockASREngine implements ASREngine {
   // Story 2-6: 记录收到的 ASRConfig
   ASRConfig? lastReceivedConfig;
 
+  // 尾字截断修复: 收尾调用计数与"补 padding 后才解出的完整文本"
+  int _finalizeUtteranceCalls = 0;
+  int _inputFinishedCalls = 0;
+  int _resetCalls = 0;
+  int _ensureStreamReadyCalls = 0;
+  String? _finalizeText;
+
   void setInitError(ASRError error) => _initError = error;
   void setReady(bool ready) => _ready = ready;
   void setResultText(String text) => _resultText = text;
 
+  /// 设定"收尾后才能拿到"的完整文本，用于验证尾字确实靠 finalizeUtterance 取回
+  void setFinalizeText(String text) => _finalizeText = text;
+
   int get acceptWaveformCalls => _acceptWaveformCalls;
   int get decodeCalls => _decodeCalls;
+  int get finalizeUtteranceCalls => _finalizeUtteranceCalls;
+  int get inputFinishedCalls => _inputFinishedCalls;
+  int get resetCalls => _resetCalls;
+  int get ensureStreamReadyCalls => _ensureStreamReadyCalls;
   Pointer<Float>? get lastReceivedBuffer => _lastReceivedBuffer; // H2 修复
 
   // Story 2-6: 重置端点 mock 状态
@@ -176,8 +190,36 @@ class MockASREngine implements ASREngine {
     return false;
   }
 
+  /// 模拟流恢复。默认健康；置 false 可模拟流重建失败后无法恢复的引擎，
+  /// 用于验证 pipeline 会把它当作启动失败而非静默继续。
+  bool _streamReady = true;
+  void setStreamReady(bool ready) => _streamReady = ready;
+
   @override
-  void inputFinished() {}
+  bool ensureStreamReady() {
+    _ensureStreamReadyCalls++;
+    return _streamReady;
+  }
+
+  @Deprecated('收尾请使用 finalizeUtterance()，它对流式引擎才真正有效')
+  @override
+  void inputFinished() {
+    _inputFinishedCalls++;
+  }
+
+  @override
+  ASRResult finalizeUtterance() {
+    _finalizeUtteranceCalls++;
+    // 真实 Zipformer 实现会补静音 padding 把尾帧解出来，这里模拟"收尾后
+    // 拿到的是含尾字的完整文本"，并重建流(等价于清空端点状态)。
+    if (_finalizeText != null) {
+      _resultText = _finalizeText!;
+    }
+    _endpointTriggered = false;
+    _endpointCallCount = 0;
+    _hasNewData = false;
+    return ASRResult(text: _resultText, tokens: [], timestamps: []);
+  }
 
   @override
   void reset() {
@@ -186,6 +228,7 @@ class MockASREngine implements ASREngine {
     // VAD 端点检测状态是 C 层内部状态，不会被重置。
     // Mock 实现重置这些状态是为了简化测试，但这与真实行为有差异。
     // 在集成测试中应使用真实的 ASREngine 验证 autoReset 行为。
+    _resetCalls++;
     _endpointTriggered = false;
     _endpointCallCount = 0;
   }
@@ -1275,6 +1318,111 @@ void main() {
       newMockAsrEngine.setEngineType(ASREngineType.sensevoice);
       await pipeline.switchEngine(newMockAsrEngine);
       expect(pipeline.lastError, equals(PipelineError.none));
+    });
+  });
+
+  group('尾字截断修复: finalizeUtterance() 收尾契约', () {
+    late MockAudioCapture mockAudioCapture;
+    late MockASREngine mockAsrEngine;
+    late MockModelManager mockModelManager;
+
+    setUp(() {
+      mockAudioCapture = MockAudioCapture();
+      mockAsrEngine = MockASREngine();
+      mockModelManager = MockModelManager();
+      mockModelManager.setModelReady(true);
+    });
+
+    test('stop() 用 finalizeUtterance() 收尾，不再调用废弃的 inputFinished()', () async {
+      final pipeline = AudioInferencePipeline(
+        audioCapture: mockAudioCapture,
+        asrEngine: mockAsrEngine,
+        modelManager: mockModelManager,
+      );
+
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('完整的句子尾字');
+
+      await pipeline.start();
+      await Future.delayed(const Duration(milliseconds: 100));
+      final text = await pipeline.stop();
+
+      expect(mockAsrEngine.finalizeUtteranceCalls, equals(1),
+          reason: 'stop() 必须恰好调用一次 finalizeUtterance() 拿含尾帧的结果');
+      expect(mockAsrEngine.inputFinishedCalls, equals(0),
+          reason: '不得再走废弃的 inputFinished() 路径，它会丢尾帧');
+      expect(text, equals('完整的句子尾字'), reason: '收尾结果应原样返回给调用方');
+
+      await pipeline.dispose();
+    });
+
+    test('stop() 后不再额外 reset()，会话隔离由 finalizeUtterance() 内部完成', () async {
+      final pipeline = AudioInferencePipeline(
+        audioCapture: mockAudioCapture,
+        asrEngine: mockAsrEngine,
+        modelManager: mockModelManager,
+      );
+
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('测试');
+
+      await pipeline.start();
+      await Future.delayed(const Duration(milliseconds: 100));
+      await pipeline.stop();
+
+      expect(mockAsrEngine.resetCalls, equals(0),
+          reason: 'finalizeUtterance() 已重建流，pipeline 再 reset() 属冗余');
+
+      await pipeline.dispose();
+    });
+
+    test('PTT 累积模式端点触发时不得收尾，否则后续音频无法累积', () async {
+      // autoStopOnEndpoint=false + autoReset=false 即 PTT 累积模式
+      final pttPipeline = AudioInferencePipeline(
+        audioCapture: mockAudioCapture,
+        asrEngine: mockAsrEngine,
+        modelManager: mockModelManager,
+        vadConfig: const VadConfig(
+          autoStopOnEndpoint: false,
+          autoReset: false,
+        ),
+      );
+
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('累积中');
+      mockAsrEngine.triggerEndpointAfterCalls = 2;
+
+      await pttPipeline.start();
+      await Future.delayed(const Duration(milliseconds: 400));
+
+      expect(mockAsrEngine.finalizeUtteranceCalls, equals(0),
+          reason: 'PTT 累积模式下端点触发只取中间结果，收尾会终结流导致后续音频丢失');
+
+      await pttPipeline.dispose();
+    });
+
+    test('设备丢失路径仍能通过 finalizeUtterance() 取到保留文本', () async {
+      final pipeline = AudioInferencePipeline(
+        audioCapture: mockAudioCapture,
+        asrEngine: mockAsrEngine,
+        modelManager: mockModelManager,
+      );
+
+      mockAsrEngine.setReady(true);
+      mockAsrEngine.setResultText('设备掉线前的内容');
+
+      await pipeline.start();
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // 模拟采集设备中途消失
+      mockAudioCapture.setReadError(AudioCaptureError.deviceUnavailable);
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      expect(pipeline.lastError, equals(PipelineError.deviceUnavailable));
+      expect(mockAsrEngine.finalizeUtteranceCalls, greaterThanOrEqualTo(1),
+          reason: '设备丢失也要收尾，否则已识别内容连同尾字一起丢掉');
+
+      await pipeline.dispose();
     });
   });
 }
