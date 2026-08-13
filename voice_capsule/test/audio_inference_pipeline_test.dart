@@ -99,6 +99,25 @@ class MockASREngine implements ASREngine {
   int _ensureStreamReadyCalls = 0;
   String? _finalizeText;
 
+  // issue #4 会话隔离: SenseVoice 式累积引擎模拟。
+  // 开启后 acceptWaveform 时把"当前段结果"(_resultText)追加进累积缓冲，
+  // getResult() 返回累积文本，finalizeUtterance() 返回累积文本并清空缓冲
+  // (与修复后的 SenseVoiceEngine 语义一致)。
+  bool _accumulateMode = false;
+  String _accumulatedText = '';
+  String _lastAccumulatedSegment = ''; // 去重: 同一段结果只累积一次
+
+  /// 开启 SenseVoice 式累积语义 (默认关闭，不影响既有 Zipformer 模拟)
+  void enableAccumulateMode() => _accumulateMode = true;
+
+  /// 把当前挂起段结果并入累积缓冲 (模拟 VAD 段完成; 同一段只并入一次)
+  void _accumulateSegment() {
+    if (_resultText.isNotEmpty && _resultText != _lastAccumulatedSegment) {
+      _accumulatedText += _resultText;
+      _lastAccumulatedSegment = _resultText;
+    }
+  }
+
   void setInitError(ASRError error) => _initError = error;
   void setReady(bool ready) => _ready = ready;
   void setResultText(String text) => _resultText = text;
@@ -149,6 +168,10 @@ class MockASREngine implements ASREngine {
   void acceptWaveform(int sampleRate, Pointer<Float> samples, int n) {
     _acceptWaveformCalls++;
     _lastReceivedBuffer = samples; // H2 修复: 记录指针
+    if (_accumulateMode) {
+      // SenseVoice 式累积: 模拟 VAD 段完成，把"当前段结果"追加进累积缓冲。
+      _accumulateSegment();
+    }
     // 当设置为 ready 模式时，每次接收音频后标记有新数据
     if (_ready) {
       _hasNewData = true;
@@ -170,8 +193,9 @@ class MockASREngine implements ASREngine {
 
   @override
   ASRResult getResult() {
+    // SenseVoice 式: 返回累积文本 (跨停顿累积、会话内文本拼接均靠它)
     return ASRResult(
-      text: _resultText,
+      text: _accumulateMode ? _accumulatedText : _resultText,
       tokens: [],
       timestamps: [],
     );
@@ -210,6 +234,25 @@ class MockASREngine implements ASREngine {
   @override
   ASRResult finalizeUtterance() {
     _finalizeUtteranceCalls++;
+    if (_accumulateMode) {
+      // SenseVoice 式: 先模拟真实引擎 finalize 时 flush 解出最后一个 VAD
+      // 段 (把挂起段并入累积缓冲)，再取含尾段的累积文本，然后清空累积
+      // 缓冲实现会话隔离 (issue #4)。若引擎实现违反"收尾后清空"契约，
+      // 第二次发话的结果会拼接第一次文本，会话隔离测试即失败。
+      //
+      // 限制说明: 真实 SenseVoiceEngine 的「先取结果后清空」顺序契约受
+      // FFI 依赖无法直接单测，mock 层仅能锚定「finalize 返回含最新段的
+      // 结果 + 返回后清空」语义。
+      _accumulateSegment();
+      final result =
+          ASRResult(text: _accumulatedText, tokens: [], timestamps: []);
+      _accumulatedText = '';
+      _lastAccumulatedSegment = '';
+      _endpointTriggered = false;
+      _endpointCallCount = 0;
+      _hasNewData = false;
+      return result;
+    }
     // 真实 Zipformer 实现会补静音 padding 把尾帧解出来，这里模拟"收尾后
     // 拿到的是含尾字的完整文本"，并重建流(等价于清空端点状态)。
     if (_finalizeText != null) {
@@ -1421,6 +1464,42 @@ void main() {
       expect(pipeline.lastError, equals(PipelineError.deviceUnavailable));
       expect(mockAsrEngine.finalizeUtteranceCalls, greaterThanOrEqualTo(1),
           reason: '设备丢失也要收尾，否则已识别内容连同尾字一起丢掉');
+
+      await pipeline.dispose();
+    });
+
+    test('SenseVoice 式累积引擎: 两次发话会话隔离，第二次结果不含第一次文本 (issue #4)',
+        () async {
+      final pipeline = AudioInferencePipeline(
+        audioCapture: mockAudioCapture,
+        asrEngine: mockAsrEngine,
+        modelManager: mockModelManager,
+      );
+
+      mockAsrEngine.enableAccumulateMode();
+      mockAsrEngine.setReady(true);
+
+      // 第一次发话: 文本被 VAD 段累积进引擎缓冲
+      mockAsrEngine.setResultText('今天天气不错');
+      await pipeline.start();
+      await Future.delayed(const Duration(milliseconds: 150));
+      final firstText = await pipeline.stop();
+      expect(firstText, equals('今天天气不错'),
+          reason: '第一次发话应返回本次累积的完整文本');
+
+      // 第二次发话: 若 finalizeUtterance() 未清空累积缓冲，结果会拼接
+      // 第一次文本 (issue #4 的 bug 复现条件)
+      mockAsrEngine.setResultText('我们明天打羽毛球');
+      await pipeline.start();
+      await Future.delayed(const Duration(milliseconds: 150));
+      final secondText = await pipeline.stop();
+
+      expect(secondText, equals('我们明天打羽毛球'),
+          reason: '会话隔离契约: 收尾后累积缓冲必须清空，第二次发话只含本次文本');
+      expect(secondText, isNot(contains('今天天气不错')),
+          reason: '新发话的识别结果不得含上次发话的任何残留文本');
+      expect(mockAsrEngine.finalizeUtteranceCalls, equals(2),
+          reason: '两次发话各收尾一次，锚定「一次发话只调用一次 finalizeUtterance」契约');
 
       await pipeline.dispose();
     });

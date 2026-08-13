@@ -23,3 +23,18 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-fix-fedora-inject-clipboard-fallback.md`
   summary: hotkey_controller 提交编排（隐藏窗口/等焦点/中断/失败恢复窗口→剪贴板）缺单测，需为 WindowService/TrayService 单例引入可注入缝隙后补编排级测试
   evidence: 对抗评审发现（blind-hunter #7）：fcitx 与 GNOME 两条编排路径均零覆盖；受限于 WindowService.instance 静态单例（先于本 story 存在的可测性限制），需先做 DI 改造，超出本 spec 范围
+
+## Deferred from: review of spec-gh-4-fix-sensevoice-accumulation (2026-08-13)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-4-fix-sensevoice-accumulation.md`
+  summary: VAD 自动停止模式（autoStopOnEndpoint: true）下端点触发后 stop() 返回值回归为空
+  evidence: _handleEndpoint 先调 finalizeUtterance() 清空 _lastResult，stop() 的 _vadTriggeredStop 分支改走 getResult() 返回空；SenseVoice 仅是对齐 Zipformer 自 38e9e9c 起的既有行为，且仅限端点触发后到采集循环清理（~300ms）的竞态窗口；生产 PTT 配置（main.dart）不受影响
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-4-fix-sensevoice-accumulation.md`
+  summary: 设备丢失路径二次调用 finalizeUtterance()，违反「一次发话只调用一次」契约，stop() 返回值变空
+  evidence: _handleDeviceLost 先收尾取文本，用户随后松键 stop() 再收尾返回空；对 Zipformer 同样存在（38e9e9c 设计），文本已经设备丢失事件提交，不影响用户体验
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-4-fix-sensevoice-accumulation.md`
+  summary: stop() 先收尾后停音频，采集循环残余 acceptWaveform 可能在 finalize 后追加进累积缓冲
+  evidence: stop() 等 loopCompleter 最多 300ms 后排空+收尾，循环线程 readAsync 阻塞超时场景下残余块晚于 finalize 到达；预先存在（38e9e9c 收尾时序设计），本次改动后残留量从全会话文本缩小为仅竞态残余段
+- source_spec: `_bmad-output/implementation-artifacts/spec-gh-4-fix-sensevoice-accumulation.md`
+  summary: autoStopOnEndpoint: true 模式下最终文本不进入提交流（387d6ba 移除自动提交的遗留）
+  evidence: 采集循环清理清空 _lastEmittedText，_onEndpoint 对非设备丢失事件只打日志，_submitFromVad 已无调用方；VAD 自动停止模式的提交链路整体失效，与本 fix 相邻但非本 story 引入

@@ -807,6 +807,13 @@ class SenseVoiceEngine implements ASREngine {
     return result;
   }
 
+  /// 清空本会话累积状态 (语义与 reset() 的清理一致)
+  void _clearSessionState() {
+    _lastResult = ASRResult.empty();
+    _accumulatedText = '';
+    _hasEndpoint = false;
+  }
+
   @override
   void reset() {
     if (!_isInitialized || _vad == null) return;
@@ -815,9 +822,7 @@ class SenseVoiceEngine implements ASREngine {
     SherpaOnnxVadBindings.voiceActivityDetectorReset(_vad!);
 
     // 清空结果和累积文本
-    _lastResult = ASRResult.empty();
-    _accumulatedText = '';
-    _hasEndpoint = false;
+    _clearSessionState();
   }
 
   /// flush VAD 并处理最后一个语音段。
@@ -834,12 +839,32 @@ class SenseVoiceEngine implements ASREngine {
     _processVadSegments();
   }
 
+  /// 结束当前发话，返回含尾帧的完整结果，并清空本会话累积状态。
+  ///
+  /// 顺序不可颠倒: 先 flush VAD 解出尾段 → 取结果 → 清空累积缓冲。
+  /// 若先清空再 flush，flush 出的尾段会被 append 进已清空的缓冲，
+  /// 结果丢尾字 (与 38e9e9c 的修复目标相悖)。清理逻辑放在 finally 中，
+  /// 即使 flush/取结果抛出异常也保证执行。
+  ///
+  /// 清理后引擎状态与 [reset] 一致: 原生侧重置 VAD 内部窗口状态
+  /// (voiceActivityDetectorReset，防止残留窗口并入下一次发话首段)，
+  /// Dart 侧清空 _lastResult/_accumulatedText/_hasEndpoint。
+  /// 保证「返回后引擎可安全接收下一次发话」。这是会话隔离的唯一保障:
+  /// pipeline 自 38e9e9c 起不再调用 reset()，跨会话文本拼接 (issue #4)
+  /// 全靠此处清理杜绝。
   @override
   ASRResult finalizeUtterance() {
     if (!_isInitialized || _vad == null) return ASRResult.empty();
 
-    _flushVadAndProcess();
-    return getResult();
+    try {
+      _flushVadAndProcess();
+      return getResult();
+    } finally {
+      // 原生侧: 重置 VAD 内部窗口状态，防止残留音频并入下一次发话首段
+      SherpaOnnxVadBindings.voiceActivityDetectorReset(_vad!);
+      // Dart 侧: 清空本会话累积状态，语义与 reset() 对齐
+      _clearSessionState();
+    }
   }
 
   /// 离线引擎没有 OnlineStream，收尾只重置 VAD 状态、不销毁任何原生对象，
@@ -847,6 +872,9 @@ class SenseVoiceEngine implements ASREngine {
   @override
   bool ensureStreamReady() => _isInitialized && _vad != null;
 
+  /// ⚠️ 注意: 此方法只 flush VAD 处理尾段，**不会**清空累积缓冲/结果状态，
+  /// 调用后引擎仍残留本会话文本。收尾（含会话隔离清理）请使用
+  /// [finalizeUtterance]。
   @Deprecated('收尾请使用 finalizeUtterance()，它对流式引擎才真正有效')
   @override
   void inputFinished() {
@@ -875,9 +903,7 @@ class SenseVoiceEngine implements ASREngine {
     _isInitialized = false;
     _lib = null;
     _config = null;
-    _lastResult = ASRResult.empty();
-    _accumulatedText = '';
-    _hasEndpoint = false;
+    _clearSessionState();
   }
 }
 
