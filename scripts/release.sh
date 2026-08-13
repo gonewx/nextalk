@@ -138,6 +138,23 @@ main() {
 
     # 4. 创建并推送 tag
     echo -e "${YELLOW}[4/4] 创建 tag 并触发 CI...${NC}"
+
+    # tag 可能已存在（如 current 模式下重新发布同一版本），需确认是否迁移到当前提交
+    if git rev-parse "v$NEW_VERSION" >/dev/null 2>&1 || \
+       [[ -n $(git ls-remote --tags origin "refs/tags/v$NEW_VERSION") ]]; then
+        OLD_TAG_COMMIT=$(git rev-parse --short "v$NEW_VERSION" 2>/dev/null || echo "仅远端")
+        echo -e "${RED}警告: tag v$NEW_VERSION 已存在 (指向 $OLD_TAG_COMMIT)${NC}"
+        echo "当前提交: $(git rev-parse --short HEAD)"
+        read -p "是否将 tag 迁移到当前提交? (y/N) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            echo "已取消 tag 创建（代码已推送）"
+            exit 0
+        fi
+        git push origin --delete "v$NEW_VERSION" 2>/dev/null || true
+        git tag -d "v$NEW_VERSION" 2>/dev/null || true
+    fi
+
     git tag "v$NEW_VERSION"
     git push origin "v$NEW_VERSION"
 
