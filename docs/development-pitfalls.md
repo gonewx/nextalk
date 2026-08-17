@@ -13,6 +13,7 @@ This document records technical issues encountered during Nextalk development, r
 - [Two Normal Mechanisms Behind the GNOME Global Shortcuts Dialog "Not Showing"](#two-normal-mechanisms-behind-the-gnome-global-shortcuts-dialog-not-showing)
 - [60s Portal Dialog Interaction Timeout Breaks Slow-User Binding](#60s-portal-dialog-interaction-timeout-breaks-slow-user-binding)
 - [Instant Segfault on Fedora: Upstream system_tray dlopens the Legacy libappindicator](#instant-segfault-on-fedora-upstream-system_tray-dlopens-the-legacy-libappindicator)
+- [Window Positioning APIs Are Inert on the Native Wayland Backend (Prefer-XWayland Decision)](#window-positioning-apis-are-inert-on-the-native-wayland-backend-prefer-xwayland-decision)
 
 ---
 
@@ -265,6 +266,121 @@ if (!handle) {
 - Add `Conflicts: libappindicator` to the rpm: meddles with the user's system packages; other apps may need the legacy lib
 - Tell users to `dnf remove libappindicator`: treats the symptom; fresh installs would still hit it
 - Submit the patch upstream: should be done (the patch is directly contributable), but the upstream release cadence is out of our control — vendoring ships first
+
+---
+
+## Window Positioning APIs Are Inert on the Native Wayland Backend (Prefer-XWayland Decision)
+
+### Problem Description
+
+The capsule window always appears in the top-left corner of the screen, and after
+the user drags it elsewhere the next invocation still snaps back to the top-left.
+The position keys in `~/.local/share/nextalk/shared_preferences.json` end up
+written as `0.0/0.0`.
+
+### Reproduction Scenario
+
+The `.desktop` file has carried `Exec=env GDK_BACKEND=x11 ...` all along, but when
+no instance is running `scripts/nextalk-toggle.sh` cold-starts through
+`exec nextalk --toggle`, bypassing the `.desktop` env entirely — so the app runs on
+the native Wayland backend.
+
+### Root Cause Analysis
+
+The Wayland protocol does not let a client position its own toplevel. Probe output
+measured on GNOME/Ubuntu with `XDG_SESSION_TYPE=wayland` and a GTK3 undecorated
+UTILITY window:
+
+```
+=== NATIVE WAYLAND ===        === FORCED X11 (XWayland) ===
+T1_INITIAL=(0,0)              T1_INITIAL=(58,0)
+T2_MOVE_CALLED(700,900)       T2_MOVE_CALLED(700,900)
+T3_AFTER_MOVE_SETTLED=(0,0)   T3_AFTER_MOVE_SETTLED=(700,900)
+```
+
+Conclusion: on the native Wayland backend `gtk_window_move()` is a complete no-op
+and `gtk_window_get_position()` always returns `(0,0)`; under XWayland both work.
+
+This single fact explains three linked symptoms:
+
+1. Default positioning silently fails (`setPosition` has no effect).
+2. `savePosition()` writes the pseudo-value `(0,0)` into prefs.
+3. Even a later XWayland start faithfully "restores" to the top-left — because
+   `(0,0)` used to be treated as a legitimate coordinate.
+
+### Solution
+
+**Prefer XWayland for the app process** by setting a GDK backend fallback chain in
+`main()`, before GTK/GDK initialization:
+
+```cpp
+// voice_capsule/linux/runner/main.cc
+setenv("GDK_BACKEND", "x11,wayland", 0);
+```
+
+All three preconditions are mandatory:
+
+- **It must be a fallback chain, not plain `x11`.** With plain `x11`, the moment no
+  X server is reachable GTK prints `cannot open display` and exits with code 1 —
+  escalating "wrong position" into "won't start at all". **Launchability outranks
+  positioning correctness.**
+
+  Probing `getenv("DISPLAY")` yourself is not enough either: it misses "DISPLAY is
+  set but the X server is unreachable" (a stale `DISPLAY=:0` in a pure Wayland
+  session, dead SSH X forwarding). Measured comparison:
+
+  | Scenario | `GDK_BACKEND=x11,wayland` | plain `x11` + DISPLAY probe |
+  | --- | --- | --- |
+  | X available | ok, backend=x11 | ok, backend=x11 |
+  | no `DISPLAY` | ok, backend=wayland | probe skips injection → wayland |
+  | `DISPLAY=:99` (unreachable) | ok, backend=wayland | **gtk_init_check FAILED** |
+
+  The chain delegates the availability decision to GDK, covers more cases, and
+  removes the hand-rolled probe.
+
+- **Never override an explicit user setting**: `overwrite=0` (shell side:
+  `${GDK_BACKEND:-x11,wayland}`), preserving the escape hatch.
+- **Every entry point must agree.** `.desktop`, the `nextalk-toggle.sh` cold-start
+  fallback, and running the binary directly — otherwise one path always slips
+  through.
+
+⚠️ **This is a global decision**: when X is available the entire app process runs on
+XWayland, so the tray icon (`system_tray` / libayatana-appindicator), Portal global
+shortcuts, and fcitx5 text injection all operate under XWayland semantics. Any
+change to this decision requires re-verifying those three subsystems.
+
+**Companion safeguards for position persistence** (downstream of the same cause):
+
+- `(0,0)` is always rejected as the Wayland pseudo-value signature, blocking stale
+  dirty values from coming back to life.
+- Confirm the window is visible before saving; coordinates read while hidden are
+  not trustworthy.
+- The Linux side of window_manager only emits `move` (from `configure-event`) and
+  **never emits `moved`**, so `onWindowMoved()` is a dead callback — the save hook
+  must live on `onWindowMove()` with debouncing.
+- `setSize()` also triggers `configure-event`, and the WM may translate the window
+  along the way (measured: a resize at `4600,1300` moved it to `4580,900`). Saving
+  must be suppressed during programmatic geometry changes, otherwise the capsule
+  ends up permanently misplaced after the wizard or the expanded state.
+
+### Related Files
+
+- `voice_capsule/linux/runner/main.cc` — GDK backend fallback chain `x11,wayland`
+- `scripts/nextalk-toggle.sh` — the same fallback chain on the cold-start path
+  (transitional belt-and-braces)
+- `packaging/deb/com.gonewx.nextalk.desktop` — `Exec=env GDK_BACKEND=x11 ...`
+- `voice_capsule/lib/services/flutter_window_backend.dart` — save/restore logic
+- `voice_capsule/lib/constants/window_constants.dart` — work-area checks and
+  default position
+- `scripts/verify-transparent-window.sh` — regression check for the fallback chain
+
+### Alternative Solutions (Not Adopted)
+
+- **layer-shell / GNOME Shell extension positioning**: works on native Wayland but
+  introduces a new window-positioning dependency, and the extension route depends
+  on the GNOME version plus manual user enablement.
+- **Dropping position memory on native Wayland**: that deletes the feature, while
+  the user's actual request is "remember where I dragged it".
 
 ---
 

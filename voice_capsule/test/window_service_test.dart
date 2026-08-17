@@ -70,10 +70,15 @@ void main() {
 
     test('should validate position bounds using WindowConstants', () async {
       // 使用 WindowConstants.isValidPosition 方法进行测试
+      // 不传 workAreas 时退回兜底矩形粗判:
       // 有效范围: x in [positionMinX, positionMaxX), y in [positionMinY, positionMaxY)
+      // 兜底矩形正负对称且覆盖多屏总跨度，因此 -1000 / 5000 这类多屏合法坐标
+      // 都算有效；按真实工作区判定的用例见 test/constants/window_position_test.dart
+
+      // (0,0) 是 Wayland 原生后端的伪值签名，一律判为无效遗留值
+      expect(WindowConstants.isValidPosition(0, 0), false);
 
       // 有效位置
-      expect(WindowConstants.isValidPosition(0, 0), true);
       expect(WindowConstants.isValidPosition(100, 200), true);
       expect(
           WindowConstants.isValidPosition(WindowConstants.positionMinX + 1,
@@ -83,8 +88,11 @@ void main() {
           WindowConstants.isValidPosition(WindowConstants.positionMaxX - 1,
               WindowConstants.positionMaxY - 1),
           true);
+      // 副屏在主屏左侧的合法负坐标
+      expect(WindowConstants.isValidPosition(-1000, 0), true);
+      expect(WindowConstants.isValidPosition(0, 5000), true);
 
-      // 无效位置 (屏幕外)
+      // 无效位置 (超出兜底矩形)
       expect(
           WindowConstants.isValidPosition(WindowConstants.positionMinX - 1, 0),
           false);
@@ -95,8 +103,8 @@ void main() {
           false);
       expect(WindowConstants.isValidPosition(0, WindowConstants.positionMaxY),
           false);
-      expect(WindowConstants.isValidPosition(-1000, 0), false);
-      expect(WindowConstants.isValidPosition(0, 5000), false);
+      // 非有限值
+      expect(WindowConstants.isValidPosition(double.nan, 0), false);
     });
   });
 }

@@ -13,6 +13,7 @@
 - [GNOME 全局快捷键授权对话框"不弹框"的两种正常机制](#gnome-全局快捷键授权对话框不弹框的两种正常机制)
 - [Portal 授权对话框 60s 交互超时导致慢速用户绑定失效](#portal-授权对话框-60s-交互超时导致慢速用户绑定失效)
 - [Fedora 启动即段错误：system_tray 上游 dlopen 旧版 libappindicator](#fedora-启动即段错误system_tray-上游-dlopen-旧版-libappindicator)
+- [Wayland 原生后端下窗口定位 API 完全失效（优先 XWayland 决策）](#wayland-原生后端下窗口定位-api-完全失效优先-xwayland-决策)
 
 ---
 
@@ -265,6 +266,104 @@ if (!handle) {
 - rpm 加 `Conflicts: libappindicator`: 干涉用户系统包,其他应用可能需要旧库
 - 提示用户 `dnf remove libappindicator`: 治标,新装环境仍会踩坑
 - 向上游提 PR: 应该做（补丁可直接贡献）,但上游更新节奏不可控,vendored 先行
+
+---
+
+## Wayland 原生后端下窗口定位 API 完全失效（优先 XWayland 决策）
+
+### 问题描述
+
+胶囊窗口每次都出现在屏幕左上角，用户拖动过后下次唤起仍还原到左上角。
+`~/.local/share/nextalk/shared_preferences.json` 里的位置键被写成了 `0.0/0.0`。
+
+### 复现场景
+
+`.desktop` 里早已有 `Exec=env GDK_BACKEND=x11 ...`，但 `scripts/nextalk-toggle.sh`
+在无运行实例时走 `exec nextalk --toggle` 冷启动，绕过了 `.desktop` 的 env，
+应用以原生 Wayland 后端运行。
+
+### 根因分析
+
+Wayland 协议不允许客户端定位自己的 toplevel。在 GNOME/Ubuntu、
+`XDG_SESSION_TYPE=wayland`、GTK3 无边框 UTILITY 窗口下实测探针输出：
+
+```
+=== NATIVE WAYLAND ===        === FORCED X11 (XWayland) ===
+T1_INITIAL=(0,0)              T1_INITIAL=(58,0)
+T2_MOVE_CALLED(700,900)       T2_MOVE_CALLED(700,900)
+T3_AFTER_MOVE_SETTLED=(0,0)   T3_AFTER_MOVE_SETTLED=(700,900)
+```
+
+结论：Wayland 原生后端下 `gtk_window_move()` 完全 no-op、
+`gtk_window_get_position()` 恒返回 `(0,0)`；XWayland 下两者均正常。
+
+这一条同时解释了三个连带症状：
+
+1. 默认定位失效（`setPosition` 无效）。
+2. `savePosition()` 把伪值 `(0,0)` 写进 prefs。
+3. 之后即便以 XWayland 启动，也会忠实"恢复"到左上角 —— 因为 `(0,0)` 曾被
+   判定为合法坐标。
+
+### 解决方案
+
+**应用进程优先 XWayland**，在 `main()` 里、GTK/GDK 初始化之前设置 GDK 后端回退链：
+
+```cpp
+// voice_capsule/linux/runner/main.cc
+setenv("GDK_BACKEND", "x11,wayland", 0);
+```
+
+三条前提缺一不可：
+
+- **必须是回退链，不能只写 `x11`**。只写 `x11` 时，一旦拿不到 X server，GTK 直接
+  报 `cannot open display` 并以退出码 1 结束 —— 那等于把"位置不对"升级成"完全
+  打不开"。**可启动性优先于位置正确性。**
+
+  自己探测 `getenv("DISPLAY")` 非空也不够：它漏掉"DISPLAY 有值但 X server 不可达"
+  （纯 Wayland 会话残留的 `DISPLAY=:0`、失效的 SSH X 转发）。实测对照：
+
+  | 场景 | `GDK_BACKEND=x11,wayland` | 仅 `x11` + DISPLAY 探测 |
+  | --- | --- | --- |
+  | X 可用 | ok, backend=x11 | ok, backend=x11 |
+  | 无 `DISPLAY` | ok, backend=wayland | 跳过注入 → wayland |
+  | `DISPLAY=:99`（不可达） | ok, backend=wayland | **gtk_init_check FAILED** |
+
+  回退链把可用性判断交给 GDK，覆盖更全，也省掉自研探测代码。
+
+- **用户显式设置不覆盖**：`overwrite=0`（shell 侧对应 `${GDK_BACKEND:-x11,wayland}`），
+  保留逃逸阀。
+- **所有入口一致**：`.desktop`、`nextalk-toggle.sh` 冷启动回退、直接执行二进制
+  三条路径都要覆盖，否则总有一条会绕过。
+
+⚠️ **这是一个影响全局的决策**：有 X 时整个应用进程运行在 XWayland 上，因此托盘图标
+（`system_tray` / libayatana-appindicator）、Portal 全局快捷键、fcitx5 文本注入
+都跑在 XWayland 语义下。改动这个决策必须重新验证这三项。
+
+**位置持久化的配套防护**（同一根因的下游）：
+
+- `(0,0)` 作为 Wayland 伪值签名一律判为无效，阻断存量脏值复活。
+- 保存前确认窗口可见；不可见时读到的坐标不可信。
+- window_manager 的 Linux 端只发射 `move`（`configure-event`）、**从不发射
+  `moved`**，所以 `onWindowMoved()` 是死回调，保存时机必须挂在 `onWindowMove()`
+  上并加防抖。
+- `setSize()` 同样触发 `configure-event`，且 WM 可能顺带平移窗口（实测在
+  `4600,1300` 处 resize 后被平移到 `4580,900`）。程序化几何变更期间必须抑制
+  位置保存，否则向导/展开态之后胶囊会永久停在错位处。
+
+### 相关文件
+
+- `voice_capsule/linux/runner/main.cc` —— GDK 后端回退链 `x11,wayland`
+- `scripts/nextalk-toggle.sh` —— 冷启动回退路径的同一条回退链（过渡期双保险）
+- `packaging/deb/com.gonewx.nextalk.desktop` —— `Exec=env GDK_BACKEND=x11 ...`
+- `voice_capsule/lib/services/flutter_window_backend.dart` —— 位置保存/恢复逻辑
+- `voice_capsule/lib/constants/window_constants.dart` —— 工作区判定与默认位置
+- `scripts/verify-transparent-window.sh` —— 后端回退链的回归检查
+
+### 备选方案（未采用）
+
+- **layer-shell / GNOME Shell 扩展定位**：能在原生 Wayland 下定位，但引入新的
+  窗口定位依赖，且扩展方案受 GNOME 版本与用户手工启用制约。
+- **在原生 Wayland 下放弃位置记忆**：等于删功能，用户诉求正是"记住我拖到的位置"。
 
 ---
 

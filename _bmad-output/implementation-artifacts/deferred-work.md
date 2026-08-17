@@ -38,3 +38,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-gh-4-fix-sensevoice-accumulation.md`
   summary: autoStopOnEndpoint: true 模式下最终文本不进入提交流（387d6ba 移除自动提交的遗留）
   evidence: 采集循环清理清空 _lastEmittedText，_onEndpoint 对非设备丢失事件只打日志，_submitFromVad 已无调用方；VAD 自动停止模式的提交链路整体失效，与本 fix 相邻但非本 story 引入
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-capsule-position-persistence.md`
+  summary: 托盘退出路径的 `await` 无测试守卫——去掉 `tray_service.dart` 里 `await WindowService.instance.dispose()` 的 await，769 项测试仍全绿
+  evidence: 已实测确认。新增的「退出链落盘 (WindowService 层)」测试自己写了 `await WindowService.instance.dispose()`，验证的是该方法本身能落盘，而非真实退出路径是否等它完成。`_exitApp()` 以 `exit(0)` 结尾，直接测会杀死测试进程，故需要别的守卫手段。已试 `unawaited_futures` lint：能正确报出该处缺失的 await，但全项目启用会新增 23 处既有告警（89→112），淹没信号；需先清理既有告警或只对该文件启用。后果是「拖动后立刻从托盘退出」的落盘保证可被一次清理式改动静默取消。
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-fix-capsule-position-persistence.md`
+  summary: CI 不跑 flutter test，也不调用任何 scripts/verify-*.sh，本次新增的全部回归护栏在 CI 中不生效（既有问题）
+  evidence: 已实测确认 `.github/workflows/release.yml` 中 `flutter test` 出现 0 次，只有 `flutter pub get` + `flutter build linux --release`；`docker.yml` 只构建镜像。本次三条破坏性判据（空 onWindowMove / 删 addListener / 退出 await）与 verify 脚本都只在有人本地手动运行时才起作用。

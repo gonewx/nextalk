@@ -37,7 +37,27 @@ fi
 if [ "$CMD" = "hide" ]; then
   exit 0
 fi
+# 启动应用，注入 GDK 后端回退链 x11,wayland。
+#
+# 为什么优先 x11: Wayland 原生后端下窗口定位 API 不可用（gtk_window_move no-op、
+# gtk_window_get_position 恒为 0,0），胶囊位置与位置记忆全部失效。.desktop 早已
+# 走 x11 路线，本脚本的冷启动回退曾是绕过它的漏口。
+#
+# 为什么是回退链而不是自己探测 $DISPLAY: "x11,wayland" 由 GDK 依次尝试并自行
+# 判定可用性。实测 DISPLAY=:99（有值但 X server 不可达，纯 Wayland 会话的残留
+# DISPLAY 或失效的 SSH X 转发都是这种）下，"仅 x11" 会 gtk_init_check FAILED
+# 直接起不来，而回退链正常回落 wayland。可启动性优先于位置正确性。
+#
+# ${GDK_BACKEND:-...} 只在未显式设置时注入，且把空串视同未设置
+# （与 voice_capsule/linux/runner/main.cc 的 overwrite=0 语义一致）。
+#
+# 这是过渡期双保险 —— runner 层已内建同一条回退链，等所有部署都换成新二进制后
+# 本函数可以移除。
+run_app() {
+  exec env GDK_BACKEND="${GDK_BACKEND:-x11,wayland}" "$@"
+}
+
 if command -v nextalk >/dev/null 2>&1; then
-  exec nextalk "--${CMD}"
+  run_app nextalk "--${CMD}"
 fi
-exec /opt/nextalk/nextalk "--${CMD}"
+run_app /opt/nextalk/nextalk "--${CMD}"

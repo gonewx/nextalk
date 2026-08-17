@@ -207,8 +207,11 @@ class WindowService with WindowListener {
   // 清理
   // ============================================
 
-  void dispose() {
-    _backend?.dispose();
+  /// 释放窗口服务
+  ///
+  /// 必须 await：后端会在此把挂起的防抖位置真正落盘（拖动后立刻退出时唯一的机会）
+  Future<void> dispose() async {
+    await _backend?.dispose();
     _isInitialized = false;
   }
 

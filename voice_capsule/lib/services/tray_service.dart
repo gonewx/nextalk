@@ -540,8 +540,8 @@ class TrayService {
       await onBeforeExit!();
     }
 
-    // 2. 释放窗口服务
-    WindowService.instance.dispose();
+    // 2. 释放窗口服务 (必须 await: 内部会把挂起的位置落盘)
+    await WindowService.instance.dispose();
 
     // 3. 销毁托盘
     await _systemTray.destroy();
