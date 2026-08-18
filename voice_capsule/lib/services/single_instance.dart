@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 /// 单实例管理器
 /// SCP-002: 支持 --toggle 命令行参数
 ///
@@ -23,8 +25,29 @@ class SingleInstance {
   /// 是否正在运行
   bool get isRunning => _isRunning;
 
+  /// 命令处理完毕后回写给客户端的确认字节 (ASCII ACK)。
+  ///
+  /// 存在的理由：Unix socket 的 listen backlog 会让 connect()/write() 在
+  /// **没有任何人 accept** 的情况下照样成功——内核只管把连接放进队列。一旦
+  /// Dart isolate 已死而进程空壳仍持有 socket，nextalk-toggle 就会把"内核收下了"
+  /// 误判成"应用处理了"，从此永远不走冷启动回退，用户按多少次都零反应。
+  /// 只有应用层亲自回一个字节，才能证明命令真的被 onCommand 消费掉了。
+  static const int ackByte = 0x06;
+
+  /// 测试专用的 socket 路径覆盖点。
+  ///
+  /// 必须存在的理由: [socketPath] 默认取 XDG_RUNTIME_DIR, 而 Dart 测试改不了
+  /// Platform.environment。若不覆盖, 测试会去 bind 用户**正在运行**的实例的
+  /// socket, 甚至把它当残留文件删掉 —— 跑一次测试就把用户的语音输入搞坏。
+  @visibleForTesting
+  static String? socketPathOverride;
+
   /// 获取 Socket 路径
   String get socketPath {
+    final override = socketPathOverride;
+    if (override != null) {
+      return override;
+    }
     final runtimeDir = Platform.environment['XDG_RUNTIME_DIR'];
     if (runtimeDir != null && runtimeDir.isNotEmpty) {
       return '$runtimeDir/nextalk.sock';
@@ -155,10 +178,20 @@ class SingleInstance {
       // ignore: avoid_print
       print('[SingleInstance] 收到命令: $command');
 
-      // 触发回调
+      // 触发回调。回调抛错不能打断后面的 ACK 与 buffer 清理:
+      // 少回一个 ACK 会让 nextalk-toggle 白花一轮 /proc 存活判定, 而 buffer
+      // 不清理更糟 —— 这条命令会残留在缓冲区里, 被后续每次数据到达反复重放。
       if (onCommand != null) {
-        onCommand!(command);
+        try {
+          onCommand!(command);
+        } catch (e) {
+          // ignore: avoid_print
+          print('[SingleInstance] 命令处理异常: $e');
+        }
       }
+
+      // 回写 ACK：证明这一字节出自应用层代码, 而非内核代收 (对端可能已 close，失败无害)
+      _sendAck(client);
 
       // 清除已处理的数据
       buffer.clear();
@@ -166,6 +199,23 @@ class SingleInstance {
         buffer.add(data.sublist(4 + len));
       }
     }
+  }
+
+  /// 回写单字节 ACK。
+  ///
+  /// `nextalk --toggle` 内部的 [sendCommandToRunningInstance] 发完即 close,
+  /// 不读 ACK, 于是这里几乎必然撞上已关闭的连接。两条失败路径都得堵住:
+  ///   - IOSink 自身已关闭 -> [Socket.add] **同步**抛 StateError
+  ///   - 对端先行 close -> write 的 EPIPE 经 [Socket.done] **异步**上报,
+  ///     不接住就会冒泡成未捕获异常 (被 runZonedGuarded 记成 Unhandled 脏日志)
+  /// 两者都无害: ACK 只是给 nextalk-toggle 的存活证明, 送不到不影响命令已执行。
+  void _sendAck(Socket client) {
+    try {
+      client.add(const [ackByte]);
+    } catch (_) {
+      return; // IOSink 已关闭
+    }
+    client.done.ignore();
   }
 
   /// 停止服务

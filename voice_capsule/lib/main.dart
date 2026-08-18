@@ -84,25 +84,20 @@ Future<bool> _handleCommandLineArgs(List<String> args) async {
     // 尝试发送命令给运行中的实例
     final sent = await SingleInstance.instance.sendCommandToRunningInstance(cmdName);
 
+    final decision = decideCommandAction(command, commandSent: sent);
+    _pendingStartupCommand = decision.pendingCommand;
+
     if (sent) {
-      // 命令已发送，退出当前进程
       // ignore: avoid_print
       print('[main] 命令已发送到运行中的实例: $cmdName');
-      return false;
+    } else if (decision.pendingCommand != null) {
+      // ignore: avoid_print
+      print('[main] 无运行实例，启动应用并在就绪后执行: $cmdName');
     } else {
-      // 没有运行中的实例
-      if (command == '--toggle' || command == '--show') {
-        // 启动应用并显示窗口
-        // ignore: avoid_print
-        print('[main] 无运行实例，启动应用');
-        return true;
-      } else {
-        // --hide 但没有运行实例，直接退出
-        // ignore: avoid_print
-        print('[main] 无运行实例，忽略 hide 命令');
-        return false;
-      }
+      // ignore: avoid_print
+      print('[main] 无运行实例，忽略 hide 命令');
     }
+    return decision.shouldContinue;
   }
 
   // 未知命令，显示帮助
@@ -110,6 +105,70 @@ Future<bool> _handleCommandLineArgs(List<String> args) async {
   print('未知命令: $command\n');
   _printHelp();
   exit(1);
+}
+
+/// [decideCommandAction] 的结果
+@visibleForTesting
+class StartupDecision {
+  const StartupDecision({
+    required this.shouldContinue,
+    required this.pendingCommand,
+  });
+
+  /// 是否继续把应用启动起来
+  final bool shouldContinue;
+
+  /// 应用就绪后需要补执行的命令 (null 表示无)
+  final String? pendingCommand;
+}
+
+/// 决定 --toggle/--show/--hide 在"命令是否已送达运行中实例"下各自该怎么做。
+///
+/// 抽成无 IO 的纯函数只为可测: 冷启动漏掉 pendingCommand 会让用户的第一次
+/// 按键静默丢失(应用被拉起但窗口不显示、录音不开始), 这是必须有回归护栏的分支。
+@visibleForTesting
+StartupDecision decideCommandAction(String command,
+    {required bool commandSent}) {
+  if (commandSent) {
+    // 已有实例接手, 本进程只是个信使, 直接退出
+    return const StartupDecision(shouldContinue: false, pendingCommand: null);
+  }
+  if (command == '--toggle' || command == '--show') {
+    // 冷启动: 记住原始意图, 待引擎预热完再补执行
+    return StartupDecision(
+        shouldContinue: true, pendingCommand: command.substring(2));
+  }
+  // --hide 且无实例可隐藏: 无事可做
+  return const StartupDecision(shouldContinue: false, pendingCommand: null);
+}
+
+/// 冷启动时用户的原始意图 (--toggle / --show)，待应用就绪后补执行。
+///
+/// 只在"没有运行实例"的冷启动路径被赋值; 常驻实例走 socket, 与此无关。
+String? _pendingStartupCommand;
+
+/// 补执行冷启动意图。
+///
+/// 走与 socket 命令完全相同的入口 (HotkeyController)，避免两条路径行为分叉。
+/// 失败只记日志: 应用已经起来了, 用户再按一次快捷键即可, 不该因此让启动失败。
+void _runPendingStartupCommand() {
+  final command = _pendingStartupCommand;
+  if (command == null) return;
+  _pendingStartupCommand = null;
+
+  DiagnosticLogger.instance.info('main', '冷启动补执行命令: $command');
+  try {
+    // toggle 与 show 在 idle 状态下等价(都是开始录音), 但仍分别派发以保持
+    // 与 socket 路径一致的语义
+    if (command == 'show') {
+      HotkeyController.instance.show();
+    } else {
+      HotkeyController.instance.toggle();
+    }
+  } catch (e) {
+    DiagnosticLogger.instance
+        .warn('main', '冷启动补执行 $command 失败(不影响应用运行): $e');
+  }
 }
 
 /// 打印帮助信息
@@ -550,6 +609,13 @@ Future<void> main(List<String> args) async {
     ));
 
     DiagnosticLogger.instance.info('main', '应用初始化完成');
+
+    // 13. 冷启动补执行用户的原始意图 (--toggle / --show)
+    //
+    // 位置刻意放在最后: 必须等 _preInitializeEngine 的预热与 HotkeyController
+    // 初始化都完成, 否则录音会赶在引擎就绪前开始, 首句必然丢字 (这正是
+    // 03bf162 / 38e9e9c 两次修复过的老问题, 不能在这里重新引入)。
+    _runPendingStartupCommand();
   }, (error, stackTrace) {
     // Story 3-7: 捕获未处理异常 (AC17, AC18)
     DiagnosticLogger.instance.exception('Unhandled', error, stackTrace);
