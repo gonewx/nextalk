@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:yaml/yaml.dart';
 
 import '../constants/settings_constants.dart';
+import 'text_post_processor.dart';
 
 /// 模型切换回调类型 (Zipformer 版本切换)
 typedef ModelSwitchCallback = Future<void> Function(ModelType newType);
@@ -28,6 +29,9 @@ class SettingsService {
 
   // 缓存的 YAML 配置
   Map<String, dynamic>? _yamlConfig;
+
+  // 由 YAML `text:` 节构建的文本后处理器 (配置重载时失效)
+  TextPostProcessor? _textPostProcessor;
 
   /// 实际运行的引擎类型 (运行时状态，可能因回退与配置不同)
   /// 这是引擎状态的**单一来源**，所有组件都应从这里读取
@@ -89,6 +93,7 @@ class SettingsService {
 
   /// 加载 YAML 配置
   Future<void> _loadYamlConfig() async {
+    _textPostProcessor = null;
     try {
       final settingsFile = File(SettingsConstants.settingsFilePath);
       if (settingsFile.existsSync()) {
@@ -291,6 +296,17 @@ class SettingsService {
     final value = _yamlConfig?['model']?['sensevoice']?['use_itn'];
     if (value is bool) return value;
     return SettingsConstants.defaultSenseVoiceUseItn;
+  }
+
+  // ===== 文本后处理 (自动纠错) =====
+
+  /// 识别文本后处理器，读取 settings.yaml 的 `text:` 节
+  ///
+  /// 未初始化或未配置时使用默认规则 (默认开启自动纠错)。
+  TextPostProcessor get textPostProcessor {
+    final text = _yamlConfig?['text'];
+    return _textPostProcessor ??= TextPostProcessor.fromConfig(
+        text is Map<String, dynamic> ? text : null);
   }
 
   /// 获取 SenseVoice language 配置

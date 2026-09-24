@@ -187,6 +187,7 @@ class LanguageService {
 
       // 通用
       'listening': '正在聆听...',
+      'esc_cancel_hint': 'Esc 取消',
       'app_name': 'Nextalk',
       'copy': '复制',
     },
@@ -256,6 +257,7 @@ class LanguageService {
 
       // 通用
       'listening': 'Listening...',
+      'esc_cancel_hint': 'Esc to cancel',
       'app_name': 'Nextalk',
       'copy': 'Copy',
     },

@@ -94,6 +94,9 @@ Without the extension enabled, the app automatically falls back to clipboard mod
 3. **Speak** - See recognized text in real-time
 4. **Press Hotkey Again** - Stop recording, text auto-inputs to current app
 5. **Or Wait for Auto-submit** - Text submits automatically after pause
+6. **Press Esc to Cancel** - While recording, Esc discards the input and nothing is typed (captured by the Fcitx5 addon or GNOME extension; Esc behaves normally otherwise)
+
+> **Auto-correction**: Before committing, Nextalk fixes all-caps English, filler words (um, uh, 嗯, 呃), repeated words and half-width punctuation in Chinese text. Tune it under `text:` in `~/.config/nextalk/settings.yaml`, and add your own fixes via `replacements` (e.g. `"get hub": "GitHub"`).
 
 > **First Run**: The app will automatically download the speech recognition model (~200MB)
 
@@ -102,6 +105,7 @@ Without the extension enabled, the app automatically falls back to clipboard mod
 | Option | Description |
 |--------|-------------|
 | `--toggle` | Toggle recording state (for system hotkey) |
+| `--cancel` | Cancel the current recording without typing (same as Esc) |
 | `audio` | Manage audio input device (interactive mode) |
 | `audio <number>` | Set audio device by index number directly |
 | `audio --list` | List available devices (machine-readable) |

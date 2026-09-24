@@ -5,6 +5,7 @@
  * SCP-002 极简架构：
  * - 只保留文本接收和上屏功能
  * - 快捷键由系统原生快捷键 + --toggle 参数处理
+ * - 唯一的按键监听是录音期间的 Esc 取消 (其余时间 Esc 原样放行)
  */
 
 #include "nextalk.h"
@@ -13,12 +14,14 @@
 #include <fcitx/inputcontextmanager.h>
 #include <fcitx/inputpanel.h>
 #include <fcitx/text.h>
+#include <signal.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <cerrno>
 #include <cstring>
+#include <fstream>
 #include <vector>
 
 // Maximum message size (1MB)
@@ -42,12 +45,21 @@ NextalkAddon::NextalkAddon(Instance *instance) : instance_(instance) {
     // 启动文本接收 Socket
     startSocketListener();
 
+    // 录音期间的 Esc 取消：PreInputMethod 阶段早于输入法引擎，
+    // 保证即使处于拼音组词中也由我们先处理
+    keyEventWatcher_ = instance_->watchEvent(
+        EventType::InputContextKeyEvent, EventWatcherPhase::PreInputMethod,
+        [this](Event &event) {
+            handleKeyEvent(static_cast<KeyEvent &>(event));
+        });
+
     NEXTALK_INFO() << "Nextalk addon initialized";
     NEXTALK_INFO() << "Text socket: " << getSocketPath();
 }
 
 NextalkAddon::~NextalkAddon() {
     NEXTALK_INFO() << "Nextalk addon shutting down...";
+    keyEventWatcher_.reset();
     stopSocketListener();
     dispatcher_.detach();
 }
@@ -205,6 +217,89 @@ void NextalkAddon::handleClient(int clientFd) {
         uint8_t ack = 1;
         send(clientFd, &ack, 1, 0);
     }
+}
+
+static std::string runtimePath(const char *name) {
+    const char *runtimeDir = getenv("XDG_RUNTIME_DIR");
+    if (runtimeDir && *runtimeDir) {
+        return std::string(runtimeDir) + "/" + name;
+    }
+    return std::string("/tmp/") + name;
+}
+
+void NextalkAddon::handleKeyEvent(KeyEvent &keyEvent) {
+    // 只处理不带修饰键的 Esc，其余按键零开销放行
+    if (!keyEvent.key().check(FcitxKey_Escape)) {
+        return;
+    }
+
+    if (keyEvent.isRelease()) {
+        if (swallowEscRelease_) {
+            swallowEscRelease_ = false;
+            keyEvent.filterAndAccept();
+        }
+        return;
+    }
+
+    if (!isRecordingActive()) {
+        return;
+    }
+
+    keyEvent.filterAndAccept();
+    swallowEscRelease_ = true;
+    NEXTALK_INFO() << "Esc pressed while recording, sending cancel";
+    sendCancelCommand();
+}
+
+bool NextalkAddon::isRecordingActive() const {
+    // Nextalk 录音期间写入该文件 (内容为其 PID)，结束时删除。
+    // 校验 PID 存活，防止应用崩溃残留的文件永久吞掉 Esc。
+    std::ifstream marker(runtimePath("nextalk-recording"));
+    if (!marker) {
+        return false;
+    }
+    long pid = 0;
+    if (!(marker >> pid) || pid <= 0) {
+        return false;
+    }
+    return kill(static_cast<pid_t>(pid), 0) == 0 || errno == EPERM;
+}
+
+void NextalkAddon::sendCancelCommand() const {
+    // 非阻塞发送：运行在 Fcitx5 主线程，绝不能因应用无响应而卡住输入法
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    if (fd < 0) {
+        NEXTALK_WARN() << "Failed to create cancel socket: " << strerror(errno);
+        return;
+    }
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    std::string path = runtimePath("nextalk.sock");
+    strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+
+    if (connect(fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0) {
+        NEXTALK_WARN() << "Failed to connect to Nextalk: " << strerror(errno);
+        close(fd);
+        return;
+    }
+
+    // 与 single_instance.dart 相同的协议：4 字节小端长度 + UTF-8 命令
+    static const char command[] = "cancel";
+    constexpr uint32_t len = sizeof(command) - 1;
+    unsigned char message[4 + len];
+    message[0] = len & 0xff;
+    message[1] = (len >> 8) & 0xff;
+    message[2] = (len >> 16) & 0xff;
+    message[3] = (len >> 24) & 0xff;
+    memcpy(message + 4, command, len);
+
+    ssize_t sent = send(fd, message, sizeof(message), MSG_NOSIGNAL | MSG_DONTWAIT);
+    if (sent != static_cast<ssize_t>(sizeof(message))) {
+        NEXTALK_WARN() << "Failed to send cancel command: " << strerror(errno);
+    }
+    close(fd);
 }
 
 void NextalkAddon::commitText(const std::string &text) {

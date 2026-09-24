@@ -16,6 +16,7 @@ class CapsuleTextPreview extends StatefulWidget {
     this.hintText = '正在聆听...',
     this.isProcessing = false,
     this.isError = false,
+    this.trailingHint,
   });
 
   /// 显示的文本内容
@@ -32,6 +33,9 @@ class CapsuleTextPreview extends StatefulWidget {
 
   /// Story 3-7: 是否处于错误状态 (支持点击复制)
   final bool isError;
+
+  /// 提示文字后的次要操作提示 (如 "Esc 取消")，仅在显示提示文字时出现
+  final String? trailingHint;
 
   @override
   State<CapsuleTextPreview> createState() => _CapsuleTextPreviewState();
@@ -129,12 +133,43 @@ class _CapsuleTextPreviewState extends State<CapsuleTextPreview> {
       );
     }
 
-    return Text(
+    final hintLabel = Text(
       displayText,
       style: style,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       textAlign: TextAlign.left,
     );
+
+    final trailing = widget.trailingHint;
+    if (isHint && !widget.isProcessing && trailing != null) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(child: hintLabel),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: CapsuleColors.textHint.withValues(alpha: 0.5),
+              ),
+            ),
+            child: Text(
+              trailing,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: 11,
+                height: 1.0,
+                color: CapsuleColors.textHint.withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return hintLabel;
   }
 }
