@@ -52,11 +52,11 @@ class GradientTextFlow extends StatelessWidget {
     }
 
     // 只显示最后 visibleCharCount 个字符（带渐变）
-    final displayText = text.length > visibleCharCount
-        ? text.substring(text.length - visibleCharCount)
-        : text;
-
-    final characters = displayText.characters.toList();
+    // 按字素切分而非 UTF-16 码元，避免把 emoji/生僻字的代理对切成乱码
+    final allCharacters = text.characters.toList();
+    final characters = allCharacters.length > visibleCharCount
+        ? allCharacters.sublist(allCharacters.length - visibleCharCount)
+        : allCharacters;
     final charCount = characters.length;
 
     // 构建每个字符的 TextSpan
@@ -64,7 +64,12 @@ class GradientTextFlow extends StatelessWidget {
 
     for (var i = 0; i < charCount; i++) {
       // 计算进度：0.0 (最旧/最左) -> 1.0 (最新/最右)
-      final progress = charCount == 1 ? 1.0 : i / (charCount - 1);
+      // 以"距最新字的距离"相对可见窗口计算，短句保持大字清晰，
+      // 只有长句里真正变旧的字才逐渐变小变淡
+      final age = charCount - 1 - i;
+      final progress = visibleCharCount <= 1
+          ? 1.0
+          : 1.0 - (age / (visibleCharCount - 1)).clamp(0.0, 1.0);
 
       // 渐变计算
       final fontSize = minFontSize + (maxFontSize - minFontSize) * progress;
@@ -127,6 +132,22 @@ class GradientTextFlowWithFade extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final flow = GradientTextFlow(
+      text: text,
+      baseColor: baseColor,
+      maxFontSize: maxFontSize,
+      minFontSize: minFontSize,
+      maxOpacity: maxOpacity,
+      minOpacity: minOpacity,
+      visibleCharCount: visibleCharCount,
+      fontWeight: fontWeight,
+    );
+
+    // 文字未溢出时不加遮罩，否则短句的首字会被淡出遮罩吃掉
+    if (text.characters.length <= visibleCharCount) {
+      return flow;
+    }
+
     return ShaderMask(
       shaderCallback: (Rect bounds) {
         return LinearGradient(
@@ -143,16 +164,7 @@ class GradientTextFlowWithFade extends StatelessWidget {
         ).createShader(bounds);
       },
       blendMode: BlendMode.dstIn,
-      child: GradientTextFlow(
-        text: text,
-        baseColor: baseColor,
-        maxFontSize: maxFontSize,
-        minFontSize: minFontSize,
-        maxOpacity: maxOpacity,
-        minOpacity: minOpacity,
-        visibleCharCount: visibleCharCount,
-        fontWeight: fontWeight,
-      ),
+      child: flow,
     );
   }
 }

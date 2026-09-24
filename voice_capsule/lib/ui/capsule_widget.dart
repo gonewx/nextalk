@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../constants/capsule_colors.dart';
 import '../constants/window_constants.dart';
+import '../services/language_service.dart';
 import '../state/capsule_state.dart';
 import 'capsule_text_preview.dart';
 import 'cursor_blink.dart';
@@ -109,6 +110,10 @@ class CapsuleWidget extends StatelessWidget {
                   hintText: hintText,
                   isProcessing: isProcessing,
                   isError: isError,
+                  // 聆听中提示可按 Esc 取消本次输入
+                  trailingHint: showCursor
+                      ? LanguageService.instance.tr('esc_cancel_hint')
+                      : null,
                 ),
               ),
 

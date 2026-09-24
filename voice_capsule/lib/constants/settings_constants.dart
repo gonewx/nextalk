@@ -132,6 +132,27 @@ audio:
   #
   # 使用 nextalk audio 命令配置设备
   input_device: default
+
+# 文本后处理 (自动纠错)，上屏前对识别结果进行修正
+text:
+  # 总开关
+  auto_correct: true
+  # 全大写英文转小写 (Zipformer 输出 "HELLO" → "hello")
+  normalize_case: true
+  # 移除句首/标点后的填充词 (嗯、呃、um、uh)
+  remove_fillers: true
+  # 合并连续重复的英文单词 ("the the" → "the")
+  remove_repeated_words: true
+  # 中文语境下标点全角化、去除重复标点和多余空格
+  normalize_punctuation: true
+  # 中英文之间自动加空格 ("用Python写" → "用 Python 写")
+  cjk_spacing: false
+  # 去掉末尾句号 (适合在句子中间插入)
+  strip_trailing_period: false
+  # 自定义纠错词典: 错误写法: 正确写法 (英文忽略大小写，长词优先)
+  replacements:
+    # "next talk": "Nextalk"
+    # "派森": "Python"
 ''';
 
   /// English settings template
@@ -181,5 +202,26 @@ audio:
   #
   # Use 'nextalk audio' command to configure device
   input_device: default
+
+# Text post-processing (auto-correction) applied before committing text
+text:
+  # Master switch
+  auto_correct: true
+  # Lowercase all-caps English (Zipformer outputs "HELLO" → "hello")
+  normalize_case: true
+  # Remove standalone filler words (um, uh, 嗯, 呃)
+  remove_fillers: true
+  # Collapse repeated English words ("the the" → "the")
+  remove_repeated_words: true
+  # Full-width punctuation in Chinese context, drop duplicate punctuation/spaces
+  normalize_punctuation: true
+  # Insert a space between Chinese and Latin text ("用Python写" → "用 Python 写")
+  cjk_spacing: false
+  # Drop the trailing period (handy when inserting mid-sentence)
+  strip_trailing_period: false
+  # Custom correction dictionary: wrong: right (English is case-insensitive, longest match first)
+  replacements:
+    # "next talk": "Nextalk"
+    # "get hub": "GitHub"
 ''';
 }

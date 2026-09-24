@@ -487,6 +487,48 @@ class AudioInferencePipeline {
     return finalResult.text;
   }
 
+  /// 取消本次录音并丢弃结果 (Esc 取消)
+  ///
+  /// 与 [stop] 的区别：不排空尾音、不发送端点事件，尽快释放麦克风。
+  /// 仍需调用一次 finalizeUtterance() 重建流，否则本次残留音频会串入下一次发话。
+  Future<void> cancel() async {
+    if (_state != PipelineState.running) return;
+
+    _setState(PipelineState.stopping);
+    _stopRequested = true;
+
+    if (_loopCompleter != null && !_loopCompleter!.isCompleted) {
+      const maxWaitMs = 300;
+      const pollIntervalMs = 20;
+      var waitedMs = 0;
+      while (!_loopCompleter!.isCompleted && waitedMs < maxWaitMs) {
+        await Future.delayed(const Duration(milliseconds: pollIntervalMs));
+        waitedMs += pollIntervalMs;
+      }
+    }
+
+    await _audioCapture.stop();
+
+    // VAD 触发的停止已在 _handleEndpoint() 收过尾，不得重复收尾
+    if (!_vadTriggeredStop) {
+      try {
+        _asrEngine.finalizeUtterance();
+      } catch (e) {
+        if (enableDebugLog) {
+          // ignore: avoid_print
+          print('[Pipeline] ⚠️ cancel 收尾失败: $e');
+        }
+      }
+    }
+
+    _stopRequested = false;
+    _lastEmittedText = '';
+    _loopCompleter = null;
+    _vadTriggeredStop = false;
+    _recordingStartTime = null;
+    _setState(PipelineState.idle);
+  }
+
   /// 释放所有资源
   Future<void> dispose() async {
     // M1 修复: 标记已释放，防止后续访问 StreamController

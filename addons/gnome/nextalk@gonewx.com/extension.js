@@ -11,9 +11,15 @@
 // 接口 com.gonewx.nextalk.Inject，方法 CommitText(s)→(s)。
 //
 // 已于 2026-07-10 在 Fedora 43 (GNOME 49.1 + ibus) POC 验证可注入中文。
+//
+// GrabCancelKey(b)→(b)：录音期间临时抢占 Esc 加速键，按下时发出
+// CancelRequested 信号，Nextalk 据此取消本次语音输入。胶囊窗口不接受
+// 焦点，应用自身收不到 Esc，只能由 compositor 侧代为捕获。
 
+import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
+import Shell from 'gi://Shell';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
@@ -23,6 +29,11 @@ const IFACE = `<node>
     <arg type="s" direction="in" name="text"/>
     <arg type="s" direction="out" name="result"/>
   </method>
+  <method name="GrabCancelKey">
+    <arg type="b" direction="in" name="grab"/>
+    <arg type="b" direction="out" name="grabbed"/>
+  </method>
+  <signal name="CancelRequested"/>
 </interface>
 </node>`;
 
@@ -33,10 +44,68 @@ export default class NextalkInjectExtension extends Extension {
     }
 
     disable() {
+        this._releaseCancelKey();
+        if (this._acceleratorId) {
+            global.display.disconnect(this._acceleratorId);
+            this._acceleratorId = 0;
+        }
         if (this._dbus) {
             this._dbus.unexport();
             this._dbus = null;
         }
+    }
+
+    GrabCancelKey(grab) {
+        try {
+            if (!grab) {
+                this._releaseCancelKey();
+                return true;
+            }
+            if (this._escAction)
+                return true;
+
+            const action = global.display.grab_accelerator(
+                'Escape', Meta.KeyBindingFlags.NONE);
+            if (action === Meta.KeyBindingAction.NONE)
+                return false;
+
+            this._escAction = action;
+            this._escName = Meta.external_binding_name_for_action(action);
+            Main.wm.allowKeybinding(this._escName, Shell.ActionMode.ALL);
+
+            if (!this._acceleratorId) {
+                this._acceleratorId = global.display.connect(
+                    'accelerator-activated', (display, activated) => {
+                        if (activated === this._escAction)
+                            this._dbus?.emit_signal('CancelRequested', null);
+                    });
+            }
+
+            // 安全阀：客户端崩溃未归还时自动释放，Esc 不会被永久抢占
+            this._escTimeoutId = GLib.timeout_add_seconds(
+                GLib.PRIORITY_DEFAULT, 600, () => {
+                    this._escTimeoutId = 0;
+                    this._releaseCancelKey();
+                    return GLib.SOURCE_REMOVE;
+                });
+            return true;
+        } catch (e) {
+            logError(e, 'Nextalk: GrabCancelKey failed');
+            return false;
+        }
+    }
+
+    _releaseCancelKey() {
+        if (this._escTimeoutId) {
+            GLib.source_remove(this._escTimeoutId);
+            this._escTimeoutId = 0;
+        }
+        if (!this._escAction)
+            return;
+        global.display.ungrab_accelerator(this._escAction);
+        Main.wm.allowKeybinding(this._escName, Shell.ActionMode.NONE);
+        this._escAction = 0;
+        this._escName = null;
     }
 
     CommitText(text) {

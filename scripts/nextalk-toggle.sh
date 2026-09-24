@@ -6,7 +6,7 @@
 # 本脚本用 python3 直接向单实例 socket 写入命令（协议：4字节LE长度 + UTF-8 文本），
 # 耗时约 20-50ms。仅当应用未运行时才回退到启动完整应用。
 #
-# 用法: nextalk-toggle.sh [toggle|show|hide]   (默认 toggle)
+# 用法: nextalk-toggle.sh [toggle|show|hide|cancel]   (默认 toggle)
 
 set -u
 
@@ -190,8 +190,8 @@ PYEOF
   # 退出码非 0: 无可用实例(连不上/空壳已清理), 继续走下面的冷启动
 fi
 
-# 无运行实例：启动完整应用（--hide 时无事可做）
-if [ "$CMD" = "hide" ]; then
+# 无运行实例：启动完整应用（--hide / --cancel 时无事可做）
+if [ "$CMD" = "hide" ] || [ "$CMD" = "cancel" ]; then
   exit 0
 fi
 # 启动应用，注入 GDK 后端回退链 x11,wayland。

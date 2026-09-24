@@ -6,6 +6,7 @@
  *
  * 功能：
  * - 监听 Unix Socket，接收语音识别结果，提交到当前焦点应用
+ * - 录音期间捕获 Esc，通知 Nextalk 取消本次语音输入
  *
  * SCP-002 极简架构：
  * - 移除快捷键监听 (改为系统快捷键 + --toggle 参数)
@@ -21,6 +22,9 @@
 #include <fcitx/addonmanager.h>
 #include <fcitx/instance.h>
 #include <fcitx-utils/eventdispatcher.h>
+#include <fcitx-utils/handlertable.h>
+#include <fcitx/event.h>
+#include <memory>
 #include <string>
 #include <thread>
 #include <atomic>
@@ -42,6 +46,16 @@ private:
     void socketListenerLoop();
     void handleClient(int clientFd);
     std::string getSocketPath() const;
+
+    // ===== Esc 取消 =====
+    void handleKeyEvent(KeyEvent &keyEvent);
+    bool isRecordingActive() const;
+    void sendCancelCommand() const;
+
+    // 录音期间的 Esc 按键监听 (析构时自动注销)
+    std::unique_ptr<HandlerTableEntry<EventHandler>> keyEventWatcher_;
+    // 已吞掉 Esc 按下，需同时吞掉对应的释放事件，避免应用收到孤立的 KeyRelease
+    bool swallowEscRelease_{false};
 
     Instance *instance_;
     EventDispatcher dispatcher_;

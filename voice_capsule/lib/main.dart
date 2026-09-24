@@ -13,6 +13,7 @@ import 'services/asr/asr_engine_factory.dart';
 import 'services/asr/engine_initializer.dart';
 import 'services/audio_capture.dart';
 import 'services/audio_inference_pipeline.dart';
+import 'services/cancel_key_service.dart';
 import 'services/fcitx_client.dart';
 import 'services/hotkey_controller.dart';
 import 'services/hotkey_service.dart';
@@ -49,6 +50,7 @@ ASREngineType _toASREngineType(EngineType type) {
 /// --toggle: 切换窗口/录音状态
 /// --show: 显示窗口并开始录音
 /// --hide: 隐藏窗口并停止录音
+/// --cancel: 取消当前录音，丢弃识别结果
 ///
 /// 返回 true 表示应用应该继续运行，false 表示应该退出
 Future<bool> _handleCommandLineArgs(List<String> args) async {
@@ -78,7 +80,10 @@ Future<bool> _handleCommandLineArgs(List<String> args) async {
   }
 
   // 检查是否是命令参数
-  if (command == '--toggle' || command == '--show' || command == '--hide') {
+  if (command == '--toggle' ||
+      command == '--show' ||
+      command == '--hide' ||
+      command == '--cancel') {
     final cmdName = command.substring(2); // 移除 '--' 前缀
 
     // 尝试发送命令给运行中的实例
@@ -138,7 +143,7 @@ StartupDecision decideCommandAction(String command,
     return StartupDecision(
         shouldContinue: true, pendingCommand: command.substring(2));
   }
-  // --hide 且无实例可隐藏: 无事可做
+  // --hide / --cancel 且无实例: 无事可做
   return const StartupDecision(shouldContinue: false, pendingCommand: null);
 }
 
@@ -186,6 +191,7 @@ Nextalk - Linux 离线语音输入
   nextalk --toggle           切换窗口/录音状态
   nextalk --show             显示窗口并开始录音
   nextalk --hide             隐藏窗口并停止录音
+  nextalk --cancel           取消当前录音，不上屏 (录音时也可直接按 Esc)
 
 音频子命令:
   nextalk audio              交互模式选择设备
@@ -501,7 +507,16 @@ Future<void> main(List<String> args) async {
         HotkeyController.instance.show();
       } else if (command == 'hide') {
         HotkeyController.instance.hide();
+      } else if (command == 'cancel') {
+        // 来自 Fcitx5 插件捕获的 Esc，或 nextalk --cancel
+        HotkeyController.instance.cancel();
       }
+    };
+
+    // 9.1.1 Esc 取消：清理上次异常退出残留的录音标记，接收 GNOME 扩展转发的 Esc
+    CancelKeyService.instance.cleanupStale();
+    CancelKeyService.instance.onCancelRequested = () {
+      HotkeyController.instance.cancel();
     };
 
     // 9.2 Story 3-10: 后台非阻塞装配 Portal 全局快捷键 (AC1/AC4)
@@ -525,6 +540,9 @@ Future<void> main(List<String> args) async {
 
       // 释放控制器
       await HotkeyController.instance.dispose();
+
+      // 释放 Esc 取消键 (删除录音标记、归还 GNOME 扩展的 Esc 抢占)
+      await CancelKeyService.instance.dispose();
 
       // 释放快捷键服务
       await HotkeyService.instance.dispose();

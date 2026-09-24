@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 
 import 'asr/asr_engine.dart';
 import 'audio_inference_pipeline.dart';
+import 'cancel_key_service.dart';
+import 'settings_service.dart';
 import 'tray_service.dart';
 import 'window_service.dart';
 import 'fcitx_client.dart';
@@ -58,7 +60,7 @@ Future<InjectBackend> decideInjectBackend({
 /// ```
 /// [Idle] ──(RightAlt)──> [Recording] ──(RightAlt)──> [Submitting]
 ///   ^                          |                          |
-///   |                          | (VAD 触发)               |
+///   |                          | (VAD 触发 / Esc 取消)     | (Esc 取消)
 ///   └──────────────────────────┴──────────────────────────┘
 /// ```
 class HotkeyController {
@@ -82,6 +84,13 @@ class HotkeyController {
 
   /// 提交流程中断标志：用于支持用户快速重按时打断正在进行的提交
   bool _submitInterrupted = false;
+
+  /// 提交流程取消标志：用户按 Esc 放弃本次输入 (与 _submitInterrupted 不同，
+  /// 取消后文本直接丢弃，不保存、不上屏)
+  bool _submitCancelled = false;
+
+  /// 最近一次预览文本 (处理中状态继续显示，避免胶囊文字突然清空)
+  String _lastPreviewText = '';
 
   /// Story 3-7: 保存提交失败的文本 (AC15: 文本保护)
   String? _lastRecognizedText;
@@ -152,6 +161,46 @@ class HotkeyController {
         await WindowService.instance.hide();
         _updateState(CapsuleStateData.idle());
       }
+    }
+  }
+
+  /// 取消当前语音输入 (Esc)
+  ///
+  /// - 录音中：立即隐藏胶囊、停止录音并丢弃识别结果，不上屏
+  /// - 提交中：在上屏前拦截，丢弃文本
+  /// - 空闲但胶囊仍显示 (错误提示/剪贴板提示)：关闭胶囊
+  Future<void> cancel() async {
+    // ignore: avoid_print
+    print('[HotkeyController] cancel() 调用，当前状态: $_state');
+
+    if (WindowService.instance.isInInitWizardMode) return;
+
+    switch (_state) {
+      case HotkeyState.recording:
+        CancelKeyService.instance.disarm();
+        // 先置为 submitting，挡住取消过程中到达的快捷键
+        _state = HotkeyState.submitting;
+        _lastPreviewText = '';
+        // 先隐藏窗口给出即时反馈，再慢慢释放麦克风
+        await WindowService.instance.hide();
+        _updateState(CapsuleStateData.idle());
+        await _pipeline?.cancel();
+        // 取消期间用户可能已经开始了新的录音，不能覆盖它
+        if (_state == HotkeyState.submitting) {
+          _state = HotkeyState.idle;
+        }
+        TrayService.instance.updateStatus(TrayStatus.normal);
+        // ignore: avoid_print
+        print('[HotkeyController] 🚫 已取消本次录音');
+        break;
+      case HotkeyState.submitting:
+        _submitCancelled = true;
+        break;
+      case HotkeyState.idle:
+        if (WindowService.instance.isVisible) {
+          await dismissError();
+        }
+        break;
     }
   }
 
@@ -301,6 +350,8 @@ class HotkeyController {
   /// AC2: 自动开始录音
   Future<void> _startRecording() async {
     _state = HotkeyState.recording;
+    _submitCancelled = false;
+    _lastPreviewText = '';
 
     // 1. 先更新 UI 状态为聆听中 (确保呼吸灯渲染就绪)
     _updateState(CapsuleStateData.listening());
@@ -316,6 +367,15 @@ class HotkeyController {
       _handleError(error);
       return;
     }
+
+    // 启动期间已被取消 (如 nextalk --cancel)：立即释放麦克风
+    if (_state != HotkeyState.recording) {
+      await _pipeline!.cancel();
+      return;
+    }
+
+    // 录音期间允许 Esc 取消 (由 Fcitx5 插件 / GNOME 扩展代为捕获)
+    CancelKeyService.instance.arm();
 
     // ignore: avoid_print
     print('[HotkeyController] 🎤 开始录音');
@@ -335,16 +395,27 @@ class HotkeyController {
   Future<void> _stopAndSubmit() async {
     _state = HotkeyState.submitting;
     _submitInterrupted = false; // 重置中断标志
+    _submitCancelled = false;
 
-    // 1. 更新 UI 状态为处理中
-    _updateState(CapsuleStateData.processing());
+    // 1. 更新 UI 状态为处理中 (保留已识别文本，避免胶囊文字突然清空)
+    _updateState(CapsuleStateData.processing(text: _lastPreviewText));
 
     // 2. 停止录音，获取最终文本 (AC3)
     // 注意：pipeline.stop() 会等待所有处理中的数据完成
-    final finalText = await _pipeline!.stop();
+    final rawText = await _pipeline!.stop();
+    final finalText = _postProcess(rawText);
+    _lastPreviewText = '';
 
     // ignore: avoid_print
-    print('[HotkeyController] 📝 最终文本: "$finalText"');
+    print('[HotkeyController] 📝 最终文本: "$finalText" (原始: "$rawText")');
+
+    // 用户在收尾期间按了 Esc：丢弃文本 (收尾期间 Esc 仍保持捕获)
+    if (await _finishIfCancelled()) return;
+
+    // 即将上屏，把 Esc 还给应用；若已被快速重按打断，新的录音仍需要它
+    if (_state != HotkeyState.recording) {
+      CancelKeyService.instance.disarm();
+    }
 
     // 3. 检查是否被中断（用户快速重按）
     if (_submitInterrupted) {
@@ -384,6 +455,7 @@ class HotkeyController {
     await Future.delayed(const Duration(milliseconds: 100));
 
     // 7. 再次检查是否被中断（在等待焦点恢复期间可能被打断）
+    if (await _finishIfCancelled()) return;
     if (_submitInterrupted) {
       // ignore: avoid_print
       print('[HotkeyController] ⚡ 提交在焦点等待期间被中断');
@@ -421,7 +493,8 @@ class HotkeyController {
     await WindowService.instance.hide();
     await Future.delayed(const Duration(milliseconds: 100));
 
-    // 焦点等待期间可能被用户快速重按打断
+    // 焦点等待期间可能被用户快速重按打断或 Esc 取消
+    if (await _finishIfCancelled()) return;
     if (_submitInterrupted) {
       // ignore: avoid_print
       print('[HotkeyController] ⚡ GNOME 提交在焦点等待期间被中断');
@@ -445,6 +518,30 @@ class HotkeyController {
     print('[HotkeyController] ❌ GNOME 扩展提交失败，降级剪贴板');
     await WindowService.instance.show();
     await _copyToClipboardWithPrompt(text);
+  }
+
+  /// 若用户在提交流程中按了 Esc，则丢弃文本并回到 idle，返回 true
+  Future<bool> _finishIfCancelled() async {
+    if (!_submitCancelled) return false;
+    _submitCancelled = false;
+    CancelKeyService.instance.disarm();
+    // ignore: avoid_print
+    print('[HotkeyController] 🚫 提交已被用户取消');
+    await WindowService.instance.hide();
+    _state = HotkeyState.idle;
+    _updateState(CapsuleStateData.idle());
+    return true;
+  }
+
+  /// 识别文本后处理 (自动纠错)，失败时退回原文，绝不丢字
+  String _postProcess(String text) {
+    try {
+      return SettingsService.instance.textPostProcessor.process(text);
+    } catch (e) {
+      // ignore: avoid_print
+      print('[HotkeyController] ⚠️ 文本后处理失败，使用原文: $e');
+      return text;
+    }
   }
 
   /// 提交文本到 Fcitx5 (仅用于 Fcitx5 可用时)
@@ -563,7 +660,9 @@ class HotkeyController {
 
   /// Story 3-7: 处理设备丢失 (AC13)
   /// 保存已识别文本并显示警告，不自动隐藏窗口
-  void _handleDeviceLost(String preservedText) {
+  void _handleDeviceLost(String rawText) {
+    CancelKeyService.instance.disarm();
+    final preservedText = _postProcess(rawText);
     _lastRecognizedText = preservedText;
     _state = HotkeyState.idle; // 允许用户重新触发
 
@@ -619,7 +718,9 @@ class HotkeyController {
   /// 识别结果处理 (更新 UI 文本)
   void _onRecognitionResult(String text) {
     if (_state == HotkeyState.recording) {
-      _updateState(CapsuleStateData.listening(text: text));
+      // 预览与上屏走同一个后处理器，所见即所得
+      _lastPreviewText = _postProcess(text);
+      _updateState(CapsuleStateData.listening(text: _lastPreviewText));
     }
   }
 
@@ -644,6 +745,8 @@ class HotkeyController {
       PipelineError.recognizerFailed => _getDetailedASRError(),
       PipelineError.none => (null, null),
     };
+
+    CancelKeyService.instance.disarm();
 
     if (errorType != null) {
       // Story 3-7 AC10: 错误状态保持显示，等待用户操作
@@ -719,9 +822,11 @@ class HotkeyController {
     await _gnomeClient?.dispose();
     _gnomeClient = null;
     HotkeyService.instance.onHotkeyPressed = null;
+    CancelKeyService.instance.disarm();
     _isInitialized = false;
     _isProcessing = false;
     _submitInterrupted = false;
+    _submitCancelled = false;
     _state = HotkeyState.idle;
   }
 }
