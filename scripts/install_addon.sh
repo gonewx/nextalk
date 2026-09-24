@@ -242,6 +242,16 @@ show_summary() {
     echo "  Plugin: $PLUGIN_DIR/libnextalk.so"
     echo "  Config: $CONFIG_DIR/nextalk.conf"
     echo ""
+    if [[ "$mode" != "--system" ]]; then
+        # Fcitx5 只在系统插件目录 (及 FCITX_ADDON_DIRS) 中查找插件库，
+        # 不会搜索 ~/.local/lib/fcitx5：用户级安装的库不会被加载，
+        # 若系统中已有旧版插件，实际运行的仍是旧版。
+        warn "Fcitx5 does not load addon libraries from ~/.local/lib/fcitx5."
+        warn "The plugin will NOT take effect unless fcitx5 runs with"
+        warn "  FCITX_ADDON_DIRS=$PLUGIN_DIR:<system addon dir>"
+        warn "Recommended: make install-addon-system (sudo)"
+        echo ""
+    fi
     echo "Next steps:"
     echo -e "  1. Restart Fcitx5:  ${YELLOW}fcitx5 -r${NC}"
     echo -e "  2. Verify plugin:   ${YELLOW}$0 --verify${NC}"
