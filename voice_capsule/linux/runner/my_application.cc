@@ -8,6 +8,7 @@
 #include <gdk/gdkwayland.h>
 #endif
 
+#include <dlfcn.h>
 #include <unistd.h>
 
 #include "engine_liveness.h"
@@ -71,6 +72,29 @@ static gboolean watch_engine_liveness(gpointer user_data) {
   return G_SOURCE_REMOVE;
 }
 
+// 让 Dart UI isolate 跑在独立的 io.flutter.ui 线程上
+//
+// 新版 Flutter (3.3x+) 在 Linux 上默认把 UI isolate 合并到 GTK 主线程
+// (FL_UI_THREAD_POLICY_DEFAULT → RUN_ON_PLATFORM_THREAD)，于是 io.flutter.ui
+// 线程根本不存在，上面的看门狗会把健康的应用误判为"空壳"，启动约 3 秒就
+// _exit(70) (2026-09 实测: 本地升级 Flutter 后 flutter run 必现)。
+// 同时合并线程会让 ASR 解码与 GTK 事件处理抢同一个线程。
+//
+// 为什么用 dlsym 而不是直接调用: 旧版 Flutter 没有该 API，而 Flutter 头文件
+// 在构建期才生成，CMake 配置期无法可靠探测。运行时查找对新旧版本都安全：
+// 旧版本来就是独立 UI 线程，查不到直接跳过即可。
+static void nextalk_use_separate_ui_thread(FlDartProject* project) {
+  using SetPolicyFn = void (*)(FlDartProject*, int);
+  auto set_policy = reinterpret_cast<SetPolicyFn>(
+      dlsym(RTLD_DEFAULT, "fl_dart_project_set_ui_thread_policy"));
+  if (set_policy == nullptr) {
+    return;
+  }
+  // FL_UI_THREAD_POLICY_RUN_ON_SEPARATE_THREAD (公开 ABI 枚举的第 3 项)
+  constexpr int kRunOnSeparateThread = 2;
+  set_policy(project, kRunOnSeparateThread);
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
@@ -113,6 +137,7 @@ static void my_application_activate(GApplication* application) {
 
   // 创建 Flutter 项目和视图
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+  nextalk_use_separate_ui_thread(project);
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
 
   FlView* view = fl_view_new(project);
