@@ -13,11 +13,11 @@
 ## 特性
 
 - **离线识别** - 基于 Sherpa-onnx 三引擎：Qwen3-ASR 0.6B 离线引擎（默认推荐，精度最高、多语言及中文方言、热词）+ SenseVoice 离线引擎（轻量、自动标点）+ Zipformer 流式引擎（边说边出字），数据不出本地
-- **低延迟** - 流式引擎实时转录，文本上屏链路延迟 < 20ms
+- **低延迟** - Zipformer 流式引擎边说边转录；离线引擎每段说完即出字；文本上屏链路延迟 < 20ms
 - **透明悬浮窗** - 无边框胶囊 UI，呼吸灯动画，不干扰工作流程
 - **Wayland 原生支持** - 系统快捷键和文本提交均支持 Wayland
 - **双语界面** - 中英双语 UI，托盘菜单即可切换
-- **引擎与模型可选** - 托盘菜单热切换引擎及 Zipformer int8/standard 版本
+- **引擎与模型可选** - 托盘菜单热切换 Qwen3-ASR / SenseVoice / Zipformer 引擎及 Zipformer int8/standard 版本；Qwen3-ASR 支持自定义热词
 
 ## 快速开始
 
@@ -27,7 +27,7 @@
 
 ```bash
 # 推荐: apt 会自动安装依赖
-sudo apt install ./nextalk_0.2.13-1_amd64.deb
+sudo apt install ./nextalk_0.3.0-1_amd64.deb
 ```
 
 > 若使用 `sudo dpkg -i` 安装，dpkg 不会解析依赖，提示缺依赖时需再执行 `sudo apt -f install` 补齐。
@@ -36,7 +36,7 @@ sudo apt install ./nextalk_0.2.13-1_amd64.deb
 
 ```bash
 # 推荐: dnf 会自动安装依赖
-sudo dnf install ./nextalk-0.2.13-1.x86_64.rpm
+sudo dnf install ./nextalk-0.3.0-1.x86_64.rpm
 ```
 
 安装后 Fcitx5 会自动重启以加载插件。
@@ -62,6 +62,7 @@ gnome-extensions enable nextalk@gonewx.com
 | PulseAudio 或 PipeWire (`pipewire-pulse`) | 音频采集，主流发行版默认自带 |
 | `xdg-desktop-portal` + 桌面对应 backend | 快捷键自动注册所需（GNOME 48+/KDE 5.27+ 自带，无需手装） |
 | `libayatana-appindicator3-1` / `libayatana-appindicator-gtk3` | 托盘运行库（0.2.13 起 deb/rpm 已声明，包管理器自动安装） |
+| `tar` + `bzip2` | 解压模型所需（0.3.0 起 deb/rpm 已声明，包管理器自动安装） |
 | `gnome-shell-extension-appindicator` | **仅 GNOME**：显示托盘图标所需的扩展，装后需启用并重登会话（详见[常见问题](#系统托盘图标不显示-gnomefedora)）；KDE 原生支持无需安装 |
 
 ### 配置快捷键
@@ -91,7 +92,7 @@ gnome-extensions enable nextalk@gonewx.com
 
 1. **启动应用** - 从应用菜单启动 Nextalk，或运行 `nextalk`
 2. **按下快捷键** - 悬浮窗出现并开始录音
-3. **说话** - 实时看到识别的文字
+3. **说话** - 识别的文字显示在悬浮窗中（Qwen3-ASR/SenseVoice 每段停顿后约 1–2 秒出字，Zipformer 逐字实时显示）
 4. **再次按下快捷键** - 停止录音，文字自动输入到当前应用
 5. **或等待自动提交** - 停顿后自动提交文字
 6. **按 Esc 取消** - 录音中按 Esc 放弃本次输入，文字不会上屏（由 Fcitx5 插件或 GNOME 扩展捕获，其余时间 Esc 不受影响）
@@ -143,6 +144,8 @@ gnome-extensions enable nextalk@gonewx.com
 | **显示服务** | X11 或 Wayland |
 | **音频系统** | PulseAudio 或 PipeWire（`pipewire-pulse`） |
 | **输入法** | Fcitx5 |
+| **磁盘空间** | 默认 Qwen3-ASR 模型约 840MB，首次安装解压期间需 1.8GB 以上可用空间；SenseVoice/Zipformer 约 200MB |
+| **CPU** | x86_64；Qwen3-ASR 为 0.6B 参数模型，CPU 越强出字越快 |
 
 ## 配置
 
@@ -274,7 +277,7 @@ sudo dpkg -r nextalk
 sudo rpm -e nextalk
 ```
 
-用户数据保留在 `~/.local/share/nextalk/`，如需完全清理请手动删除。
+用户数据（含已下载的模型，Qwen3-ASR 约 840MB）保留在 `~/.local/share/nextalk/`，如需完全清理请手动删除。
 
 ## 项目结构
 
@@ -421,6 +424,8 @@ pactl list sources    # 系统级调试命令
 ## 致谢
 
 - [Sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - 高性能离线语音识别引擎
+- [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) - 默认语音识别模型
+- [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) - 轻量离线语音识别模型
 - [Fcitx5](https://github.com/fcitx/fcitx5) - 现代化输入法框架
 - [Flutter](https://flutter.dev) - 跨平台 UI 框架
 

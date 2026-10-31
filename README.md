@@ -13,11 +13,11 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 ## Features
 
 - **Offline Recognition** - Three ASR engines based on Sherpa-onnx: Qwen3-ASR 0.6B offline engine (default, recommended — best accuracy, multilingual plus Chinese dialects, hotwords), SenseVoice offline engine (lightweight, auto punctuation) and Zipformer streaming engine (real-time, character by character); data never leaves your device
-- **Low Latency** - Streaming engine transcribes as you speak; text commit path latency < 20ms
+- **Low Latency** - Zipformer streaming engine transcribes as you speak; offline engines output text right after each utterance; text commit path latency < 20ms
 - **Transparent Floating Window** - Borderless capsule UI with breathing animation, minimal workflow disruption
 - **Native Wayland Support** - System shortcuts and text submission both support Wayland
 - **Bilingual UI** - Simplified Chinese / English interface, switchable from the tray menu
-- **Engine & Model Options** - Hot-switch engines and Zipformer int8/standard variants from the tray menu
+- **Engine & Model Options** - Hot-switch Qwen3-ASR / SenseVoice / Zipformer engines and Zipformer int8/standard variants from the tray menu; Qwen3-ASR supports custom hotwords
 
 ## Quick Start
 
@@ -27,7 +27,7 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 
 ```bash
 # Recommended: apt installs dependencies automatically
-sudo apt install ./nextalk_0.2.13-1_amd64.deb
+sudo apt install ./nextalk_0.3.0-1_amd64.deb
 ```
 
 > If you install with `sudo dpkg -i`, dpkg does not resolve dependencies; run `sudo apt -f install` afterwards if it complains about missing ones.
@@ -36,7 +36,7 @@ sudo apt install ./nextalk_0.2.13-1_amd64.deb
 
 ```bash
 # Recommended: dnf installs dependencies automatically
-sudo dnf install ./nextalk-0.2.13-1.x86_64.rpm
+sudo dnf install ./nextalk-0.3.0-1.x86_64.rpm
 ```
 
 **Runtime dependencies:**
@@ -48,6 +48,7 @@ sudo dnf install ./nextalk-0.2.13-1.x86_64.rpm
 | PulseAudio or PipeWire (`pipewire-pulse`) | Audio capture, shipped by default on mainstream distros |
 | `xdg-desktop-portal` + your desktop's backend | Needed for shortcut auto-registration (bundled with GNOME 48+/KDE 5.27+, no manual install) |
 | `libayatana-appindicator3-1` / `libayatana-appindicator-gtk3` | Tray runtime library (declared by deb/rpm since 0.2.13, installed automatically) |
+| `tar` + `bzip2` | Required to extract models (declared by deb/rpm since 0.3.0; installed automatically) |
 | `gnome-shell-extension-appindicator` | **GNOME only**: extension required to show the tray icon; enable it and re-log after installing (see [FAQ](#system-tray-icon-not-showing-gnomefedora)); KDE supports the tray natively |
 
 Fcitx5 will automatically restart after installation to load the plugin.
@@ -91,7 +92,7 @@ Without the extension enabled, the app automatically falls back to clipboard mod
 
 1. **Launch App** - Start Nextalk from app menu, or run `nextalk`
 2. **Press Hotkey** - Floating window appears and starts recording
-3. **Speak** - See recognized text in real-time
+3. **Speak** - Recognized text appears in the capsule (Qwen3-ASR/SenseVoice output ~1–2s after each pause; Zipformer shows text in real time)
 4. **Press Hotkey Again** - Stop recording, text auto-inputs to current app
 5. **Or Wait for Auto-submit** - Text submits automatically after pause
 6. **Press Esc to Cancel** - While recording, Esc discards the input and nothing is typed (captured by the Fcitx5 addon or GNOME extension; Esc behaves normally otherwise)
@@ -143,6 +144,8 @@ The app supports system tray (on supported desktop environments), right-click me
 | **Display Server** | X11 or Wayland |
 | **Audio System** | PulseAudio or PipeWire (`pipewire-pulse`) |
 | **Input Method** | Fcitx5 |
+| **Disk Space** | Default Qwen3-ASR model ~840MB; 1.8GB+ free space needed during first-time extraction; SenseVoice/Zipformer ~200MB |
+| **CPU** | x86_64; Qwen3-ASR is a 0.6B-parameter model, a faster CPU means faster output |
 
 ## Configuration
 
@@ -274,7 +277,7 @@ sudo dpkg -r nextalk
 sudo rpm -e nextalk
 ```
 
-User data is preserved at `~/.local/share/nextalk/`, delete manually for complete cleanup.
+User data (including downloaded models, ~840MB for Qwen3-ASR) is preserved at `~/.local/share/nextalk/`, delete manually for complete cleanup.
 
 ## Project Structure
 
@@ -421,6 +424,8 @@ Contributions, bug reports, and suggestions are welcome!
 ## Acknowledgments
 
 - [Sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) - High-performance offline speech recognition engine
+- [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) - Default speech recognition model
+- [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) - Lightweight offline speech recognition model
 - [Fcitx5](https://github.com/fcitx/fcitx5) - Modern input method framework
 - [Flutter](https://flutter.dev) - Cross-platform UI framework
 
