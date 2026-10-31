@@ -46,6 +46,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get trayEngineSensevoice => 'SenseVoice (Offline)';
 
   @override
+  String get trayEngineQwen3Asr => 'Qwen3-ASR 0.6B (Offline)';
+
+  @override
   String get trayEngineSwitching => 'Switching...';
 
   @override

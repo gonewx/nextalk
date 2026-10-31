@@ -45,6 +45,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get trayEngineSensevoice => 'SenseVoice (离线)';
 
   @override
+  String get trayEngineQwen3Asr => 'Qwen3-ASR 0.6B (离线)';
+
+  @override
   String get trayEngineSwitching => '切换中...';
 
   @override

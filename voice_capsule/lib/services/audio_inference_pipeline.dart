@@ -287,6 +287,16 @@ class AudioInferencePipeline {
         ? SettingsService.instance.modelType == ModelType.int8
         : true; // 默认使用 int8
 
+    if (engineType == ASREngineType.qwen3Asr) {
+      final settings = SettingsService.instance;
+      return Qwen3AsrConfig(
+        modelDir: modelManager.getModelPathForEngine(EngineType.qwen3Asr),
+        vadModelPath: modelManager.vadModelFilePath,
+        numThreads: settings.qwen3AsrNumThreads,
+        maxNewTokens: settings.qwen3AsrMaxNewTokens,
+        hotwords: settings.qwen3AsrHotwords,
+      );
+    }
     if (engineType == ASREngineType.zipformer) {
       return ZipformerConfig(
         modelDir: modelManager.getModelPathForEngine(EngineType.zipformer),
@@ -348,9 +358,11 @@ class AudioInferencePipeline {
     _vadTriggeredStop = false;
 
     // 1. 检查当前引擎的模型就绪状态
-    final engineType = _asrEngine.engineType == ASREngineType.zipformer
-        ? EngineType.zipformer
-        : EngineType.sensevoice;
+    final engineType = switch (_asrEngine.engineType) {
+      ASREngineType.zipformer => EngineType.zipformer,
+      ASREngineType.sensevoice => EngineType.sensevoice,
+      ASREngineType.qwen3Asr => EngineType.qwen3Asr,
+    };
     if (!_modelManager.isEngineReady(engineType)) {
       _setError(PipelineError.modelNotReady);
       return _lastError;

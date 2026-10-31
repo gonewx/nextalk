@@ -47,7 +47,7 @@ class EngineNotAvailableException implements Exception {
 
 /// Story 2-7: 引擎初始化器 (AC7: 错误处理与回退)
 ///
-/// 按优先级初始化引擎: SenseVoice → Zipformer → 抛出异常
+/// 按优先级初始化引擎: SenseVoice → Zipformer → Qwen3-ASR → 抛出异常
 /// 回退时更新托盘状态为警告，并通知用户
 class EngineInitializer {
   final ModelManager _modelManager;
@@ -87,32 +87,25 @@ class EngineInitializer {
     triedEngines.add(preferredType.name);
     debugPrint('[EngineInitializer] ✗ 配置的引擎不可用: $preferredType');
 
-    // 2. 回退到其他引擎
-    final fallbackType = _getFallbackEngine(preferredType);
-    debugPrint('[EngineInitializer] 尝试回退到: $fallbackType');
-
-    final fallbackResult = await _tryInitializeEngine(
-      fallbackType,
-      enableDebugLog: enableDebugLog,
-    );
-
-    if (fallbackResult != null) {
-      debugPrint('[EngineInitializer] ✓ 回退引擎初始化成功: $fallbackType');
-
-      // 更新托盘状态为警告
-      await _notifyFallback(preferredType, fallbackType);
-
-      return EngineInitResult(
-        engine: fallbackResult,
-        actualEngineType: fallbackType,
-        configuredEngineType: preferredType,
-        fallbackOccurred: true,
-        fallbackReason: _getModelNotReadyReason(preferredType),
+    // 2. 按原有优先级尝试其余引擎，避免遗漏已安装的第三个引擎。
+    for (final fallbackType in [
+      EngineType.sensevoice, EngineType.zipformer, EngineType.qwen3Asr,
+    ].where((type) => type != preferredType)) {
+      final fallbackResult = await _tryInitializeEngine(
+        fallbackType, enableDebugLog: enableDebugLog,
       );
+      if (fallbackResult != null) {
+        await _notifyFallback(preferredType, fallbackType);
+        return EngineInitResult(
+          engine: fallbackResult,
+          actualEngineType: fallbackType,
+          configuredEngineType: preferredType,
+          fallbackOccurred: true,
+          fallbackReason: _getModelNotReadyReason(preferredType),
+        );
+      }
+      triedEngines.add(fallbackType.name);
     }
-
-    triedEngines.add(fallbackType.name);
-    debugPrint('[EngineInitializer] ✗ 回退引擎也不可用: $fallbackType');
 
     // 3. 所有引擎都不可用
     throw EngineNotAvailableException(
@@ -149,6 +142,7 @@ class EngineInitializer {
     return switch (type) {
       EngineType.zipformer => ASREngineType.zipformer,
       EngineType.sensevoice => ASREngineType.sensevoice,
+      EngineType.qwen3Asr => ASREngineType.qwen3Asr,
     };
   }
 
@@ -157,18 +151,11 @@ class EngineInitializer {
     return _modelManager.isEngineReady(type);
   }
 
-  /// 获取回退引擎类型
-  EngineType _getFallbackEngine(EngineType preferred) {
-    // 如果配置的是 SenseVoice，回退到 Zipformer
-    // 如果配置的是 Zipformer，回退到 SenseVoice
-    return preferred == EngineType.sensevoice
-        ? EngineType.zipformer
-        : EngineType.sensevoice;
-  }
-
   /// 获取模型未就绪的原因描述
   String _getModelNotReadyReason(EngineType type) {
     switch (type) {
+      case EngineType.qwen3Asr:
+        return 'Qwen3-ASR 模型或 VAD 模型未下载或不完整';
       case EngineType.zipformer:
         return 'Zipformer 模型未下载或不完整';
       case EngineType.sensevoice:
@@ -210,6 +197,7 @@ class EngineInitializer {
     return switch (type) {
       EngineType.zipformer => lang.tr('tray_engine_zipformer'),
       EngineType.sensevoice => lang.tr('tray_engine_sensevoice'),
+      EngineType.qwen3Asr => lang.tr('tray_engine_qwen3_asr'),
     };
   }
 
@@ -230,17 +218,21 @@ class EngineInitializer {
     return {
       EngineType.zipformer: _modelManager.isEngineReady(EngineType.zipformer),
       EngineType.sensevoice: _modelManager.isEngineReady(EngineType.sensevoice),
+      EngineType.qwen3Asr: _modelManager.isEngineReady(EngineType.qwen3Asr),
     };
   }
 
   /// 获取第一个可用的引擎类型 (不创建实例)
   EngineType? getFirstAvailableEngine() {
-    // 按默认优先级: SenseVoice → Zipformer
+    // 按默认优先级: SenseVoice → Zipformer → Qwen3-ASR
     if (_modelManager.isEngineReady(EngineType.sensevoice)) {
       return EngineType.sensevoice;
     }
     if (_modelManager.isEngineReady(EngineType.zipformer)) {
       return EngineType.zipformer;
+    }
+    if (_modelManager.isEngineReady(EngineType.qwen3Asr)) {
+      return EngineType.qwen3Asr;
     }
     return null;
   }

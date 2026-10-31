@@ -7,6 +7,8 @@ enum ASREngineType {
 
   /// SenseVoice 离线引擎 (VAD 分段后识别，高精度)
   sensevoice,
+  /// Qwen3-ASR 0.6B 离线引擎（VAD 分段）
+  qwen3Asr,
 }
 
 /// ASR 引擎错误类型
@@ -32,7 +34,7 @@ enum ASRError {
   /// 服务未初始化
   notInitialized,
 
-  /// VAD 初始化失败 (仅 SenseVoice)
+  /// VAD 初始化失败（离线引擎）
   vadInitFailed,
 
   /// 配置错误
@@ -153,6 +155,30 @@ class SenseVoiceConfig extends ASRConfig {
     return 'SenseVoiceConfig(modelDir: $modelDir, vadModelPath: $vadModelPath, '
         'useItn: $useItn, language: $language)';
   }
+}
+
+/// Qwen3-ASR 0.6B 离线识别配置。
+class Qwen3AsrConfig extends ASRConfig {
+  final String vadModelPath;
+  final int maxNewTokens;
+  /// 以英文逗号分隔的热词。
+  final String hotwords;
+  final double vadThreshold;
+  final double minSilenceDuration;
+  final double minSpeechDuration;
+  final double maxSpeechDuration;
+  const Qwen3AsrConfig({
+    required super.modelDir,
+    required this.vadModelPath,
+    super.numThreads = 2,
+    super.sampleRate = 16000,
+    this.maxNewTokens = 128,
+    this.hotwords = '',
+    this.vadThreshold = 0.25,
+    this.minSilenceDuration = 0.5,
+    this.minSpeechDuration = 0.25,
+    this.maxSpeechDuration = 10.0,
+  });
 }
 
 /// 统一 ASR 识别结果

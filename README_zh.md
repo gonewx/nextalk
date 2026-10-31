@@ -12,7 +12,7 @@
 
 ## 特性
 
-- **离线识别** - 基于 Sherpa-onnx 双引擎：SenseVoice 离线引擎（默认，高精度、多语言、自动标点）+ Zipformer 流式引擎（可选，边说边出字），数据不出本地
+- **离线识别** - 基于 Sherpa-onnx 三引擎：Qwen3-ASR 0.6B 离线引擎（默认推荐，精度最高、多语言及中文方言、热词）+ SenseVoice 离线引擎（轻量、自动标点）+ Zipformer 流式引擎（边说边出字），数据不出本地
 - **低延迟** - 流式引擎实时转录，文本上屏链路延迟 < 20ms
 - **透明悬浮窗** - 无边框胶囊 UI，呼吸灯动画，不干扰工作流程
 - **Wayland 原生支持** - 系统快捷键和文本提交均支持 Wayland
@@ -98,7 +98,7 @@ gnome-extensions enable nextalk@gonewx.com
 
 > **自动纠错**: 上屏前会自动修正全大写英文、口头禅（嗯、呃）、重复词和中文语境下的半角标点。可在 `~/.config/nextalk/settings.yaml` 的 `text:` 节调整开关，并通过 `replacements` 配置自定义纠错词典（如 `"派森": "Python"`）。
 
-> **首次运行**: 应用会自动下载语音识别模型 (~200MB)
+> **首次运行**: 应用会自动下载语音识别模型（默认 Qwen3-ASR 约 840MB，需 1.8GB 以上可用空间；SenseVoice/Zipformer 约 200MB），解压依赖系统 `tar` 与 `bzip2`
 
 ### 命令行参数
 
@@ -127,7 +127,7 @@ gnome-extensions enable nextalk@gonewx.com
 - 显示/隐藏窗口
 - **重新连接 Fcitx5** - 输入法通道断开时手动重连
 - **快捷键模式（只读）** - 显示当前生效的快捷键方式：`快捷键: Super+Z (Portal 自动注册)` 或 `快捷键: 系统设置 (nextalk-toggle)`
-- 模型设置 - 切换 ASR 引擎 (SenseVoice / Zipformer) 与 Zipformer 模型版本 (int8 / 标准)
+- 模型设置 - 切换 ASR 引擎 (Qwen3-ASR / SenseVoice / Zipformer) 与 Zipformer 模型版本 (int8 / 标准)
 - 切换界面语言 (中文 / English)
 - **音频输入设备** - 选择可用的音频输入设备
 - 设置 - 打开配置目录
@@ -152,7 +152,8 @@ gnome-extensions enable nextalk@gonewx.com
 
 | 引擎 | 说明 |
 |------|------|
-| `sensevoice` (默认) | 离线引擎：VAD 分段后整段识别，精度高，自动标点，多语言 (zh/en/ja/ko/yue) |
+| `qwen3_asr` (默认推荐) | Qwen3-ASR 0.6B 离线引擎：VAD 分段后整段识别，精度最高，多语言及中文方言，支持热词；每段说完约 1–2 秒出字 |
+| `sensevoice` | 离线引擎：VAD 分段后整段识别，模型小、速度快，自动标点，多语言 (zh/en/ja/ko/yue) |
 | `zipformer` | 流式引擎：边听边识别，文字逐字出现 |
 
 Zipformer 版本：`int8`（速度快、内存小）/ `standard`（精度更高）。
@@ -163,8 +164,14 @@ Zipformer 版本：`int8`（速度快、内存小）/ `standard`（精度更高�
 
 ```yaml
 model:
-  # ASR 引擎: zipformer | sensevoice
-  engine: sensevoice
+  # ASR 引擎: qwen3_asr | sensevoice | zipformer
+  engine: qwen3_asr
+
+  qwen3_asr:
+    num_threads: 2       # 推理线程数
+    max_new_tokens: 128  # 每段最多生成的 token 数 (1-512)
+    hotwords: ""         # 热词，英文逗号分隔，如 "Nextalk,语音输入"
+    custom_url: ""
 
   zipformer:
     type: int8        # 模型版本: int8 | standard
@@ -368,6 +375,8 @@ fcitx5 -r  # 重启 Fcitx5
 ```yaml
 # ~/.config/nextalk/settings.yaml
 model:
+  qwen3_asr:
+    custom_url: "https://your-mirror/qwen3-asr-model.tar.bz2"
   zipformer:
     custom_url: "https://your-mirror/zipformer-model.tar.bz2"
   sensevoice:

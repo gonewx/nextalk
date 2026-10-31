@@ -18,8 +18,8 @@ void main() {
       expect(ASREngineType.values, contains(ASREngineType.sensevoice));
     });
 
-    test('应该有且仅有 2 种引擎类型', () {
-      expect(ASREngineType.values.length, equals(2));
+    test('应该有且仅有 3 种引擎类型', () {
+      expect(ASREngineType.values.length, equals(3));
     });
   });
 

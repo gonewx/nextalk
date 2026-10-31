@@ -15,6 +15,7 @@
   "trayAsrEngine": "ASR Engine",
   "trayEngineZipformer": "Zipformer (Streaming)",
   "trayEngineSensevoice": "SenseVoice (Offline)",
+  "trayEngineQwen3Asr": "Qwen3-ASR 0.6B (Offline)",
   "trayEngineSwitching": "Switching...",
   "trayEngineSwitchSuccess": "Engine switched to {engine}",
   "trayEngineSwitchFallback": "Switch failed, fallback to {engine}",

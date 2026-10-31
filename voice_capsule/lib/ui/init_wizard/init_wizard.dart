@@ -117,9 +117,10 @@ class _InitWizardState extends State<InitWizard> {
       final engineType = _targetEngine;
 
       final ModelError error;
-      if (engineType == EngineType.sensevoice) {
-        // SenseVoice 需要下载模型 + VAD
-        error = await widget.modelManager.ensureSenseVoiceReady(
+      if (engineType != EngineType.zipformer) {
+        // 离线引擎需要下载模型 + VAD
+        error = await widget.modelManager.ensureOfflineEngineReady(
+          engineType,
           onProgress: (progress, status, {int downloaded = 0, int total = 0}) {
             if (!mounted) return;
             setState(() {
@@ -215,9 +216,10 @@ class _InitWizardState extends State<InitWizard> {
       final engineType = _targetEngine;
 
       final ModelError error;
-      if (engineType == EngineType.sensevoice) {
-        // SenseVoice 需要下载模型 + VAD
-        error = await widget.modelManager.ensureSenseVoiceReady(
+      if (engineType != EngineType.zipformer) {
+        // 离线引擎需要下载模型 + VAD
+        error = await widget.modelManager.ensureOfflineEngineReady(
+          engineType,
           onProgress: _onDownloadProgress,
         );
       } else {
@@ -333,7 +335,7 @@ class _InitWizardState extends State<InitWizard> {
   }
 
   /// 验证模型
-  /// Story 2-7: 支持验证当前引擎的模型（SenseVoice 还需要验证 VAD）
+  /// Story 2-7: 支持验证当前引擎的模型（离线引擎还需要验证 VAD）
   Future<void> _verifyModel() async {
     setState(() {
       _state = InitStateData.verifying();
@@ -345,9 +347,9 @@ class _InitWizardState extends State<InitWizard> {
     // 检查 ASR 模型状态
     final asrStatus = widget.modelManager.checkModelStatusForEngine(engineType);
 
-    // 如果是 SenseVoice，还需要检查 VAD 模型
+    // 离线引擎还需要检查 VAD 模型
     bool vadReady = true;
-    if (engineType == EngineType.sensevoice) {
+    if (engineType != EngineType.zipformer) {
       final vadStatus = widget.modelManager.checkVadModelStatus();
       vadReady = vadStatus == ModelStatus.ready;
     }
@@ -362,7 +364,7 @@ class _InitWizardState extends State<InitWizard> {
       final l10n = AppLocalizations.of(context);
       String errorMsg = l10n?.wizardModelVerifyFailed ?? '未检测到有效模型，请确认文件已正确放置';
       if (asrStatus != ModelStatus.ready) {
-        errorMsg = '${engineType == EngineType.sensevoice ? "SenseVoice" : "Zipformer"} 模型未就绪';
+        errorMsg = '${ModelConfigs.forEngine(engineType).displayName} 模型未就绪';
       } else if (!vadReady) {
         errorMsg = 'VAD 模型未就绪';
       }
@@ -450,7 +452,7 @@ class _InitWizardState extends State<InitWizard> {
       case InitPhase.manualGuide:
         // Story 2-7: 根据目标引擎类型动态显示下载说明
         final engineType = _targetEngine;
-        final isSenseVoice = engineType == EngineType.sensevoice;
+        final needsVad = engineType != EngineType.zipformer;
 
         return ManualInstallGuide(
           onCopyLink: _copyLink,
@@ -461,8 +463,8 @@ class _InitWizardState extends State<InitWizard> {
           modelUrl: widget.modelManager.getDefaultDownloadUrlForEngine(engineType),
           targetPath: ModelManager.modelDirectory,
           expectedStructure: widget.modelManager.getExpectedStructureForEngine(engineType),
-          vadUrl: isSenseVoice ? widget.modelManager.vadDownloadUrl : null,
-          vadExpectedStructure: isSenseVoice ? widget.modelManager.vadExpectedStructure : null,
+          vadUrl: needsVad ? widget.modelManager.vadDownloadUrl : null,
+          vadExpectedStructure: needsVad ? widget.modelManager.vadExpectedStructure : null,
         );
 
       case InitPhase.checkingModel:

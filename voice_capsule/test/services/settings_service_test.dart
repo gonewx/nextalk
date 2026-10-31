@@ -30,8 +30,8 @@ void main() {
   });
 
   group('SettingsConstants', () {
-    test('EngineType 枚举包含 zipformer 和 sensevoice', () {
-      expect(EngineType.values.length, equals(2));
+    test('EngineType 枚举包含三种引擎', () {
+      expect(EngineType.values.length, equals(3));
       expect(EngineType.values.contains(EngineType.zipformer), isTrue);
       expect(EngineType.values.contains(EngineType.sensevoice), isTrue);
     });
@@ -48,10 +48,10 @@ void main() {
       expect(SettingsConstants.defaultSettingsYaml, contains('engine:'));
     });
 
-    test('defaultSettingsYaml 默认引擎为 sensevoice (AC5)', () {
-      // AC5: 默认使用 SenseVoice 引擎
+    test('defaultSettingsYaml 默认引擎为 qwen3_asr', () {
+      // 默认推荐 Qwen3-ASR 引擎
       expect(SettingsConstants.defaultSettingsYaml,
-          contains('engine: sensevoice'));
+          contains('engine: qwen3_asr'));
     });
 
     test('defaultSettingsYaml 包含 zipformer 配置块', () {
@@ -70,9 +70,9 @@ void main() {
       expect(SettingsConstants.defaultSettingsYaml, contains('language:'));
     });
 
-    test('defaultEngineType 为 sensevoice', () {
+    test('defaultEngineType 为 qwen3Asr', () {
       expect(
-          SettingsConstants.defaultEngineType, equals(EngineType.sensevoice));
+          SettingsConstants.defaultEngineType, equals(EngineType.qwen3Asr));
     });
 
     test('keyEngineType 键名正确', () {
@@ -87,7 +87,7 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('engineType 默认返回 sensevoice', () async {
+    test('engineType 默认返回 qwen3Asr', () async {
       // 使用 mock SharedPreferences，不初始化实际服务
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
@@ -95,7 +95,7 @@ void main() {
       // 由于 SettingsService 是单例，我们只测试默认值逻辑
       // engineType getter 在没有存储值时应返回默认值
       expect(
-          SettingsConstants.defaultEngineType, equals(EngineType.sensevoice));
+          SettingsConstants.defaultEngineType, equals(EngineType.qwen3Asr));
     });
 
     test('EngineType 可以通过 name 解析', () {
@@ -118,7 +118,7 @@ void main() {
       // 当解析失败时应使用默认值
       final result =
           parsed.isEmpty ? SettingsConstants.defaultEngineType : parsed.first;
-      expect(result, equals(EngineType.sensevoice));
+      expect(result, equals(EngineType.qwen3Asr));
     });
   });
 

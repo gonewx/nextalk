@@ -14,6 +14,8 @@ Requires:       fcitx5 >= 5.0
 Requires:       gtk3 >= 3.24
 Requires:       glibc >= 2.31
 Requires:       libayatana-appindicator-gtk3
+Requires:       tar
+Requires:       bzip2
 Recommends:     pulseaudio
 # GNOME 桌面显示托盘图标需要此扩展(装后需启用并重登会话);KDE 原生支持 SNI 无需扩展
 Recommends:     gnome-shell-extension-appindicator

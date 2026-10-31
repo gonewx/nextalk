@@ -12,7 +12,7 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 
 ## Features
 
-- **Offline Recognition** - Dual-engine ASR based on Sherpa-onnx: SenseVoice offline engine (default — high accuracy, multilingual, auto punctuation) and Zipformer streaming engine (optional — real-time, character by character); data never leaves your device
+- **Offline Recognition** - Three ASR engines based on Sherpa-onnx: Qwen3-ASR 0.6B offline engine (default, recommended — best accuracy, multilingual plus Chinese dialects, hotwords), SenseVoice offline engine (lightweight, auto punctuation) and Zipformer streaming engine (real-time, character by character); data never leaves your device
 - **Low Latency** - Streaming engine transcribes as you speak; text commit path latency < 20ms
 - **Transparent Floating Window** - Borderless capsule UI with breathing animation, minimal workflow disruption
 - **Native Wayland Support** - System shortcuts and text submission both support Wayland
@@ -98,7 +98,7 @@ Without the extension enabled, the app automatically falls back to clipboard mod
 
 > **Auto-correction**: Before committing, Nextalk fixes all-caps English, filler words (um, uh, 嗯, 呃), repeated words and half-width punctuation in Chinese text. Tune it under `text:` in `~/.config/nextalk/settings.yaml`, and add your own fixes via `replacements` (e.g. `"get hub": "GitHub"`).
 
-> **First Run**: The app will automatically download the speech recognition model (~200MB)
+> **First Run**: The app will automatically download the speech recognition model (default Qwen3-ASR ~840MB, needs 1.8GB+ free space; SenseVoice/Zipformer ~200MB). Extraction requires system `tar` and `bzip2`
 
 ### Command Line Options
 
@@ -127,7 +127,7 @@ The app supports system tray (on supported desktop environments), right-click me
 - Show/Hide window
 - **Reconnect Fcitx5** - manually reconnect when the input-method channel drops
 - **Hotkey mode (read-only)** - shows the active hotkey path: `Hotkey: Super+Z (Portal auto-registered)` or `Hotkey: System settings (nextalk-toggle)`
-- Model settings - switch ASR engine (SenseVoice / Zipformer) and Zipformer model version (int8 / standard)
+- Model settings - switch ASR engine (Qwen3-ASR / SenseVoice / Zipformer) and Zipformer model version (int8 / standard)
 - Switch UI language (中文 / English)
 - **Audio input device** - Select from available audio input devices
 - Settings - open the config directory
@@ -152,7 +152,8 @@ Switch via system tray menu:
 
 | Engine | Description |
 |--------|-------------|
-| `sensevoice` (default) | Offline engine: recognizes per VAD segment, higher accuracy, auto punctuation, multilingual (zh/en/ja/ko/yue) |
+| `qwen3_asr` (default, recommended) | Qwen3-ASR 0.6B offline engine: recognizes per VAD segment, best accuracy, multilingual plus Chinese dialects, hotwords; text appears ~1–2s after each utterance |
+| `sensevoice` | Offline engine: recognizes per VAD segment, small and fast, auto punctuation, multilingual (zh/en/ja/ko/yue) |
 | `zipformer` | Streaming engine: recognize-while-listening, text appears character by character |
 
 Zipformer variants: `int8` (faster, smaller memory) / `standard` (higher accuracy).
@@ -163,8 +164,14 @@ Advanced configuration: `~/.config/nextalk/settings.yaml`
 
 ```yaml
 model:
-  # ASR engine: zipformer | sensevoice
-  engine: sensevoice
+  # ASR engine: qwen3_asr | sensevoice | zipformer
+  engine: qwen3_asr
+
+  qwen3_asr:
+    num_threads: 2       # Inference threads
+    max_new_tokens: 128  # Max tokens generated per segment (1-512)
+    hotwords: ""         # Comma-separated hotwords, e.g. "Nextalk,voice input"
+    custom_url: ""
 
   zipformer:
     type: int8        # Model variant: int8 | standard
@@ -368,6 +375,8 @@ Configure custom download URL or use proxy:
 ```yaml
 # ~/.config/nextalk/settings.yaml
 model:
+  qwen3_asr:
+    custom_url: "https://your-mirror/qwen3-asr-model.tar.bz2"
   zipformer:
     custom_url: "https://your-mirror/zipformer-model.tar.bz2"
   sensevoice:

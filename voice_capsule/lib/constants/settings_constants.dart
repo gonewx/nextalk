@@ -16,6 +16,8 @@ enum EngineType {
 
   /// SenseVoice 离线引擎 (VAD 分段后识别，高精度)
   sensevoice,
+  /// Qwen3-ASR 0.6B 离线引擎（VAD 分段）
+  qwen3Asr,
 }
 
 /// 设置服务常量
@@ -30,7 +32,7 @@ class SettingsConstants {
   /// 模型类型键名 (Zipformer 版本: int8 | standard)
   static const String keyModelType = '${keyPrefix}model_type';
 
-  /// 引擎类型键名 (Story 2-7: zipformer | sensevoice)
+  /// 引擎类型键名 (Story 2-7: zipformer | sensevoice | qwen3_asr)
   static const String keyEngineType = '${keyPrefix}engine_type';
 
   /// 音频输入设备名称键名 (Story 3-9)
@@ -57,8 +59,8 @@ class SettingsConstants {
   /// 默认模型类型 (Zipformer 版本)
   static const ModelType defaultModelType = ModelType.standard;
 
-  /// 默认引擎类型 (Story 2-7 AC5: 默认使用 SenseVoice 引擎)
-  static const EngineType defaultEngineType = EngineType.sensevoice;
+  /// 默认引擎类型 (默认推荐 Qwen3-ASR 0.6B 离线引擎)
+  static const EngineType defaultEngineType = EngineType.qwen3Asr;
 
   /// SenseVoice 默认配置: 是否启用逆文本正则化 (ITN)
   static const bool defaultSenseVoiceUseItn = true;
@@ -90,10 +92,11 @@ class SettingsConstants {
 # 修改后重启应用生效
 
 model:
-  # ASR 引擎类型: zipformer | sensevoice
+  # ASR 引擎类型: zipformer | sensevoice | qwen3_asr
   # zipformer: 流式识别，边听边识别，低延迟 (<200ms)
   # sensevoice: 离线识别，VAD 分段后识别，高精度，自动标点
-  engine: sensevoice
+  # qwen3_asr: 离线识别 (默认推荐)，Qwen3-ASR 0.6B，精度最高，多语言
+  engine: qwen3_asr
 
   # Zipformer 配置 (流式引擎)
   zipformer:
@@ -116,6 +119,17 @@ model:
     language: auto
 
     # 自定义模型下载地址 (留空使用默认地址)
+    custom_url: ""
+
+  # Qwen3-ASR 0.6B 配置（离线引擎，需要 VAD）
+  qwen3_asr:
+    # 推理线程数，必须大于 0
+    num_threads: 2
+    # 每段最多生成的 token 数（1 到 512）
+    max_new_tokens: 128
+    # 热词以英文逗号分隔，例如 "Nextalk,语音输入"
+    hotwords: ""
+    # 自定义模型下载地址（留空使用默认地址）
     custom_url: ""
 
 # 快捷键设置
@@ -160,10 +174,11 @@ text:
 # Restart the app after making changes
 
 model:
-  # ASR engine type: zipformer | sensevoice
+  # ASR engine type: zipformer | sensevoice | qwen3_asr
   # zipformer: Streaming recognition, real-time, low latency (<200ms)
   # sensevoice: Offline recognition, VAD segmented, high accuracy, auto punctuation
-  engine: sensevoice
+  # qwen3_asr: Offline recognition (recommended), Qwen3-ASR 0.6B, best accuracy, multilingual
+  engine: qwen3_asr
 
   # Zipformer configuration (streaming engine)
   zipformer:
@@ -186,6 +201,17 @@ model:
     language: auto
 
     # Custom model download URL (leave empty for default)
+    custom_url: ""
+
+  # Qwen3-ASR 0.6B 配置（离线引擎，需要 VAD）
+  qwen3_asr:
+    # 推理线程数，必须大于 0
+    num_threads: 2
+    # 每段最多生成的 token 数（1 到 512）
+    max_new_tokens: 128
+    # 热词以英文逗号分隔，例如 "Nextalk,语音输入"
+    hotwords: ""
+    # 自定义模型下载地址（留空使用默认地址）
     custom_url: ""
 
 # Hotkey Settings

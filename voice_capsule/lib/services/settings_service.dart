@@ -218,14 +218,14 @@ class SettingsService {
       // 尝试从 YAML 读取
       final yamlEngine = _yamlConfig?['model']?['engine'] as String?;
       if (yamlEngine != null) {
-        final parsed = EngineType.values.where((e) => e.name == yamlEngine);
+        final parsed = EngineType.values.where((e) => e.name == yamlEngine || (e == EngineType.qwen3Asr && yamlEngine == 'qwen3_asr'));
         if (parsed.isNotEmpty) return parsed.first;
       }
       return SettingsConstants.defaultEngineType;
     }
 
     // 解析 SharedPreferences 中的值
-    final parsed = EngineType.values.where((e) => e.name == typeStr);
+    final parsed = EngineType.values.where((e) => e.name == typeStr || (e == EngineType.qwen3Asr && typeStr == 'qwen3_asr'));
     return parsed.isNotEmpty ? parsed.first : SettingsConstants.defaultEngineType;
   }
 
@@ -233,7 +233,7 @@ class SettingsService {
   Future<void> setEngineType(EngineType type) async {
     if (_prefs == null) return;
 
-    final typeStr = type.name;
+    final typeStr = type == EngineType.qwen3Asr ? 'qwen3_asr' : type.name;
     await _prefs!.setString(SettingsConstants.keyEngineType, typeStr);
 
     // 同步更新 YAML 配置文件
@@ -289,6 +289,29 @@ class SettingsService {
     }
   }
 
+  Map get _qwen3AsrSettings {
+    final model = _yamlConfig?['model'];
+    final settings = model is Map ? model['qwen3_asr'] : null;
+    return settings is Map ? settings : const {};
+  }
+  /// Qwen3-ASR 参数无效时使用安全默认值。
+  int get qwen3AsrNumThreads {
+    final value = _qwen3AsrSettings['num_threads'];
+    return value is int && value > 0 && value <= 256 ? value : 2;
+  }
+  int get qwen3AsrMaxNewTokens {
+    final value = _qwen3AsrSettings['max_new_tokens'];
+    return value is int && value > 0 && value <= 512 ? value : 128;
+  }
+  String get qwen3AsrHotwords {
+    final value = _qwen3AsrSettings['hotwords'];
+    return value is String ? value : '';
+  }
+  String? get qwen3AsrCustomUrl {
+    final value = _qwen3AsrSettings['custom_url'];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
   // ===== SenseVoice 配置 =====
 
   /// 获取 SenseVoice use_itn 配置
@@ -334,6 +357,7 @@ class SettingsService {
 
   /// 获取当前引擎的自定义模型下载 URL
   String? get customModelUrl {
+    if (engineType == EngineType.qwen3Asr) return qwen3AsrCustomUrl;
     if (engineType == EngineType.sensevoice) {
       return senseVoiceCustomUrl;
     }

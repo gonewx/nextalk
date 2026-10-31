@@ -208,6 +208,10 @@ class TrayService {
             label: '${senseChecked ? "● " : ""}${lang.tr('tray_engine_sensevoice')}',
             onClicked: (_) => _switchEngine(EngineType.sensevoice),
           ),
+          MenuItemLabel(
+            label: '${actualEngine == EngineType.qwen3Asr ? "● " : ""}${lang.tr('tray_engine_qwen3_asr')}',
+            onClicked: (_) => _switchEngine(EngineType.qwen3Asr),
+          ),
         ],
       ),
       MenuSeparator(),
@@ -459,6 +463,7 @@ class TrayService {
     return switch (type) {
       EngineType.zipformer => lang.tr('tray_engine_zipformer'),
       EngineType.sensevoice => lang.tr('tray_engine_sensevoice'),
+      EngineType.qwen3Asr => lang.tr('tray_engine_qwen3_asr'),
     };
   }
 

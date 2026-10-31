@@ -17,6 +17,7 @@
   "trayAsrEngine": "ASR 引擎",
   "trayEngineZipformer": "Zipformer (流式)",
   "trayEngineSensevoice": "SenseVoice (离线)",
+  "trayEngineQwen3Asr": "Qwen3-ASR 0.6B (离线)",
   "trayEngineSwitching": "切换中...",
   "trayEngineSwitchSuccess": "引擎已切换为 {engine}",
   "trayEngineSwitchFallback": "切换失败，已回退到 {engine}",

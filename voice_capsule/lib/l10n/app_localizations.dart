@@ -170,6 +170,12 @@ abstract class AppLocalizations {
   /// **'SenseVoice (离线)'**
   String get trayEngineSensevoice;
 
+  /// No description provided for @trayEngineQwen3Asr.
+  ///
+  /// In zh, this message translates to:
+  /// **'Qwen3-ASR 0.6B (离线)'**
+  String get trayEngineQwen3Asr;
+
   /// No description provided for @trayEngineSwitching.
   ///
   /// In zh, this message translates to:

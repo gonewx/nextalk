@@ -1,5 +1,6 @@
 import 'asr_engine.dart';
 import 'sensevoice_engine.dart';
+import 'qwen3_asr_engine.dart';
 import 'zipformer_engine.dart';
 
 /// ASR 引擎工厂
@@ -19,6 +20,8 @@ class ASREngineFactory {
     bool enableDebugLog = false,
   }) {
     switch (engineType) {
+      case ASREngineType.qwen3Asr:
+        return Qwen3AsrEngine(enableDebugLog: enableDebugLog);
       case ASREngineType.zipformer:
         return ZipformerEngine(enableDebugLog: enableDebugLog);
       case ASREngineType.sensevoice:
@@ -30,7 +33,7 @@ class ASREngineFactory {
   ///
   /// [engineType] 引擎类型
   /// [modelDir] 模型目录
-  /// [vadModelPath] VAD 模型路径 (仅 SenseVoice 需要)
+  /// [vadModelPath] VAD 模型路径 (离线引擎需要)
   /// [useInt8Model] 是否使用 int8 模型 (仅 Zipformer)
   /// [enableEndpoint] 是否启用端点检测 (仅 Zipformer)
   /// [rule2MinTrailingSilence] VAD 静音阈值 (仅 Zipformer)
@@ -43,6 +46,9 @@ class ASREngineFactory {
     double rule2MinTrailingSilence = 1.2,
     bool useItn = true,
     String language = 'auto',
+    int numThreads = 2,
+    int maxNewTokens = 128,
+    String hotwords = '',
   }) {
     switch (engineType) {
       case ASREngineType.zipformer:
@@ -51,6 +57,17 @@ class ASREngineFactory {
           useInt8Model: useInt8Model,
           enableEndpoint: enableEndpoint,
           rule2MinTrailingSilence: rule2MinTrailingSilence,
+        );
+      case ASREngineType.qwen3Asr:
+        if (vadModelPath == null) {
+          throw ArgumentError('Qwen3-ASR 引擎需要 vadModelPath');
+        }
+        return Qwen3AsrConfig(
+          modelDir: modelDir,
+          vadModelPath: vadModelPath,
+          numThreads: numThreads,
+          maxNewTokens: maxNewTokens,
+          hotwords: hotwords,
         );
       case ASREngineType.sensevoice:
         if (vadModelPath == null) {

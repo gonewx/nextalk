@@ -47,17 +47,21 @@ class ManualInstallGuide extends StatelessWidget {
   /// 期望的目录结构
   final String expectedStructure;
 
-  /// VAD 模型下载 URL (仅 SenseVoice 需要)
+  /// VAD 模型下载 URL (离线引擎需要)
   final String? vadUrl;
 
-  /// VAD 期望的目录结构 (仅 SenseVoice 需要)
+  /// VAD 期望的目录结构 (离线引擎需要)
   final String? vadExpectedStructure;
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final isSenseVoice = engineType == EngineType.sensevoice;
-    final engineName = isSenseVoice ? 'SenseVoice' : 'Zipformer';
+    final needsVad = engineType != EngineType.zipformer;
+    final engineName = switch (engineType) {
+      EngineType.zipformer => 'Zipformer',
+      EngineType.sensevoice => 'SenseVoice',
+      EngineType.qwen3Asr => 'Qwen3-ASR 0.6B',
+    };
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 520),
@@ -123,8 +127,8 @@ class ManualInstallGuide extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // 步骤 1.5: 下载 VAD 模型（仅 SenseVoice 需要）
-          if (isSenseVoice && vadUrl != null) ...[
+          // 步骤 1.5: 下载 VAD 模型（离线引擎需要）
+          if (needsVad && vadUrl != null) ...[
             _buildStep(
               context: context,
               number: '1b',
@@ -221,8 +225,8 @@ class ManualInstallGuide extends StatelessWidget {
             ),
           ),
 
-          // 步骤 3b: VAD 模型目录结构（仅 SenseVoice 需要）
-          if (isSenseVoice && vadExpectedStructure != null) ...[
+          // 步骤 3b: VAD 模型目录结构（离线引擎需要）
+          if (needsVad && vadExpectedStructure != null) ...[
             const SizedBox(height: 12),
             _buildStep(
               context: context,

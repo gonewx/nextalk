@@ -7,6 +7,7 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 
 import '../constants/settings_constants.dart';
+import '../constants/qwen3_asr_constants.dart';
 import 'settings_service.dart';
 
 /// 模型状态枚举
@@ -99,8 +100,19 @@ class ModelConfigs {
     requiredFilePrefixes: ['model'],
   );
 
-  /// Silero VAD 模型
-  /// 注意: sherpa-onnx 官方未提供 SHA256 校验值，跳过校验
+  /// 官方发布附件已核验 SHA256，量化模型约 838 MiB。
+  static const qwen3Asr = ModelConfig(
+    displayName: 'Qwen3-ASR 0.6B (离线)',
+    dirName: 'qwen3_asr',
+    archiveTopDir: 'sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25',
+    defaultUrl:
+        'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
+        'sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2',
+    sha256: '393f8a14e2f5fb96746aaab342997a40641001fbd5bf9592a080a8329178ee96',
+    requiredFilePrefixes: ['conv_frontend', 'encoder', 'decoder'],
+  );
+
+  /// Silero VAD 模型（已核验官方发布文件的 SHA256）
   static const sileroVad = ModelConfig(
     displayName: 'Silero VAD',
     dirName: 'vad',
@@ -108,7 +120,7 @@ class ModelConfigs {
     defaultUrl:
         'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
         'silero_vad.onnx',
-    sha256: null, // 官方未提供校验值
+    sha256: '9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6',
     requiredFilePrefixes: ['silero_vad'],
     isSingleFile: true,
   );
@@ -120,6 +132,8 @@ class ModelConfigs {
         return zipformer;
       case EngineType.sensevoice:
         return sensevoice;
+      case EngineType.qwen3Asr:
+        return qwen3Asr;
     }
   }
 }
@@ -389,8 +403,11 @@ models/$_modelName/
 
         // 计算总大小
         final contentLength = response.contentLength;
+        // 长度未知 (chunked) 时 contentLength 为 -1，此时跳过长度校验，交由 SHA256 兜底
         final expectedTotal = isResuming
-            ? downloadedBytes + contentLength
+            ? (contentLength > 0
+                ? downloadedBytes + contentLength
+                : (totalBytes > 0 ? totalBytes : -1))
             : (totalBytes > 0 ? totalBytes : contentLength);
 
         // 打开文件
@@ -661,6 +678,10 @@ models/$_modelName/
       return ModelStatus.notFound;
     }
 
+    if (engineType == EngineType.qwen3Asr) {
+      return Qwen3AsrConstants.hasRequiredFiles(modelDir.path)
+          ? ModelStatus.ready : ModelStatus.incomplete;
+    }
     // 检查必需文件
     for (final prefix in config.requiredFilePrefixes) {
       if (!_hasModelFileInDir(modelDir.path, prefix)) {
@@ -682,7 +703,7 @@ models/$_modelName/
     if (!vadFile.existsSync()) {
       return ModelStatus.notFound;
     }
-    return ModelStatus.ready;
+    return vadFile.lengthSync() > 0 ? ModelStatus.ready : ModelStatus.incomplete;
   }
 
   /// 检查指定引擎的模型是否就绪
@@ -701,19 +722,21 @@ models/$_modelName/
   /// 检查指定引擎是否完全就绪 (统一入口)
   ///
   /// - Zipformer: 只需要 ASR 模型
-  /// - SenseVoice: 需要 ASR 模型 + VAD 模型
+  /// - SenseVoice / Qwen3-ASR: 需要 ASR 模型 + VAD 模型
   bool isEngineReady(EngineType engineType) {
     switch (engineType) {
       case EngineType.zipformer:
         return isModelReadyForEngine(EngineType.zipformer);
       case EngineType.sensevoice:
         return isSenseVoiceReady;
+      case EngineType.qwen3Asr:
+        return isModelReadyForEngine(engineType) && isVadModelReady;
     }
   }
 
   /// 检查是否有任何引擎可用 (用于判断是否需要显示初始化向导)
   bool get hasAnyEngineReady {
-    return isSenseVoiceReady || isModelReadyForEngine(EngineType.zipformer);
+    return EngineType.values.any(isEngineReady);
   }
 
   /// 在指定目录中查找模型文件
@@ -757,6 +780,7 @@ models/$_modelName/
     return switch (engineType) {
       EngineType.zipformer => SettingsService.instance.zipformerCustomUrl,
       EngineType.sensevoice => SettingsService.instance.senseVoiceCustomUrl,
+      EngineType.qwen3Asr => SettingsService.instance.qwen3AsrCustomUrl,
     };
   }
 
@@ -765,6 +789,9 @@ models/$_modelName/
   String getExpectedStructureForEngine(EngineType engineType) {
     final config = ModelConfigs.forEngine(engineType);
     switch (engineType) {
+      case EngineType.qwen3Asr:
+        return 'models/${config.dirName}/\n'
+            '${Qwen3AsrConstants.requiredFiles.map((name) => '  $name').join('\n')}\n';
       case EngineType.zipformer:
         return '''
 models/${config.dirName}/
@@ -820,12 +847,18 @@ models/vad/
       vadDir.createSync(recursive: true);
     }
 
-    return _downloadFile(
+    final downloaded = await _downloadFile(
       url: url,
-      tempPath: targetPath, // VAD 是单文件，直接下载到目标位置
+      tempPath: '$targetPath.part',
       onProgress: onProgress,
       maxRetries: maxRetries,
     );
+    if (!await _verifyChecksumForFile(downloaded, ModelConfigs.sileroVad.sha256!)) {
+      await File(downloaded).delete();
+      throw const FormatException('VAD 模型 SHA256 校验失败');
+    }
+    await File(downloaded).rename(targetPath);
+    return targetPath;
   }
 
   /// 通用文件下载方法
@@ -860,7 +893,8 @@ models/vad/
             Platform.environment['HTTPS_PROXY'] ??
             Platform.environment['https_proxy'];
         if (httpProxy != null && httpProxy.isNotEmpty) {
-          client.findProxy = (uri) => 'PROXY $httpProxy';
+          final proxy = Uri.parse(httpProxy.contains('://') ? httpProxy : 'http://$httpProxy');
+          client.findProxy = (uri) => 'PROXY ${proxy.host}:${proxy.port}';
           client.badCertificateCallback = (cert, host, port) => true;
         }
 
@@ -904,6 +938,9 @@ models/vad/
         final response = await request.close();
         final statusCode = response.statusCode;
         final isResuming = statusCode == 206;
+        if (statusCode != 200 && statusCode != 206) {
+          throw HttpException('下载失败：HTTP $statusCode', uri: uri);
+        }
 
         if (downloadedBytes > 0 && !isResuming) {
           if (tempFile.existsSync()) {
@@ -914,8 +951,11 @@ models/vad/
 
         // 计算总大小
         final contentLength = response.contentLength;
+        // 长度未知 (chunked) 时 contentLength 为 -1，此时跳过长度校验，交由 SHA256 兜底
         final expectedTotal = isResuming
-            ? downloadedBytes + contentLength
+            ? (contentLength > 0
+                ? downloadedBytes + contentLength
+                : (totalBytes > 0 ? totalBytes : -1))
             : (totalBytes > 0 ? totalBytes : contentLength);
 
         // 下载
@@ -945,6 +985,9 @@ models/vad/
           raf.closeSync();
         }
 
+        if (expectedTotal > 0 && received != expectedTotal) {
+          throw HttpException('下载文件长度不完整', uri: uri);
+        }
         onProgress?.call(1.0, '下载完成',
             downloaded: received, total: expectedTotal);
         client.close();
@@ -981,13 +1024,40 @@ models/vad/
 
     onProgress?.call(0.0, '解压中 (后台处理)...', downloaded: 0, total: 0);
 
-    await Isolate.run(() => _extractInIsolate(
-          archivePath,
-          targetPath,
-          config.archiveTopDir,
-        ));
+    if (engineType == EngineType.qwen3Asr) {
+      await _extractQwen3Asr(archivePath, targetPath);
+    } else {
+      await Isolate.run(() => _extractInIsolate(
+            archivePath,
+            targetPath,
+            config.archiveTopDir,
+          ));
+    }
 
     onProgress?.call(1.0, '解压完成', downloaded: 0, total: 0);
+  }
+
+  /// 大模型以 tar 子进程解压到临时目录，只提取识别必需的六个文件。
+  Future<void> _extractQwen3Asr(String archivePath, String targetPath) async {
+    final target = Directory(targetPath);
+    await target.parent.create(recursive: true);
+    final staging = await target.parent.createTemp('qwen3-asr.extract-');
+    try {
+      final result = await Process.run('tar', [
+        '-xjf', archivePath, '--no-same-owner', '--no-same-permissions',
+        '--strip-components=1', '-C', staging.path,
+        ...Qwen3AsrConstants.requiredFiles.map(
+          (name) => '${ModelConfigs.qwen3Asr.archiveTopDir}/$name'),
+      ]);
+      if (result.exitCode != 0 ||
+          !Qwen3AsrConstants.hasRequiredFiles(staging.path)) {
+        throw FormatException('Qwen3-ASR 模型解压失败或文件不完整: ${result.stderr}');
+      }
+      if (await target.exists()) await target.delete(recursive: true);
+      await staging.rename(targetPath);
+    } finally {
+      if (await staging.exists()) await staging.delete(recursive: true);
+    }
   }
 
   /// 确保指定引擎的模型就绪
@@ -1043,6 +1113,7 @@ models/vad/
         tempFile.deleteSync();
       }
 
+      if (!isModelReadyForEngine(engineType)) return ModelError.extractionFailed;
       onProgress?.call(1.0, '${config.displayName} 模型准备完成', downloaded: 0, total: 0);
       return ModelError.none;
     } on DioException catch (e) {
@@ -1089,6 +1160,8 @@ models/vad/
 
       onProgress?.call(1.0, 'VAD 模型准备完成', downloaded: 0, total: 0);
       return ModelError.none;
+    } on FormatException {
+      return ModelError.checksumMismatch;
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) {
         return ModelError.downloadCancelled;
@@ -1104,28 +1177,24 @@ models/vad/
     }
   }
 
-  /// 确保 SenseVoice 引擎完全就绪 (模型 + VAD)
-  Future<ModelError> ensureSenseVoiceReady({
-    ProgressCallback? onProgress,
-  }) async {
-    // 1. 确保 SenseVoice 模型就绪 (0% - 80%)
+  /// 兼容现有 SenseVoice 下载入口。
+  Future<ModelError> ensureSenseVoiceReady({ProgressCallback? onProgress}) =>
+      ensureOfflineEngineReady(EngineType.sensevoice, onProgress: onProgress);
+
+  /// 确保离线引擎的识别模型和 VAD 都已就绪。
+  Future<ModelError> ensureOfflineEngineReady(
+    EngineType engineType, {ProgressCallback? onProgress}
+  ) async {
     final modelError = await ensureModelReadyForEngine(
-      EngineType.sensevoice,
+      engineType,
       onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
           onProgress?.call(p * 0.8, s, downloaded: downloaded, total: total),
     );
-
-    if (modelError != ModelError.none) {
-      return modelError;
-    }
-
-    // 2. 确保 VAD 模型就绪 (80% - 100%)
-    final vadError = await ensureVadModelReady(
+    if (modelError != ModelError.none) return modelError;
+    return ensureVadModelReady(
       onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
           onProgress?.call(0.8 + p * 0.2, s, downloaded: downloaded, total: total),
     );
-
-    return vadError;
   }
 
   /// 校验文件 SHA256

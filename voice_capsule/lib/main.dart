@@ -39,6 +39,7 @@ ASREngineType _toASREngineType(EngineType type) {
   return switch (type) {
     EngineType.zipformer => ASREngineType.zipformer,
     EngineType.sensevoice => ASREngineType.sensevoice,
+    EngineType.qwen3Asr => ASREngineType.qwen3Asr,
   };
 }
 

@@ -34,7 +34,7 @@ final class SherpaOnnxSileroVadModelConfig extends Struct {
   external double maxSpeechDuration;
 }
 
-/// Ten VAD 模型配置 (v1.12.20+ 新增)
+/// Ten VAD 模型配置 (v2.0.1 已核对)
 final class SherpaOnnxTenVadModelConfig extends Struct {
   /// VAD 模型文件路径
   external Pointer<Utf8> model;
@@ -80,7 +80,7 @@ final class SherpaOnnxVadModelConfig extends Struct {
   @Int32()
   external int debug;
 
-  /// Ten VAD 配置 (v1.12.20+ 新增)
+  /// Ten VAD 配置 (v2.0.1 已核对)
   external SherpaOnnxTenVadModelConfig tenVad;
 }
 
@@ -90,7 +90,7 @@ final class SherpaOnnxVoiceActivityDetector extends Opaque {}
 /// 语音段
 final class SherpaOnnxSpeechSegment extends Struct {
   /// 语音段起始采样点
-  @Int32()
+  @Int64()
   external int start;
 
   /// 语音段音频采样

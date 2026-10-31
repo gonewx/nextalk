@@ -89,9 +89,9 @@ void main() {
       }
     });
 
-    test('回退优先级: SenseVoice 优先于 Zipformer', () {
-      // 默认配置应该优先使用 SenseVoice
-      expect(SettingsConstants.defaultEngineType, EngineType.sensevoice);
+    test('默认引擎为 Qwen3-ASR', () {
+      // 默认推荐 Qwen3-ASR，不可用时按 SenseVoice → Zipformer 回退
+      expect(SettingsConstants.defaultEngineType, EngineType.qwen3Asr);
     });
 
     test('每个引擎类型都应该有有效的回退目标', () {
@@ -99,6 +99,7 @@ void main() {
       final fallbackMap = {
         EngineType.sensevoice: EngineType.zipformer,
         EngineType.zipformer: EngineType.sensevoice,
+        EngineType.qwen3Asr: EngineType.sensevoice,
       };
 
       // 确保所有引擎类型都有回退
