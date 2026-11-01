@@ -92,6 +92,7 @@ main() {
     if [[ -n $(git status --porcelain) ]]; then
         echo -e "${YELLOW}警告: 工作区有未提交的更改${NC}"
         git status --short
+        echo "（这些更改不会进入版本提交，也不会被推送）"
         echo ""
         read -p "是否继续? (y/N) " -n 1 -r
         echo
@@ -135,18 +136,21 @@ main() {
 
     # 2. 提交更改（如果有）
     echo -e "${YELLOW}[2/4] 检查并提交更改...${NC}"
-    git add -A
+    # 只提交发版涉及的文件，避免把工作区其他未提交改动带进版本提交
+    # （commit 时带路径参数，即使用户事先暂存了其他文件也不会被提交）
+    RELEASE_FILES=(version.yaml README.md README_zh.md)
+    git add -- "${RELEASE_FILES[@]}"
 
-    if [[ -n $(git status --porcelain) ]]; then
+    if ! git diff --cached --quiet -- "${RELEASE_FILES[@]}"; then
         if [[ -n "$COMMIT_MSG" ]]; then
             git commit -m "chore: 更新版本至 v$NEW_VERSION
 
-- $COMMIT_MSG"
+- $COMMIT_MSG" -- "${RELEASE_FILES[@]}"
         else
-            git commit -m "chore: 更新版本至 v$NEW_VERSION"
+            git commit -m "chore: 更新版本至 v$NEW_VERSION" -- "${RELEASE_FILES[@]}"
         fi
     else
-        echo "无需提交，工作区干净"
+        echo "版本相关文件无变化，无需提交"
     fi
 
     # 3. 推送代码
