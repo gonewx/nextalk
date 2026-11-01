@@ -10,7 +10,9 @@
       "Edit(/run/user/1000/nextalk.sock)",
       "Bash(flutter test:*)",
       "Bash(flutter analyze:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "mcp__deepwiki__ask_wiki_question",
+      "WebSearch"
     ],
     "deny": [],
     "defaultMode": "bypassPermissions"
