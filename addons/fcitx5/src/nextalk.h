@@ -28,6 +28,7 @@
 #include <string>
 #include <thread>
 #include <atomic>
+#include <sys/types.h>
 
 namespace fcitx {
 
@@ -64,6 +65,10 @@ private:
     std::thread listenerThread_;
     std::atomic<bool> running_{false};
     int serverFd_{-1};
+    // 本实例绑定的 socket 文件身份，退出时仅删除自己创建的文件，
+    // 避免 `fcitx5 -r` 新旧实例交替时旧实例误删新实例的 socket
+    dev_t socketDev_{0};
+    ino_t socketIno_{0};
 };
 
 class NextalkAddonFactory : public AddonFactory {

@@ -1,41 +1,12 @@
 #!/bin/bash
 # prerm - Nextalk DEB package pre-removal script
-# Purpose: Clean symlink, restart Fcitx5 to unload plugin
+# Purpose: Clean symlink (Fcitx5 restart is done in postrm, after plugin files are removed)
 
 set -e
 
 # Detect language (Chinese if LANG starts with zh)
 is_chinese() {
     [[ "${LANG:-}" == zh_* ]] || [[ "${LC_ALL:-}" == zh_* ]] || [[ "${LC_MESSAGES:-}" == zh_* ]]
-}
-
-# Restart Fcitx5 for all users who have it running
-restart_fcitx5() {
-    local restarted=false
-
-    # Find all users running fcitx5
-    for pid in $(pgrep -x fcitx5 2>/dev/null); do
-        local user
-        user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
-        if [[ -n "$user" ]]; then
-            # Get user's runtime directory
-            local uid
-            uid=$(id -u "$user" 2>/dev/null) || continue
-            local runtime_dir="/run/user/$uid"
-
-            # Restart fcitx5 as that user
-            if sudo -u "$user" XDG_RUNTIME_DIR="$runtime_dir" fcitx5 -r -d 2>/dev/null; then
-                restarted=true
-                if is_chinese; then
-                    echo "  已为用户 $user 重启 Fcitx5"
-                else
-                    echo "  Restarted Fcitx5 for user $user"
-                fi
-            fi
-        fi
-    done
-
-    return 0
 }
 
 case "$1" in
@@ -68,17 +39,6 @@ case "$1" in
             echo "To completely remove all data, manually delete the above directory."
         fi
         echo ""
-
-        # Restart Fcitx5 to unload the plugin
-        if pgrep -x "fcitx5" > /dev/null 2>&1; then
-            if is_chinese; then
-                echo "正在重启 Fcitx5 以卸载插件..."
-            else
-                echo "Restarting Fcitx5 to unload plugin..."
-            fi
-            restart_fcitx5
-            echo ""
-        fi
         ;;
 
     failed-upgrade)

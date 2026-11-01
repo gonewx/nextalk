@@ -9,28 +9,58 @@ is_chinese() {
     [[ "${LANG:-}" == zh_* ]] || [[ "${LC_ALL:-}" == zh_* ]] || [[ "${LC_MESSAGES:-}" == zh_* ]]
 }
 
+# 以原会话环境重启指定 fcitx5 进程：先停旧实例并等待其退出，再启动新实例。
+# 不使用 `fcitx5 -r`：它让新旧实例短暂并存，旧版插件退出时会删掉新实例刚建好的
+# socket，导致升级后只能剪贴板上屏、必须重启机器才恢复。
+restart_fcitx5_pid() {
+    local pid="$1" user uid home kv i
+    user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
+    [ -n "$user" ] || return 1
+    uid=$(id -u "$user" 2>/dev/null) || return 1
+    home=$(getent passwd "$user" | cut -d: -f6)
+
+    # 继承原进程的会话环境 (WAYLAND_DISPLAY/DISPLAY/DBUS_SESSION_BUS_ADDRESS 等)
+    local envs=("HOME=$home" "USER=$user" "LOGNAME=$user"
+        "PATH=/usr/local/bin:/usr/bin:/bin"
+        "XDG_RUNTIME_DIR=/run/user/$uid"
+        "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus")
+    # 兜底：原进程可能是旧版脚本用 sudo 拉起的，缺少 WAYLAND_DISPLAY
+    if [ -S "/run/user/$uid/wayland-0" ]; then
+        envs+=("WAYLAND_DISPLAY=wayland-0")
+    fi
+    while IFS= read -r -d '' kv; do
+        case "$kv" in SUDO_*) ;; *) envs+=("$kv") ;; esac
+    done 2>/dev/null < "/proc/$pid/environ"
+
+    kill "$pid" 2>/dev/null || return 1
+    for i in $(seq 1 50); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.1
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null
+        sleep 0.2
+    fi
+
+    if command -v runuser >/dev/null 2>&1; then
+        runuser -u "$user" -- env -i "${envs[@]}" fcitx5 -d </dev/null >/dev/null 2>&1
+    else
+        sudo -u "$user" env -i "${envs[@]}" fcitx5 -d </dev/null >/dev/null 2>&1
+    fi
+    echo "$user"
+}
+
 # Restart Fcitx5 for all users who have it running
 restart_fcitx5() {
-    local restarted=false
+    local restarted=false pid user
 
-    # Find all users running fcitx5
     for pid in $(pgrep -x fcitx5 2>/dev/null); do
-        local user
-        user=$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')
-        if [[ -n "$user" ]]; then
-            # Get user's runtime directory
-            local uid
-            uid=$(id -u "$user" 2>/dev/null) || continue
-            local runtime_dir="/run/user/$uid"
-
-            # Restart fcitx5 as that user
-            if sudo -u "$user" XDG_RUNTIME_DIR="$runtime_dir" fcitx5 -r -d 2>/dev/null; then
-                restarted=true
-                if is_chinese; then
-                    echo "  已为用户 $user 重启 Fcitx5"
-                else
-                    echo "  Restarted Fcitx5 for user $user"
-                fi
+        if user=$(restart_fcitx5_pid "$pid"); then
+            restarted=true
+            if is_chinese; then
+                echo "  已为用户 $user 重启 Fcitx5"
+            else
+                echo "  Restarted Fcitx5 for user $user"
             fi
         fi
     done

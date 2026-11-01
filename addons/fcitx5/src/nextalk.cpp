@@ -91,8 +91,13 @@ void NextalkAddon::stopSocketListener() {
         listenerThread_.join();
     }
 
-    // 删除 socket 文件
-    unlink(getSocketPath().c_str());
+    // 仅当 socket 文件仍是本实例创建的才删除（`fcitx5 -r` 时新实例可能已重建同名文件）
+    std::string socketPath = getSocketPath();
+    struct stat st;
+    if (socketIno_ != 0 && stat(socketPath.c_str(), &st) == 0 &&
+        st.st_dev == socketDev_ && st.st_ino == socketIno_) {
+        unlink(socketPath.c_str());
+    }
 }
 
 void NextalkAddon::socketListenerLoop() {
@@ -118,6 +123,12 @@ void NextalkAddon::socketListenerLoop() {
         close(serverFd_);
         serverFd_ = -1;
         return;
+    }
+
+    struct stat st;
+    if (stat(socketPath.c_str(), &st) == 0) {
+        socketDev_ = st.st_dev;
+        socketIno_ = st.st_ino;
     }
 
     // Set socket file permissions to 0600 (owner read/write only) for security

@@ -365,8 +365,10 @@ build_deb() {
     # Copy maintainer scripts
     cp "$PACKAGING_DIR/deb/postinst" "$deb_staging/DEBIAN/"
     cp "$PACKAGING_DIR/deb/prerm" "$deb_staging/DEBIAN/"
+    cp "$PACKAGING_DIR/deb/postrm" "$deb_staging/DEBIAN/"
     chmod 755 "$deb_staging/DEBIAN/postinst"
     chmod 755 "$deb_staging/DEBIAN/prerm"
+    chmod 755 "$deb_staging/DEBIAN/postrm"
 
     # Calculate installed size
     local installed_size
