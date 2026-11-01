@@ -55,6 +55,22 @@ update_version_file() {
     sed -i "s/^app_version:.*/app_version: \"$new_version\"/" "$VERSION_FILE"
 }
 
+# 同步 README 安装命令中的包版本号（nextalk_X.Y.Z-N_amd64.deb / nextalk-X.Y.Z-N.x86_64.rpm）
+update_readme_versions() {
+    local new_version=$1
+    local build
+    build=$(grep -E '^app_build:' "$VERSION_FILE" | sed 's/app_build:[[:space:]]*"\?\([0-9]*\)"\?.*/\1/')
+    build=${build:-1}
+    local readme
+    for readme in "$PROJECT_ROOT/README.md" "$PROJECT_ROOT/README_zh.md"; do
+        [[ -f "$readme" ]] || continue
+        sed -i -E \
+            -e "s/nextalk_[0-9]+\.[0-9]+\.[0-9]+-[0-9]+_amd64\.deb/nextalk_${new_version}-${build}_amd64.deb/g" \
+            -e "s/nextalk-[0-9]+\.[0-9]+\.[0-9]+-[0-9]+\.x86_64\.rpm/nextalk-${new_version}-${build}.x86_64.rpm/g" \
+            "$readme"
+    done
+}
+
 # 主流程
 main() {
     cd "$PROJECT_ROOT"
@@ -115,6 +131,7 @@ main() {
     else
         echo -e "\n${YELLOW}[1/4] 使用当前版本，跳过版本更新${NC}"
     fi
+    update_readme_versions "$NEW_VERSION"
 
     # 2. 提交更改（如果有）
     echo -e "${YELLOW}[2/4] 检查并提交更改...${NC}"

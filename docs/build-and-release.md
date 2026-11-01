@@ -227,7 +227,7 @@ sequenceDiagram
     R->>R: check working tree is clean (ask if dirty)
     R->>U: Confirm release v0.2.9? (y/N)
     U->>R: y
-    R->>R: [1/4] update version.yaml (bump mode)
+    R->>R: [1/4] update version.yaml (bump mode), sync README install command versions
     R->>G: [2/4] git commit -m "chore: bump version to v0.2.9"
     R->>G: [3/4] git push origin main
     R->>G: [4/4] git tag v0.2.9 + git push tag

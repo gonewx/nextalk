@@ -227,7 +227,7 @@ sequenceDiagram
     R->>R: 检查工作区是否干净 (脏则询问)
     R->>U: 确认发布 v0.2.9? (y/N)
     U->>R: y
-    R->>R: [1/4] 更新 version.yaml (bump 模式)
+    R->>R: [1/4] 更新 version.yaml (bump 模式)，同步 README 安装命令版本号
     R->>G: [2/4] git commit -m "chore: 更新版本至 v0.2.9"
     R->>G: [3/4] git push origin main
     R->>G: [4/4] git tag v0.2.9 + git push tag
