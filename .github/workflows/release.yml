@@ -69,7 +69,7 @@ jobs:
               cd voice_capsule && \
               rm -rf .dart_tool && \
               flutter pub get && \
-              flutter build linux --release && \
+              flutter build linux --release --dart-define=APP_VERSION=\$APP_VER && \
               cd .. && \
 
               # Build Fcitx5 plugin
