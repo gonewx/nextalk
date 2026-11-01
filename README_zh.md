@@ -27,7 +27,7 @@
 
 ```bash
 # 推荐: apt 会自动安装依赖
-sudo apt install ./nextalk_0.3.0-1_amd64.deb
+sudo apt install ./nextalk_0.3.3-1_amd64.deb
 ```
 
 > 若使用 `sudo dpkg -i` 安装，dpkg 不会解析依赖，提示缺依赖时需再执行 `sudo apt -f install` 补齐。
@@ -36,7 +36,7 @@ sudo apt install ./nextalk_0.3.0-1_amd64.deb
 
 ```bash
 # 推荐: dnf 会自动安装依赖
-sudo dnf install ./nextalk-0.3.0-1.x86_64.rpm
+sudo dnf install ./nextalk-0.3.3-1.x86_64.rpm
 ```
 
 安装后 Fcitx5 会自动重启以加载插件。

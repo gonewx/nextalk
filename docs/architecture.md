@@ -399,7 +399,7 @@ audio:
 
 ### 5.1 Version Management (v2.1 New)
 
-* **Source of truth**: root `version.yaml` (`app_version` currently 0.2.8, `addon_version` currently 0.3.0; app and plugin versions managed independently).
+* **Source of truth**: root `version.yaml` (`app_version` currently 0.3.3, `addon_version` currently 0.3.1; app and plugin versions managed independently).
 * `scripts/docker-build.sh` reads `version.yaml` and injects via `--dart-define=APP_VERSION`; the `version` field in `pubspec.yaml` is not authoritative for releases.
 * **Known Gap**: `scripts/build-pkg.sh` does not pass `--dart-define` when rebuilding directly, so the resulting binary self-reports version "dev" — release builds should go through docker-build.sh, or build-pkg.sh needs fixing.
 

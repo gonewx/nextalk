@@ -27,7 +27,7 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 
 ```bash
 # Recommended: apt installs dependencies automatically
-sudo apt install ./nextalk_0.3.0-1_amd64.deb
+sudo apt install ./nextalk_0.3.3-1_amd64.deb
 ```
 
 > If you install with `sudo dpkg -i`, dpkg does not resolve dependencies; run `sudo apt -f install` afterwards if it complains about missing ones.
@@ -36,7 +36,7 @@ sudo apt install ./nextalk_0.3.0-1_amd64.deb
 
 ```bash
 # Recommended: dnf installs dependencies automatically
-sudo dnf install ./nextalk-0.3.0-1.x86_64.rpm
+sudo dnf install ./nextalk-0.3.3-1.x86_64.rpm
 ```
 
 **Runtime dependencies:**

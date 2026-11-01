@@ -397,7 +397,7 @@ audio:
 
 ### 5.1 版本管理（v2.1 新增）
 
-* **权威来源**: 根目录 `version.yaml`（`app_version` 当前 0.2.8，`addon_version` 当前 0.3.0，应用与插件版本独立管理）。
+* **权威来源**: 根目录 `version.yaml`（`app_version` 当前 0.3.3，`addon_version` 当前 0.3.1，应用与插件版本独立管理）。
 * `scripts/docker-build.sh` 读取 `version.yaml`，经 `--dart-define=APP_VERSION` 注入应用；`pubspec.yaml` 的 version 字段不作为发布版本依据。
 * **已知缺口**: `scripts/build-pkg.sh` 直接重建时未传 `--dart-define`，产出二进制自报版本为 "dev"——发布构建应走 docker-build.sh 路径，或修复 build-pkg.sh。
 
