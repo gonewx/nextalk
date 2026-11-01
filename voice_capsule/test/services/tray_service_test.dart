@@ -146,6 +146,9 @@ void main() {
       expect(lang.tr('tray_engine_switch_success'), contains('{engine}'));
       expect(lang.tr('tray_engine_switch_fallback'), contains('{engine}'));
       expect(lang.tr('tray_model_settings'), '模型设置');
+      expect(lang.tr('tray_recommended'), contains('推荐'));
+      expect(lang.tr('tray_about'), '关于 Nextalk');
+      expect(lang.trWithParams('tray_about_version', {'version': '0.3.0'}), '版本: v0.3.0');
     });
 
     test('英文翻译应包含所有引擎相关键名', () {

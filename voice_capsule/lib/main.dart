@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'app/nextalk_app.dart';
 import 'services/animation_ticker_service.dart';
+import 'constants/app_info.dart';
 import 'constants/hotkey_constants.dart';
 import 'constants/settings_constants.dart';
 import 'services/asr/asr_engine.dart';
@@ -201,15 +202,9 @@ Nextalk - Linux 离线语音输入
   nextalk audio list         列出所有设备
   nextalk audio help         显示音频命令帮助
 
-更多信息: https://github.com/anthropics/nextalk
+更多信息: $appRepoUrl
 ''');
 }
-
-/// 应用版本号 (构建时通过 --dart-define=APP_VERSION=x.x.x 注入)
-const String appVersion = String.fromEnvironment(
-  'APP_VERSION',
-  defaultValue: 'dev',
-);
 
 /// 打印版本信息
 void _printVersion() {

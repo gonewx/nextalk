@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:system_tray/system_tray.dart';
 
+import '../constants/app_info.dart';
 import '../constants/settings_constants.dart';
 import '../constants/tray_constants.dart';
 import 'audio_device_service.dart';
@@ -189,6 +190,12 @@ class TrayService {
       SubMenu(
         label: lang.tr('tray_model_settings'),
         children: [
+          // 推荐引擎置顶并带推荐标识，与其他引擎用分隔线隔开
+          MenuItemLabel(
+            label: '${actualEngine == EngineType.qwen3Asr ? "● " : ""}${lang.tr('tray_engine_qwen3_asr')}  ${lang.tr('tray_recommended')}',
+            onClicked: (_) => _switchEngine(EngineType.qwen3Asr),
+          ),
+          MenuSeparator(),
           // Zipformer 子菜单 (含版本选择)
           SubMenu(
             label: '${actualEngine == EngineType.zipformer ? "● " : ""}${lang.tr('tray_engine_zipformer')}',
@@ -207,10 +214,6 @@ class TrayService {
           MenuItemLabel(
             label: '${senseChecked ? "● " : ""}${lang.tr('tray_engine_sensevoice')}',
             onClicked: (_) => _switchEngine(EngineType.sensevoice),
-          ),
-          MenuItemLabel(
-            label: '${actualEngine == EngineType.qwen3Asr ? "● " : ""}${lang.tr('tray_engine_qwen3_asr')}',
-            onClicked: (_) => _switchEngine(EngineType.qwen3Asr),
           ),
         ],
       ),
@@ -238,6 +241,20 @@ class TrayService {
         label: lang.tr('tray_settings'),
         onClicked: (_) => _openConfigDirectory(),
       ),
+      // 关于：版本号 + 仓库地址 (点击在浏览器中打开)
+      SubMenu(
+        label: lang.tr('tray_about'),
+        children: [
+          MenuItemLabel(
+            label: lang.trWithParams('tray_about_version', {'version': appVersion}),
+            enabled: false,
+          ),
+          MenuItemLabel(
+            label: appRepoUrl.replaceFirst('https://', ''),
+            onClicked: (_) => _openRepoUrl(),
+          ),
+        ],
+      ),
       MenuSeparator(),
       MenuItemLabel(
         label: lang.tr('tray_exit'),
@@ -245,6 +262,15 @@ class TrayService {
       ),
     ]);
     await _systemTray.setContextMenu(menu);
+  }
+
+  /// 在默认浏览器中打开项目仓库
+  Future<void> _openRepoUrl() async {
+    try {
+      await Process.start('xdg-open', [appRepoUrl], mode: ProcessStartMode.detached);
+    } catch (e) {
+      debugPrint('TrayService: 打开仓库地址失败: $e');
+    }
   }
 
   /// Story 3-8: 切换语言 (AC3)
