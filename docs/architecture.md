@@ -9,6 +9,7 @@
 | 2026-07-09 | 2.1 | Brownfield calibration to v0.2.8: documented dual-engine ASR architecture (SenseVoice default), silero VAD, layered audio capture (libpulse-simple primary / PortAudio fallback), concurrency model conclusion, actual IPC constraints, model verification status, build/versioning conventions | Architect (Winston) |
 | 2026-07-09 | 2.2 | Added 4th-generation hotkey scheme (Story 3-10): XDG Desktop Portal `GlobalShortcuts` in-app auto-registration + silent fallback to system shortcuts (progressive enhancement, additive not replacing) | Architect (Winston) |
 | 2026-07-10 | 2.3 | Portal scheme calibrated against Debian 13/GNOME 48 field testing: default trigger changed to `LOGO+z` (Super+Z), workaround for xdg-desktop-portal-gnome 48.0 false-failure bug, authorization dialog wait relaxed to 10 minutes, session token character constraint, app_id compliance requirement (reverse-DNS desktop file naming) | Architect (Winston) |
+| 2026-11-01 | 2.4 | Backfill the previously undocumented v0.2.14 GNOME extension backend; document the IBus main Panel path released in v0.3.3 and the Fcitx5 → GNOME extension → clipboard injection chain | Codex |
 
 ## 1. Introduction
 
@@ -54,7 +55,13 @@ graph TD
     end
 
     subgraph "Fallback Path"
-        Logic -- "Fcitx5 Unavailable" --> Clipboard[System Clipboard]
+        Logic -- "Fcitx5 unavailable / connection failure" --> GNOME[GnomeInjectClient]
+        GNOME -- "D-Bus CommitText" --> Panel[GNOME Shell: IBus main Panel]
+        Panel -- "Real focused IBus context: Wayland or XWayland" --> TargetApp
+        Panel -- "Failure" --> IM[Main.inputMethod.commit]
+        IM -- "Wayland native with text-input focus" --> TargetApp
+        GNOME -- "Extension unavailable" --> Clipboard[System Clipboard]
+        IM -- "Failure / unreachable target" --> Clipboard
         Clipboard -- "User Manual Paste" --> TargetApp
     end
 ```
@@ -73,11 +80,14 @@ The project uses a strict Monorepo structure, separating frontend/backend code a
 nextalk/
 ├── docs/                     # Design documents (PRD, Architecture, UX spec, pitfalls)
 ├── scripts/                  # DevOps scripts (build-pkg.sh, docker-build.sh, install_addon.sh, release.sh)
+│   └── poc/                  # IBus Panel injection probes
 ├── version.yaml              # Version source of truth (app_version / addon_version)
 ├── libs/                     # External precompiled dynamic libraries (.so)
 │   ├── libsherpa-onnx-c-api.so
 │   └── libonnxruntime.so
-├── addons/                   # [Backend] Fcitx5 C++ plugin
+├── addons/                   # [Backend] Fcitx5 C++ plugin and GNOME extension
+│   ├── gnome/
+│   │   └── nextalk@gonewx.com/ # Shell extension (D-Bus injection and Esc cancellation)
 │   └── fcitx5/
 │       ├── CMakeLists.txt
 │       └── src/              # nextalk.cpp / nextalk.h / nextalk.conf.in
@@ -118,6 +128,7 @@ nextalk/
         │   ├── portal_hotkey_service.dart   # 4th-gen Portal GlobalShortcuts auto-registration (Story 3-10)
         │   ├── single_instance.dart         # Single instance + command forwarding socket
         │   ├── fcitx_client.dart            # Text submission client + clipboard fallback
+        │   ├── gnome_inject_client.dart     # GNOME extension D-Bus client
         │   ├── tray_service.dart            # System tray
         │   ├── language_service.dart        # UI language switching (Story 3-8)
         │   ├── window_service.dart          # Window show/hide/positioning
@@ -204,14 +215,29 @@ The plugin uses a single Unix Domain Socket for communication:
 * If running, forwards the command via Unix Socket (`$XDG_RUNTIME_DIR/nextalk.sock`)
 * The single-instance socket is for internal app communication, independent from the Fcitx5 plugin socket
 
-#### 4.1.3 Clipboard Fallback
+#### 4.1.3 Three-Tier Text Injection and Clipboard Fallback
 
-When the Fcitx5 plugin is unavailable (non-Fcitx5 environment or plugin not loaded), the system auto-enables clipboard fallback:
+The GNOME extension backend introduced in v0.2.14 was not previously recorded here. Since v0.3.3 (2026-11-01), the chain is **Fcitx5 plugin socket → GNOME Shell extension (IBus main Panel → Main.inputMethod) → clipboard**. `HotkeyController` selects the backend through `decideInjectBackend`; Fcitx5 connection failures also try GNOME before clipboard. Other Fcitx5 errors retain the existing error UI and preserved text.
 
-1. Check if the Fcitx5 socket exists
-2. If not, copy recognized text to the system clipboard
-3. UI shows prompt: "Copied to clipboard, please paste"
-4. Auto-hide window after 2 seconds
+`GnomeInjectClient` calls extension `nextalk@gonewx.com` over the session bus: destination `org.gnome.Shell`, object `/com/gonewx/nextalk/Inject`, interface `com.gonewx.nextalk.Inject`, method `CommitText(s) → (s)` (`OK` / `ERR: ...`). It probes with a 500ms timeout, caches availability (negative results for 60 seconds), and invalidates the cache after a failed commit. Before GNOME submission, the capsule hides and waits 100ms for focus restoration; failure restores it for clipboard feedback.
+
+| Condition / priority | Action |
+| :--- | :--- |
+| 1. Fcitx5 plugin socket available | Submit through `FcitxClient`; do not probe GNOME |
+| 2a. GNOME extension available and real IBus context focused | `getIBusManager()._panelService.commit_text()` reaches Wayland-native and X11/XWayland IBus clients |
+| 2b. Panel unavailable or returns ERR | Try `Main.inputMethod.commit()`; reject X11/XWayland or missing window focus, and reject null `currentFocus` (fall back to `_currentFocus` if the getter is undefined) |
+| 3. Extension unavailable, D-Bus failure/timeout, or both internal paths fail | Copy to clipboard; extension returns ERR when both paths fail |
+
+The Panel path tracks `focus-in` / `focus-out`, ignores the fake `InputContext_1`, and returns ERR if focus is unknown or no real context is focused. The inputMethod safety net only reaches Wayland-native text-input clients. If both focus properties are undefined, current code still attempts `im.commit()`; this is not a delivery guarantee. `CommitTextViaPanel` remains a Panel-only diagnostic method. `GrabCancelKey` / `CancelRequested` capture Esc during recording to cancel input without focusing the capsule.
+
+Clipboard behavior remains:
+
+1. Check Fcitx5 socket availability, then try the GNOME backend when needed.
+2. If neither backend can commit, copy recognized text to the system clipboard.
+3. UI shows prompt: "Copied to clipboard, please paste".
+4. Auto-hide window after 2 seconds; the user pastes manually.
+
+**Known gaps and maintenance risks**: pure XIM apps remain unverified (GNOME launches `ibus-daemon` without `--xim` in the tested VM); Qt-X11 and Electron are unverified. Non-GNOME desktops using IBus remain clipboard-only without Fcitx5. `_panelService` is a private gnome-shell field that may change on upgrades, so the inputMethod path remains a safety net. SCP-002 rejected registering a **Panel Extension** in the emoji-reserved slot, not committing through the existing **main Panel**. See the [research and VM regression record](research/ibus-support-2026.md#81-poc-实测结果2026-11-01).
 
 #### 4.1.4 Text Submission Flow (IME Cycle Simulation)
 

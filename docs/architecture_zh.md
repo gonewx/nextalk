@@ -9,6 +9,7 @@
 | 2026-07-09 | 2.1  | 棕地校准至 v0.2.8：补记双引擎 ASR 架构（SenseVoice 默认）、silero VAD、音频采集分层（libpulse-simple 主/PortAudio 回退）、并发模型结论、IPC 实际约束、模型校验现状、构建/版本管理约定 | 架构师 (Winston) |
 | 2026-07-09 | 2.2  | 新增第四代快捷键方案（Story 3-10）：XDG Desktop Portal `GlobalShortcuts` 应用内自动注册 + 系统快捷键静默降级（渐进增强，叠加不取代） | 架构师 (Winston) |
 | 2026-07-10 | 2.3  | Portal 方案 Debian 13/GNOME 48 实测校准：默认触发键改为 `LOGO+z` (Super+Z)、兼容 xdg-desktop-portal-gnome 48.0 假失败 bug、授权对话框等待放宽到 10 分钟、session token 字符约束、app_id 合规要求（desktop 文件反向 DNS 命名） | 架构师 (Winston) |
+| 2026-11-01 | 2.4 | 补记 v0.2.14 GNOME 扩展后端；记录 v0.3.3 已发布的 IBus 主 Panel 路径及 Fcitx5 → GNOME 扩展 → 剪贴板三级注入链 | Codex |
 
 ## 1. 简介 (Introduction)
 
@@ -54,7 +55,13 @@ graph TD
     end
 
     subgraph "降级路径"
-        Logic -- "Fcitx5 不可用" --> Clipboard[系统剪贴板]
+        Logic -- "Fcitx5 不可用 / 连接失败" --> GNOME[GnomeInjectClient]
+        GNOME -- "D-Bus CommitText" --> Panel[GNOME Shell: IBus 主 Panel]
+        Panel -- "真实 IBus 焦点上下文: Wayland 或 XWayland" --> TargetApp
+        Panel -- "失败" --> IM[Main.inputMethod.commit]
+        IM -- "Wayland 原生且有 text-input 焦点" --> TargetApp
+        GNOME -- "扩展不可用" --> Clipboard[系统剪贴板]
+        IM -- "失败 / 目标不可达" --> Clipboard
         Clipboard -- "用户手动粘贴" --> TargetApp
     end
 ```
@@ -73,11 +80,14 @@ graph TD
 nextalk/
 ├── docs/                     # 设计文档 (PRD、架构、UX 规范、开发陷阱)
 ├── scripts/                  # DevOps 脚本 (build-pkg.sh、docker-build.sh、install_addon.sh、release.sh)
+│   └── poc/                  # IBus Panel 注入验证脚本
 ├── version.yaml              # 版本权威来源 (app_version / addon_version)
 ├── libs/                     # 外部预编译动态库 (.so)
 │   ├── libsherpa-onnx-c-api.so
 │   └── libonnxruntime.so
-├── addons/                   # [后端] Fcitx5 C++ 插件
+├── addons/                   # [后端] Fcitx5 C++ 插件与 GNOME 扩展
+│   ├── gnome/
+│   │   └── nextalk@gonewx.com/ # Shell 扩展（D-Bus 注入与 Esc 取消）
 │   └── fcitx5/
 │       ├── CMakeLists.txt
 │       └── src/              # nextalk.cpp / nextalk.h / nextalk.conf.in
@@ -118,6 +128,7 @@ nextalk/
         │   ├── portal_hotkey_service.dart   # 第四代 Portal GlobalShortcuts 自动注册 (Story 3-10)
         │   ├── single_instance.dart         # 单实例 + 命令转发 socket
         │   ├── fcitx_client.dart            # 文本上屏客户端 + 剪贴板回退
+        │   ├── gnome_inject_client.dart     # GNOME 扩展 D-Bus 客户端
         │   ├── tray_service.dart            # 系统托盘
         │   ├── language_service.dart        # 界面语言切换 (Story 3-8)
         │   ├── window_service.dart          # 窗口显隐/定位
@@ -204,14 +215,29 @@ nextalk/
 * 若已运行，经 Unix Socket（`$XDG_RUNTIME_DIR/nextalk.sock`）转发命令
 * 单实例 socket 用于应用内部通信，与 Fcitx5 插件 socket 相互独立
 
-#### 4.1.3 剪贴板 Fallback
+#### 4.1.3 三级文本注入与剪贴板回退
 
-当 Fcitx5 插件不可用（非 Fcitx5 环境或插件未加载）时，系统自动启用剪贴板降级：
+v0.2.14 引入的 GNOME 扩展后端此前未在本文记录。自 v0.3.3（2026-11-01）起，注入链为 **Fcitx5 插件 socket → GNOME Shell 扩展（IBus 主 Panel → Main.inputMethod）→ 剪贴板**。`HotkeyController` 通过 `decideInjectBackend` 选择后端；Fcitx5 连接类错误也会先尝试 GNOME，再回退剪贴板。其他 Fcitx5 错误保留现有错误 UI 和文本保护流程。
 
-1. 检查 Fcitx5 Socket 是否存在
-2. 不存在则将识别文本复制到系统剪贴板
-3. UI 显示提示："已复制到剪贴板，请粘贴"
-4. 2 秒后自动隐藏窗口
+`GnomeInjectClient` 通过会话总线调用扩展 `nextalk@gonewx.com`：目标 `org.gnome.Shell`，对象 `/com/gonewx/nextalk/Inject`，接口 `com.gonewx.nextalk.Inject`，方法 `CommitText(s) → (s)`（返回 `OK` / `ERR: ...`）。探测超时为 500ms，可用性结果缓存（负结果缓存 60 秒），提交失败后使缓存失效。GNOME 提交前隐藏胶囊并等待 100ms 恢复焦点；失败后恢复窗口显示剪贴板提示。
+
+| 条件 / 优先级 | 行为 |
+| :--- | :--- |
+| 1. Fcitx5 插件 socket 可用 | 通过 `FcitxClient` 提交，不探测 GNOME |
+| 2a. GNOME 扩展可用且有真实 IBus 焦点上下文 | `getIBusManager()._panelService.commit_text()` 可达 Wayland 原生及 X11/XWayland IBus 客户端 |
+| 2b. Panel 不可用或返回 ERR | 尝试 `Main.inputMethod.commit()`；拒绝 X11/XWayland、无窗口焦点及 `currentFocus` 为 null 的情况（getter 为 undefined 时检查 `_currentFocus`） |
+| 3. 扩展不可用、D-Bus 失败/超时或内部两条路径均失败 | 复制到剪贴板；扩展在两条路径均失败时返回 ERR |
+
+Panel 路径跟踪 `focus-in` / `focus-out`，忽略假上下文 `InputContext_1`；焦点状态未知或无真实焦点上下文时返回 ERR。inputMethod 兜底仅可达 Wayland 原生 text-input 客户端。若两个焦点属性均为 undefined，当前代码仍尝试 `im.commit()`，不能视为送达保证。`CommitTextViaPanel` 保留为仅走 Panel 的诊断方法。`GrabCancelKey` / `CancelRequested` 在录音期间捕获 Esc 取消输入，无需让胶囊获取焦点。
+
+保留剪贴板行为：
+
+1. 检查 Fcitx5 Socket 是否可用，必要时继续尝试 GNOME 后端。
+2. 两种后端均无法提交时，将识别文本复制到系统剪贴板。
+3. UI 显示提示："已复制到剪贴板，请粘贴"。
+4. 2 秒后自动隐藏窗口，由用户手动粘贴。
+
+**已知缺口与维护风险**：纯 XIM 应用尚未验证（实测 VM 中 GNOME 启动 `ibus-daemon` 未带 `--xim`）；Qt-X11 和 Electron 尚未验证。非 GNOME 桌面使用 IBus 且无 Fcitx5 时仍只能走剪贴板。`_panelService` 是 gnome-shell 私有字段，升级可能变更，因此保留 inputMethod 路径兜底。SCP-002 否定的是在 emoji 专用槽位注册 **Panel Extension**，并非通过既有的**主 Panel** 提交。详见[研究与 VM 回归记录](research/ibus-support-2026.md#81-poc-实测结果2026-11-01)。
 
 #### 4.1.4 文本上屏流程 (模拟 IME 周期)
 

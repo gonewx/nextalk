@@ -14,6 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 离线语音识别 (Sherpa-onnx 流式双语模型)
 - 真透明无边框胶囊悬浮窗 UI
 - 通过 Unix Domain Socket 与 Fcitx5 通信实现文本上屏
+- GNOME + ibus 桌面通过 GNOME Shell 扩展（IBus Panel）上屏，剪贴板作为最终回退
 - 端到端延迟 < 20ms
 
 ## 架构
@@ -28,7 +29,8 @@ nextalk/
 │   ├── libsherpa-onnx-c-api.so
 │   └── libonnxruntime.so
 ├── addons/             # [后端] Fcitx5 C++ 插件
-│   └── fcitx5/
+│   ├── fcitx5/
+│   └── gnome/          # GNOME Shell 文本注入扩展
 └── voice_capsule/      # [前端] Flutter 客户端
     ├── linux/          # CMakeLists.txt (链接配置)
     └── lib/

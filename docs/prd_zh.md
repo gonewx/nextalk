@@ -9,7 +9,7 @@
 *   **实现“极致透明”的视觉效果**：利用 Flutter 渲染特性，提供无边框、无背景伪影、带呼吸灯动画的现代化悬浮窗 UI。
 *   **保障隐私与高性能**：集成 Sherpa-onnx 离线模型，确保语音数据不出本地；文本上屏链路延迟 < 20ms，流式识别实时率 RTF < 1。
 *   **实现“即说即打”的流畅交互**：通过 VAD（端点检测）实现自动断句和文本上屏。
-*   **无缝集成 Fcitx5**：通过轻量级 C++ 插件和 Unix Domain Socket，实现与输入法框架的稳定通信；Fcitx5 不可用时降级为剪贴板方案。
+*   **无缝集成 Fcitx5**：通过轻量级 C++ 插件和 Unix Domain Socket，实现与输入法框架的稳定通信；Fcitx5 不可用时依次尝试 GNOME 扩展（IBus Panel / inputMethod）和剪贴板。
 
 ### 背景 (Background Context)
 Linux 用户缺乏美观且实用的语音输入工具。本项目 **Nextalk** 利用 Sherpa-onnx 的离线能力和 Flutter 的优秀渲染能力，构建一个生产力工具。项目采用 Monorepo 结构，包含 Fcitx5 C++ 插件（后端）和 Flutter 客户端（前端）。
@@ -21,6 +21,7 @@ Linux 用户缺乏美观且实用的语音输入工具。本项目 **Nextalk** �
 | 2025-12-28 | 1.1 | SCP-002: 快捷键方案改为系统原生快捷键，新增剪贴板 fallback | PM (John) |
 | 2026-07-09 | 1.2 | 与 v0.2.8 代码库对齐：双引擎 ASR（SenseVoice 默认）、silero VAD、libpulse-simple 音频栈、新增模型管理/错误处理/i18n/设备选择/打包需求（FR8–FR12）、NFR1/NFR2 修正、Epic 清单同步至 epics.md | PM (John) |
 | 2026-07-09 | 1.3 | FR6 全局快捷键补充第四代 Portal 方案（Story 3-10）：XDG Desktop Portal `GlobalShortcuts` 应用内自动注册 + 系统快捷键静默降级（渐进增强，回退命令统一为 `nextalk-toggle`） | PM (John) |
+| 2026-11-01 | 1.4 | FR7 更新为三级注入链：Fcitx5 → GNOME 扩展（IBus Panel / inputMethod）→ 剪贴板；Panel 路径随 v0.3.3 发布 | Codex |
 
 ## 2. 需求 (Requirements)
 
@@ -56,8 +57,8 @@ Linux 用户缺乏美观且实用的语音输入工具。本项目 **Nextalk** �
     *   单实例机制：新进程将命令经内部 Unix Socket 转发给运行中的实例。
     *   降级对用户无感：不弹错误、不阻塞启动，降级原因写入诊断日志，托盘只读项显示当前快捷键模式（Portal / 系统）。
     *   > **变更史**：原 Fcitx5 插件侧快捷键监听（第二代）已随 SCP-002 移除；应用自身不做客户端全局按键抓取（Wayland 架构禁止）。Portal 方案是 Wayland 官方演进方向，系统快捷键回退因 NFR3 基线（Ubuntu 22.04+）不支持 Portal 而始终保留。
-*   **FR7 [系统]: 剪贴板 Fallback** *(SCP-002 新增)*
-    *   当 Fcitx5 插件不可用（socket 不存在或提交失败）时，自动将识别文本复制到系统剪贴板。
+*   **FR7 [系统]: 三级文本注入与剪贴板回退** *(v0.3.3 更新)*
+    *   优先通过 Fcitx5 插件 socket 提交；不可用或连接失败时，尝试 GNOME 扩展的 `CommitText`：先走 IBus 主 Panel（Wayland 原生及 X11/XWayland），失败后走 `Main.inputMethod`（仅 Wayland 原生且有文本输入焦点）。扩展不可用或无法提交时，才自动复制到系统剪贴板。
     *   UI 显示提示："已复制到剪贴板，请粘贴"，2 秒后自动隐藏窗口。
 *   **FR8 [核心]: 模型管理** *(v1.2 新增)*
     *   模型采用**首次运行下载**策略，存储于 `$XDG_DATA_HOME/nextalk/models`（默认 `~/.local/share/nextalk/models`）。

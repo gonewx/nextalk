@@ -14,6 +14,8 @@
 - [Portal 授权对话框 60s 交互超时导致慢速用户绑定失效](#portal-授权对话框-60s-交互超时导致慢速用户绑定失效)
 - [Fedora 启动即段错误：system_tray 上游 dlopen 旧版 libappindicator](#fedora-启动即段错误system_tray-上游-dlopen-旧版-libappindicator)
 - [Wayland 原生后端下窗口定位 API 完全失效（优先 XWayland 决策）](#wayland-原生后端下窗口定位-api-完全失效优先-xwayland-决策)
+- [IBus：主 Panel 与 Panel Extension、XWayland 与静默丢字](#ibus主-panel-与-panel-extensionxwayland-与静默丢字)
+- [GNOME VM 测试：SSH 窗口焦点与 ptyxis 单实例](#gnome-vm-测试ssh-窗口焦点与-ptyxis-单实例)
 
 ---
 
@@ -364,6 +366,45 @@ setenv("GDK_BACKEND", "x11,wayland", 0);
 - **layer-shell / GNOME Shell 扩展定位**：能在原生 Wayland 下定位，但引入新的
   窗口定位依赖，且扩展方案受 GNOME 版本与用户手工启用制约。
 - **在原生 Wayland 下放弃位置记忆**：等于删功能，用户诉求正是"记住我拖到的位置"。
+
+---
+
+## IBus：主 Panel 与 Panel Extension、XWayland 与静默丢字
+
+### 问题描述
+
+IBus 注入调用可能看似成功却丢失文本；旧的“IBus 不可行”结论也可能误排除有效路径。v0.3.3（2026-11-01）已正式采用 GNOME 扩展的主 Panel 通道。
+
+### 根因分析
+
+- SCP-002 否定的是注册 **Panel Extension**：daemon 将该槽位保留给 emoji。既有的**主 Panel** 是另一套机制。IBus `bus/panelproxy.c` 中的 `bus_panel_proxy_commit_text` 将 Panel 提交转发至焦点上下文；`ibus_panel_service_commit_text()` 自 IBus 1.5.15 起提供。
+- `Main.inputMethod.commit()` 只可达 Wayland 原生 text-input 客户端。X11/XWayland 窗口或无 text-input 焦点时会静默 no-op；返回 void 不代表送达。
+- `focused_context` 为 NULL 或上下文为 fake 时，IBus 会静默丢弃提交。因此不检查焦点就调用 `commit_text()`，可能向 Nextalk 错误返回 OK。
+
+### 解决方案
+
+1. 使用 `CommitText`：主 Panel → inputMethod → ERR，让客户端回退剪贴板。跟踪 Panel 的 `focus-in` / `focus-out`，忽略假上下文 `InputContext_1`；焦点未知或无真实焦点上下文时，Panel 路径返回 ERR。
+2. X11 防护和 `currentFocus` 防护保留在 inputMethod 回退路径，不应阻断 Panel。`currentFocus` 为 undefined 时检查 `_currentFocus`；两者均为 undefined 时仍尝试提交，因此 Shell 升级时需验证此行为。`_panelService` 是私有字段，变更时由 inputMethod 兜底。
+3. GNOME Shell 缓存扩展 JavaScript。Wayland 下更新后必须**注销并重新登录**；仅切换扩展启用状态不能可靠加载新代码。
+4. `~/.local/share/gnome-shell/extensions/nextalk@gonewx.com/` 下的用户级副本会覆盖 `/usr/share/gnome-shell/extensions/nextalk@gonewx.com/`。测试安装包时删除用户级副本，再注销重新登录。
+
+### 相关文件
+
+- [扩展实现](../addons/gnome/nextalk@gonewx.com/extension.js)
+- [IBus 研究与 VM 回归](research/ibus-support-2026.md#81-poc-实测结果2026-11-01)
+- [注入测试场景](test-scenarios_zh.md#gnome--ibus-文本注入)
+
+---
+
+## GNOME VM 测试：SSH 窗口焦点与 ptyxis 单实例
+
+### 问题描述
+
+通过 SSH 启动的窗口可能因 GNOME 防焦点抢夺机制无法获得焦点，导致提交到其他窗口或返回无焦点。ptyxis 默认共享单实例进程，针对测试窗口执行 `pkill -f` 可能同时杀死用户的其他终端。
+
+### 解决方案
+
+从图形会话内的终端启动目标窗口，并明确聚焦其输入区域。使用 `GDK_BACKEND=x11 ptyxis -s` 启动独立 XWayland 测试实例；验证后只关闭该测试窗口，不要用宽泛的 `pkill -f` 清理。通过文件读回验证送达，见[测试场景](test-scenarios_zh.md#gnome--ibus-文本注入)。
 
 ---
 

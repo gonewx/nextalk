@@ -9,7 +9,7 @@
 * **Achieve "ultimate transparency" visual effect**: Utilize Flutter rendering capabilities to provide borderless, background-artifact-free, breathing-animation modern floating window UI.
 * **Ensure privacy and high performance**: Integrate Sherpa-onnx offline models, ensuring voice data never leaves the local machine; text commit path latency < 20ms, streaming recognition real-time factor (RTF) < 1.
 * **Enable "speak-to-type" fluid interaction**: Implement VAD (endpoint detection) for automatic sentence breaks and text submission.
-* **Seamless Fcitx5 integration**: Stable communication with input method framework via lightweight C++ plugin and Unix Domain Socket; degrade to clipboard fallback when Fcitx5 is unavailable.
+* **Seamless Fcitx5 integration**: Stable communication with input method framework via lightweight C++ plugin and Unix Domain Socket; when Fcitx5 is unavailable, try the GNOME extension (IBus Panel / inputMethod), then clipboard.
 
 ### Background Context
 Linux users lack beautiful and practical voice input tools. This project **Nextalk** leverages Sherpa-onnx's offline capabilities and Flutter's excellent rendering capabilities to build a productivity tool. The project uses Monorepo structure, containing Fcitx5 C++ plugin (backend) and Flutter client (frontend).
@@ -21,6 +21,7 @@ Linux users lack beautiful and practical voice input tools. This project **Nexta
 | 2025-12-28 | 1.1 | SCP-002: Hotkey scheme changed to system native shortcuts, added clipboard fallback | PM (John) |
 | 2026-07-09 | 1.2 | Aligned with v0.2.8 codebase: dual-engine ASR (SenseVoice default), silero VAD, libpulse-simple audio stack, new model management / error handling / i18n / device selection / packaging requirements (FR8–FR12), NFR1/NFR2 corrections, Epic list synced to epics.md | PM (John) |
 | 2026-07-09 | 1.3 | FR6 Global Hotkey adds the 4th-generation Portal scheme (Story 3-10): XDG Desktop Portal `GlobalShortcuts` in-app auto-registration + silent fallback to system shortcuts (progressive enhancement, fallback command unified to `nextalk-toggle`) | PM (John) |
+| 2026-11-01 | 1.4 | FR7 now describes tiered injection: Fcitx5 → GNOME extension (IBus Panel / inputMethod) → clipboard; Panel path released in v0.3.3 | Codex |
 
 ## 2. Requirements
 
@@ -56,8 +57,8 @@ Linux users lack beautiful and practical voice input tools. This project **Nexta
     * Single-instance mechanism: a new process forwards the command to the running instance via an internal Unix Socket.
     * Degradation is transparent to the user: no error dialog, no startup blocking; the reason is written to the diagnostic log, and the tray shows the current hotkey mode (Portal / system) as a read-only item.
     * > **Change history**: The original Fcitx5 plugin-side hotkey listening (2nd generation) was removed with SCP-002; the app performs no client-side global key grabbing (forbidden by Wayland architecture). The Portal scheme is Wayland's official evolution direction, and the system-shortcut fallback is always retained because the NFR3 baseline (Ubuntu 22.04+) does not support Portal.
-* **FR7 [System]: Clipboard Fallback** *(SCP-002 New)*
-    * When the Fcitx5 plugin is unavailable (socket missing or submission fails), recognized text is automatically copied to the system clipboard.
+* **FR7 [System]: Tiered Text Injection and Clipboard Fallback** *(Updated for v0.3.3)*
+    * Prefer the Fcitx5 plugin socket; if unavailable or the connection fails, try the GNOME extension’s `CommitText`: IBus main Panel first (Wayland-native and X11/XWayland), then `Main.inputMethod` (Wayland-native with text-input focus only). Automatically copy to the clipboard only when the extension is unavailable or cannot commit.
     * UI shows prompt: "Copied to clipboard, please paste"; window auto-hides after 2 seconds.
 * **FR8 [Core]: Model Management** *(v1.2 New)*
     * Models use a **download-on-first-run** strategy, stored at `$XDG_DATA_HOME/nextalk/models` (default `~/.local/share/nextalk/models`).

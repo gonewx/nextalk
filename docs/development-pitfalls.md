@@ -14,6 +14,8 @@ This document records technical issues encountered during Nextalk development, r
 - [60s Portal Dialog Interaction Timeout Breaks Slow-User Binding](#60s-portal-dialog-interaction-timeout-breaks-slow-user-binding)
 - [Instant Segfault on Fedora: Upstream system_tray dlopens the Legacy libappindicator](#instant-segfault-on-fedora-upstream-system_tray-dlopens-the-legacy-libappindicator)
 - [Window Positioning APIs Are Inert on the Native Wayland Backend (Prefer-XWayland Decision)](#window-positioning-apis-are-inert-on-the-native-wayland-backend-prefer-xwayland-decision)
+- [IBus: Main Panel vs Panel Extension, XWayland and Silent Text Loss](#ibus-main-panel-vs-panel-extension-xwayland-and-silent-text-loss)
+- [GNOME VM Testing: SSH Window Focus and the ptyxis Single Instance](#gnome-vm-testing-ssh-window-focus-and-the-ptyxis-single-instance)
 
 ---
 
@@ -381,6 +383,45 @@ change to this decision requires re-verifying those three subsystems.
   on the GNOME version plus manual user enablement.
 - **Dropping position memory on native Wayland**: that deletes the feature, while
   the user's actual request is "remember where I dragged it".
+
+---
+
+## IBus: Main Panel vs Panel Extension, XWayland and Silent Text Loss
+
+### Problem Description
+
+An IBus injection call can appear successful while dropping text, or an old "IBus infeasible" conclusion can incorrectly rule out a working path. v0.3.3 (2026-11-01) uses the GNOME extension's main Panel path in production.
+
+### Root Cause Analysis
+
+- SCP-002 rejected registering a **Panel Extension**: the daemon reserves that slot for emoji. The existing **main Panel** is different. In IBus `bus/panelproxy.c`, `bus_panel_proxy_commit_text` forwards the Panel commit to the focused context; `ibus_panel_service_commit_text()` has been available since IBus 1.5.15.
+- `Main.inputMethod.commit()` only reaches Wayland-native text-input clients. X11/XWayland windows or missing text-input focus cause a silent no-op; a void return is not proof of delivery.
+- IBus silently drops commits when `focused_context` is NULL or the context is fake. Calling `commit_text()` without checking focus can therefore incorrectly return OK to Nextalk.
+
+### Solution
+
+1. Use `CommitText`: main Panel first, then inputMethod, then ERR so the client falls back to clipboard. Track Panel `focus-in` / `focus-out`, ignore fake `InputContext_1`, and return ERR from the Panel path when focus is unknown or no real context is focused.
+2. Keep the X11 guard and `currentFocus` guard on the inputMethod fallback, not on the Panel path. If `currentFocus` is undefined, code checks `_currentFocus`; if both are undefined, it still attempts the commit, so verify this behavior on Shell upgrades. `_panelService` is private; inputMethod is the safety net when it changes.
+3. GNOME Shell caches extension JavaScript. After updating it under Wayland, **log out and back in**; toggling the extension is insufficient to reliably load new code.
+4. A user-local copy under `~/.local/share/gnome-shell/extensions/nextalk@gonewx.com/` overrides `/usr/share/gnome-shell/extensions/nextalk@gonewx.com/`. Remove the local copy when testing the packaged extension, then log out and back in.
+
+### Related Files
+
+- [Extension implementation](../addons/gnome/nextalk@gonewx.com/extension.js)
+- [IBus research and VM regression](research/ibus-support-2026.md#81-poc-实测结果2026-11-01)
+- [Injection test scenarios](test-scenarios.md#gnome--ibus-text-injection)
+
+---
+
+## GNOME VM Testing: SSH Window Focus and the ptyxis Single Instance
+
+### Problem Description
+
+Windows launched over SSH may not receive focus because GNOME prevents focus stealing. A commit test can consequently target another window or report missing focus. ptyxis normally shares a single process, so `pkill -f` aimed at a test window can also kill the user's other terminals.
+
+### Solution
+
+Launch the target from a terminal inside the graphical session and explicitly focus its input area. Use `GDK_BACKEND=x11 ptyxis -s` for a separate XWayland test instance; close only that test window after verification. Do not use broad `pkill -f` cleanup. Use file readback to verify delivery, as in the [test scenarios](test-scenarios.md#gnome--ibus-text-injection).
 
 ---
 

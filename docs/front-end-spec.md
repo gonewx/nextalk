@@ -224,7 +224,7 @@ For unrecoverable application errors.
 
 ### 4.3 Auto Commit (Clipboard Mode)
 
-When Fcitx5 is not available:
+Only when neither Fcitx5 nor the GNOME extension (IBus Panel → Main.inputMethod) can commit the text:
 
 1. VAD detects silence.
 2. Text copied to system clipboard.

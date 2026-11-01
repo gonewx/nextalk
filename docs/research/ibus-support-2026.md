@@ -1,14 +1,14 @@
 # IBus / Fcitx5 双框架上屏方案重新调研（2026-10）
 
 > 日期：2026-10-31 · 范围：识别文本如何"直接上屏"，不涉及 ASR 本身
-> 结论状态：IBus 新路径已通过源码验证，**并于 2026-11-01 在 Fedora 43 VM 中 POC 通过**（关键的 1/2/5/6 项，见 §8.1）。
+> 结论状态：IBus 主 Panel 路径已产品化为 `CommitText` 的首选通道，**随 v0.3.3 于 2026-11-01 发布**；Fedora 43 VM POC 与正式版回归通过（见 §8.1）。
 
 ## 1. 结论速览
 
 | 环境 | 现状 | 本次结论 |
 |---|---|---|
 | 任意桌面 + Fcitx5 | ✅ 插件 socket 上屏，体验最好 | 保持不变 |
-| GNOME + IBus（Fedora、Ubuntu 默认） | ⚠️ 扩展调用 `Main.inputMethod.commit`，**只支持 Wayland 原生窗口**；X11/XWayland 和无输入焦点时回退剪贴板 | 🟢 **找到了新路径**：扩展改为调用 gnome-shell 自己持有的 **IBus 主 Panel** 的 `commit_text()`，一条调用就能同时覆盖 Wayland 原生和 X11/XWayland 窗口，接近"完美" |
+| GNOME + IBus（Fedora、Ubuntu 默认） | ✅ v0.3.3（2026-11-01）已发布：`CommitText` 优先调用主 Panel `commit_text()`，支持 Wayland 原生及 X11/XWayland 窗口 | 主 Panel 失败后尝试 `Main.inputMethod.commit`（仅 Wayland 原生）；两者均失败返回 ERR，由客户端回退剪贴板。纯 XIM、Qt-X11 / Electron 尚未验证，详见 §8.1 |
 | KDE / XFCE 等 + IBus | ❌ 只能用剪贴板 | 🟡 只剩"临时切换全局引擎"这一条路，有副作用，需要 POC；短期仍建议改用 Fcitx5 |
 
 因此，两大框架都"完美支持"的可行形态是：**Fcitx5 插件（现有）+ GNOME 扩展改走 IBus Panel 通道（新增）**。非 GNOME 桌面上的 IBus 用户量很小，建议继续引导他们改用 Fcitx5。

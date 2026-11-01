@@ -224,7 +224,7 @@
 
 ### 4.3 自动完成 - 剪贴板模式 (Clipboard Mode)
 
-当 Fcitx5 不可用时:
+仅当 Fcitx5 和 GNOME 扩展（IBus Panel → Main.inputMethod）均无法提交文本时：
 
 1. VAD 检测到静音。
 2. 文字复制到系统剪贴板。

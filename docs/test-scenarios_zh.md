@@ -187,6 +187,37 @@ sudo gpasswd -d $USER audio
 
 ---
 
+## GNOME + IBus 文本注入
+
+**前置条件**：GNOME Wayland 会话使用 IBus，未运行 Fcitx5；安装 v0.3.3 或更新版本，启用 `nextalk@gonewx.com` 后注销重新登录。测试窗口从图形会话内启动，不通过 SSH 启动，并明确聚焦目标。测试安装包前删除覆盖系统版本的用户级扩展副本。
+
+**模拟方法**：
+
+1. 打开 Wayland 原生 ptyxis 终端。测试 XWayland 时，从会话终端运行 `GDK_BACKEND=x11 ptyxis -s`，避免复用 Wayland 实例。
+2. 在目标终端运行 `stty -icanon; cat > /tmp/nextalk-inject.txt`，提交期间保持 `cat` 运行。
+3. 在另一会话终端从仓库根目录运行下列命令，并在 5 秒内聚焦目标。从另一终端读取 `/tmp/nextalk-inject.txt`，逐字比对载荷；每次测试使用新文件。结束后在目标终端按 Ctrl+C 并运行 `stty sane`。
+
+```bash
+scripts/poc/ibus-panel-commit.sh 5 '你好世界，Nextalk Panel 注入测试 OK'
+scripts/poc/ibus-panel-commit.sh --legacy 5 '你好世界，Nextalk Panel 注入测试 OK'
+```
+
+默认调用诊断方法 `CommitTextViaPanel`；`--legacy` 调用正式 `CommitText`，现在也优先走 Panel。该参数已不能隔离旧的仅 inputMethod 实现。这些 D-Bus 探针不会自行复制剪贴板：每种场景还需通过 Nextalk 语音输入复测，以验证完整注入链和剪贴板 UI。
+
+| 场景 | 预期结果 |
+|------|----------|
+| Wayland 原生终端，`cat` 正在运行 | 两种方法均返回 OK，文件读回逐字一致；Nextalk 直接上屏，无剪贴板提示 |
+| XWayland 终端（`GDK_BACKEND=x11 ptyxis -s`），`cat` 正在运行 | 两种方法均经 Panel 返回 OK，文件读回逐字一致，无剪贴板提示 |
+| Nautilus 获得焦点，但无活动可编辑控件 | Panel 因无真实输入上下文返回 ERR；正式 CommitText 在 inputMethod 也失败后返回 ERR；Nextalk 复制文本并显示剪贴板提示 |
+| libpinyin 中文模式，显示 `ni hao` 预编辑 | 文本插在预编辑之前；预编辑、候选框及 libpinyin 引擎保持不变；先目视确认，再完成组词后比对文件 |
+| 禁用扩展后重新登录会话 | D-Bus 接口不可用；Nextalk 回退剪贴板，手动粘贴并比对文本 |
+
+**恢复方法**：运行 `gnome-extensions enable nextalk@gonewx.com` 重新启用扩展，注销重新登录，再次验证终端场景。只关闭测试窗口，避免对共享 ptyxis 进程执行 `pkill -f`。
+
+**证据与缺口**：[Fedora 43 VM POC 与正式版回归](research/ibus-support-2026.md#81-poc-实测结果2026-11-01) 已验证 Wayland/XWayland 终端读回及 Nautilus 拒绝提交；预编辑保留已在 Panel POC 中验证。禁用扩展后的剪贴板行为是待执行回归场景，并非本次新增的 VM 实测结果。纯 XIM（daemon 无 `--xim`）、Qt-X11 和 Electron 尚未验证；非 GNOME 的 IBus 桌面在无 Fcitx5 时仍使用剪贴板。
+
+---
+
 ## 托盘状态映射建议
 
 在检测到错误时，根据错误类型更新托盘状态：

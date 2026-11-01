@@ -187,6 +187,37 @@ sudo gpasswd -d $USER audio
 
 ---
 
+## GNOME + IBus Text Injection
+
+**Prerequisites**: GNOME Wayland session with IBus and no running Fcitx5; install v0.3.3 or later, enable `nextalk@gonewx.com`, then log out and back in. Launch test windows inside the graphical session, not over SSH, and explicitly focus the target. Remove any user-local extension copy that overrides the packaged version before testing it.
+
+**Simulation Method**:
+
+1. Open a Wayland-native ptyxis terminal. For XWayland, launch `GDK_BACKEND=x11 ptyxis -s` from a session terminal to avoid reusing the Wayland instance.
+2. In the target terminal, run `stty -icanon; cat > /tmp/nextalk-inject.txt`. Keep `cat` running while committing text.
+3. From another session terminal, run the commands below from the repository root, then focus the target within 5 seconds. Read `/tmp/nextalk-inject.txt` from another terminal and compare the exact payload; use a fresh file for each run. Finish with Ctrl+C and `stty sane` in the target.
+
+```bash
+scripts/poc/ibus-panel-commit.sh 5 '你好世界，Nextalk Panel 注入测试 OK'
+scripts/poc/ibus-panel-commit.sh --legacy 5 '你好世界，Nextalk Panel 注入测试 OK'
+```
+
+The default calls diagnostic `CommitTextViaPanel`; `--legacy` calls production `CommitText`, which now also tries Panel first. The flag no longer isolates the old inputMethod-only implementation. These D-Bus probes do not copy to clipboard themselves: repeat each scenario through Nextalk voice input to verify the full chain and clipboard UI.
+
+| Scenario | Expected result |
+|----------|-----------------|
+| Wayland-native terminal with live `cat` | Both methods return OK; exact file readback; Nextalk commits directly without clipboard prompt |
+| XWayland terminal (`GDK_BACKEND=x11 ptyxis -s`) with live `cat` | Both methods return OK through Panel; exact file readback; no clipboard prompt |
+| Nautilus focused, no editable control active | Panel returns ERR for no real input context; production CommitText returns ERR after inputMethod also fails; Nextalk copies text and shows the clipboard prompt |
+| libpinyin Chinese mode, `ni hao` preedit visible | Commit appears before the preedit; preedit, candidate list and libpinyin engine remain intact; confirm visually, then finish composition before file comparison |
+| Extension disabled, session re-entered | D-Bus endpoint unavailable; Nextalk falls back to clipboard; manually paste and compare the text |
+
+**Recovery Method**: Re-enable the extension with `gnome-extensions enable nextalk@gonewx.com`, log out and back in, and repeat the terminal checks. Close only test windows; avoid `pkill -f` against the shared ptyxis process.
+
+**Evidence and gaps**: [Fedora 43 VM POC and production regression](research/ibus-support-2026.md#81-poc-实测结果2026-11-01) verified Wayland/XWayland terminal readback and Nautilus rejection; preedit preservation was verified in the Panel POC. Extension-disabled clipboard behavior is a regression scenario to verify, not a newly recorded VM result. Pure XIM (daemon lacks `--xim`), Qt-X11 and Electron remain unverified; non-GNOME IBus desktops still use clipboard without Fcitx5.
+
+---
+
 ## Tray Status Mapping Suggestion
 
 When detecting errors, update tray status based on error type:

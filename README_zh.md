@@ -51,7 +51,7 @@ gnome-extensions enable nextalk@gonewx.com
 
 未启用扩展时应用自动退回剪贴板模式（见[非 Fcitx5 环境](#非-fcitx5-环境)）。**fcitx5 用户无需任何操作**。
 
-> 注意：GNOME + ibus 下，扩展通过 IBus Panel 支持 Wayland 原生及 X11/XWayland 应用；扩展不可用、无输入框焦点或纯 XIM 应用时回退剪贴板（GNOME 的 ibus-daemon 未带 `--xim`，纯 XIM 尚未验证）。
+> 注意：GNOME + ibus 下，扩展通过 IBus Panel 支持 Wayland 原生及 X11/XWayland 应用；扩展无法提交时回退剪贴板。纯 XIM 应用尚未验证（实测 VM 中 GNOME 的 ibus-daemon 未带 `--xim`），Qt-X11 和 Electron 也尚未验证。
 
 **运行时依赖:**
 
@@ -116,7 +116,7 @@ gnome-extensions enable nextalk@gonewx.com
 
 ### 非 Fcitx5 环境
 
-未运行 Fcitx5 时，GNOME + ibus 可通过随包 Shell 扩展的 IBus Panel 向 Wayland 及 X11/XWayland 应用上屏（见上文 [GNOME (ibus) 发行版](#快速开始)）；扩展不可用、无输入框焦点或纯 XIM 应用时自动使用剪贴板模式（GNOME 的 ibus-daemon 未带 `--xim`，纯 XIM 尚未验证）：
+未运行 Fcitx5 时，GNOME + ibus 可通过随包 Shell 扩展的 IBus Panel 向 Wayland 原生及 X11/XWayland 应用上屏（见上文 [GNOME (ibus) 发行版](#快速开始)）。扩展不可用或无法提交（包括无文本输入焦点）时使用剪贴板模式。纯 XIM、Qt-X11 和 Electron 尚未验证：
 - 识别的文字会复制到系统剪贴板
 - UI 显示"已复制到剪贴板"提示
 - 手动粘贴 (`Ctrl+V`) 到目标应用
@@ -369,7 +369,7 @@ ls ~/.local/share/fcitx5/addon/nextalk.conf
 fcitx5 -r  # 重启 Fcitx5
 ```
 
-如果不使用 Fcitx5，应用会自动使用剪贴板模式。
+未使用 Fcitx5 时，Nextalk 会尝试 GNOME 扩展（IBus Panel，再回退 inputMethod）；无法直接上屏时才使用剪贴板模式。
 
 ### 模型下载失败
 
