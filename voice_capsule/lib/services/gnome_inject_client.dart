@@ -5,8 +5,8 @@ import 'package:dbus/dbus.dart';
 /// GNOME Shell 扩展注入客户端 (三级注入链的第二级)
 ///
 /// 对应扩展 `addons/gnome/nextalk@gonewx.com`：扩展在 gnome-shell 进程内
-/// 导出 D-Bus 方法 `CommitText(s)→(s)`，内部调用 `Main.inputMethod.commit()`
-/// （GNOME OSK 的上屏通道，与输入法框架无关）。用于 fcitx5 socket 不可用的
+/// 导出 D-Bus 方法 `CommitText(s)→(s)`，优先通过 IBus Panel 提交，失败后
+/// 回退到 `Main.inputMethod.commit()`（GNOME OSK 上屏通道）。用于 fcitx5 socket 不可用的
 /// GNOME/ibus 环境（如 Fedora 默认会话）直接上屏识别文本。
 ///
 /// 设计要点（对齐 spec-fix-fedora-inject-clipboard-fallback）：

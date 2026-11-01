@@ -63,7 +63,7 @@ gnome-extensions enable nextalk@gonewx.com
 
 Without the extension enabled, the app automatically falls back to clipboard mode (see [Non-Fcitx5 Environment](#non-fcitx5-environment)). **Fcitx5 users need no action.**
 
-> Note: the extension only works in **Wayland sessions** for **native Wayland windows**; when the focused app is X11/XWayland (or in an Xorg session), the app automatically falls back to clipboard mode — this is expected behavior.
+> 注意：GNOME + ibus 下，扩展通过 IBus Panel 支持 Wayland 原生及 X11/XWayland 应用；扩展不可用、无输入框焦点或纯 XIM 应用时回退剪贴板（GNOME 的 ibus-daemon 未带 `--xim`，纯 XIM 尚未验证）。
 
 ### Configure Hotkey
 
@@ -116,7 +116,7 @@ Without the extension enabled, the app automatically falls back to clipboard mod
 
 ### Non-Fcitx5 Environment
 
-When Fcitx5 is not running, GNOME desktops can commit text directly via the bundled Shell extension (see [GNOME (ibus) distros](#quick-start) above); if the extension is unavailable (or the focused app is X11/XWayland), the app automatically uses clipboard mode:
+未运行 Fcitx5 时，GNOME + ibus 可通过随包 Shell 扩展的 IBus Panel 向 Wayland 及 X11/XWayland 应用上屏（见上文 [GNOME (ibus) 发行版](#quick-start)）；扩展不可用、无输入框焦点或纯 XIM 应用时自动使用剪贴板模式（GNOME 的 ibus-daemon 未带 `--xim`，纯 XIM 尚未验证）：
 - Recognized text is copied to system clipboard
 - UI shows "Copied to clipboard" prompt
 - Manually paste (`Ctrl+V`) to target application
