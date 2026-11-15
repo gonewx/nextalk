@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../constants/window_constants.dart';
+import '../constants/settings_window_geometry.dart';
 
 /// 存量坐标的恢复决策
 ///
@@ -190,6 +191,7 @@ class FlutterWindowBackend with WindowListener {
     if (!_isInitialized) return;
     if (!_isVisible) return;
 
+    await _saveConfigurationSize();
     // 趁窗口仍可见把最新坐标落盘；之后 _isVisible 为 false，保存路径会被守卫挡掉
     await flushPendingSave();
     await windowManager.hide();
@@ -252,6 +254,43 @@ class FlutterWindowBackend with WindowListener {
     } catch (e) {
       // 读取坐标失败 → 静默跳过，不覆盖已有值
     }
+  }
+
+  /// 与 show() 的主屏居中策略一致；读取失败也保留可用窗口。
+  Future<void> prepareConfigurationSize() async {
+    if (!_isInitialized || !configurationMode) return;
+    var workArea = SettingsWindowGeometry.fallbackWorkArea;
+    try {
+      workArea = workAreaOf(await screenRetriever.getPrimaryDisplay()).size;
+    } catch (_) {/* 使用保守工作区 */}
+    final width = _prefs?.getDouble(SettingsWindowGeometry.widthKey);
+    final height = _prefs?.getDouble(SettingsWindowGeometry.heightKey);
+    final size = SettingsWindowGeometry.initial(workArea,
+        preferred:
+            width != null && height != null ? Size(width, height) : null);
+    await windowManager
+        .setMinimumSize(SettingsWindowGeometry.minimum(workArea));
+    await setSize(size.width, size.height);
+  }
+
+  Future<void> _saveConfigurationSize() async {
+    if (!_isInitialized ||
+        !_isVisible ||
+        !configurationMode ||
+        _prefs == null) {
+      return;
+    }
+    try {
+      // 最大化/最小化的几何不覆盖用户的普通窗口尺寸。
+      if (await windowManager.isMaximized() ||
+          await windowManager.isMinimized()) {
+        return;
+      }
+      final size = await windowManager.getSize();
+      if (!SettingsWindowGeometry.valid(size)) return;
+      await _prefs!.setDouble(SettingsWindowGeometry.widthKey, size.width);
+      await _prefs!.setDouble(SettingsWindowGeometry.heightKey, size.height);
+    } catch (_) {/* 尺寸记忆失败不阻止关闭 */}
   }
 
   Future<void> setSize(double width, double height) async {
@@ -502,6 +541,7 @@ class FlutterWindowBackend with WindowListener {
   }
 
   Future<void> dispose() async {
+    await _saveConfigurationSize();
     await flushPendingSave();
     windowManager.removeListener(this);
     if (!_onMovedController.isClosed) {

@@ -97,11 +97,11 @@ class WindowService with WindowListener {
     await windowManager.setAlwaysOnTop(!enabled);
     await windowManager.setSkipTaskbar(!enabled);
     await windowManager.setResizable(enabled);
-    await windowManager
-        .setMinimumSize(enabled ? const Size(560, 560) : Size.zero);
+    if (!enabled) await windowManager.setMinimumSize(Size.zero);
     await windowManager.setTitle(enabled ? 'Nextalk — 设置' : 'Nextalk');
     await const MethodChannel('nextalk/window')
         .invokeMethod<void>('setConfigurationMode', enabled);
+    if (enabled) await _backend!.prepareConfigurationSize();
   }
 
   Future<void> presentConfigurationAttention() async {

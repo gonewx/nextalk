@@ -19,7 +19,13 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 - **Bilingual UI** - Simplified Chinese / English interface, switchable in the unified settings window
 - **Engine & Model Options** - Open Models from the tray to hot-switch Qwen3-ASR / SenseVoice / Zipformer / DeepSeek; select Zipformer int8/standard variants in Settings; Qwen3-ASR supports custom hotwords
 
-Current release: [v0.4.1](https://github.com/gonewx/nextalk/releases/tag/v0.4.1) · [Release notes (Chinese)](CHANGELOG.md)
+Current release: [v0.5.0](https://github.com/gonewx/nextalk/releases/tag/v0.5.0) · [Release notes (Chinese)](CHANGELOG.md)
+
+## v0.5.0 更新
+
+设置窗口适应屏幕工作区，记忆用户调整的尺寸，并支持窄窗口和大字体滚动浏览。
+
+正式安装版支持后台检查更新、桌面和托盘提示，以及设置页手动检查和自动检查开关。用户确认后下载并校验大小和 SHA-256，通过 pkexec 调用 apt-get 或 dnf 安装 x86_64 DEB/RPM 包。下载可取消，失败可重试；安装完成后需退出并重新打开应用。开发构建禁用升级；不支持的系统或缺少摘要时提供手动下载入口。
 
 ## Quick Start
 
@@ -29,7 +35,7 @@ Current release: [v0.4.1](https://github.com/gonewx/nextalk/releases/tag/v0.4.1)
 
 ```bash
 # Recommended: apt installs dependencies automatically
-sudo apt install ./nextalk_0.4.1-1_amd64.deb
+sudo apt install ./nextalk_0.5.0-1_amd64.deb
 ```
 
 > If you install with `sudo dpkg -i`, dpkg does not resolve dependencies; run `sudo apt -f install` afterwards if it complains about missing ones.
@@ -38,7 +44,7 @@ sudo apt install ./nextalk_0.4.1-1_amd64.deb
 
 ```bash
 # Recommended: dnf installs dependencies automatically
-sudo dnf install ./nextalk-0.4.1-1.x86_64.rpm
+sudo dnf install ./nextalk-0.5.0-1.x86_64.rpm
 ```
 
 **Runtime dependencies:**

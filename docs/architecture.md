@@ -465,3 +465,9 @@ bundle/
 * **Download Verification**: Models with official SHA256 checksums (Zipformer int8) are verified after download; models without official checksums skip verification (known limitation, see §4.4).
 * **Audio Failure**: If the capture stream cannot open (e.g., device exclusive/missing), the UI shows a visual state indication, and the device can be re-selected via the init wizard/tray.
 * **Init Wizard (Story 3-7)**: First run guides model download, Fcitx5 plugin detection, and hotkey setup; fatal errors raise a dialog with recovery guidance, and failed submissions preserve recognized text for copy/retry.
+
+## v0.5.0：版本更新与设置窗口
+
+`UpdateService` 从固定 GitHub 仓库检查正式版本，持久化自动检查开关和时间，管理下载、大小与 SHA-256 校验及系统安装状态。设置页承载手动检查、确认升级、取消下载和重试；托盘与桌面通知在录音空闲时提示。安装通过 pkexec 调用 apt-get 或 dnf，期间阻止录音和退出，完成后由用户重新打开应用。
+
+`FlutterWindowBackend` 使用屏幕工作区约束设置窗口，独立保存用户尺寸；设置页通过响应式布局和滚动容纳窄窗口及大字体。

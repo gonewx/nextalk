@@ -24,6 +24,7 @@ import 'services/portal_hotkey_service.dart';
 import 'services/settings_service.dart';
 import 'services/single_instance.dart';
 import 'services/tray_service.dart';
+import 'services/update_service.dart';
 import 'services/window_service.dart';
 import 'state/capsule_state.dart';
 import 'utils/diagnostic_logger.dart';
@@ -652,6 +653,7 @@ Future<void> main(List<String> args) async {
     // 初始化都完成, 否则录音会赶在引擎就绪前开始, 首句必然丢字 (这正是
     // 03bf162 / 38e9e9c 两次修复过的老问题, 不能在这里重新引入)。
     _runPendingStartupCommand();
+    unawaited(UpdateService.instance.start());
   }, (error, stackTrace) {
     // Story 3-7: 捕获未处理异常 (AC17, AC18)
     DiagnosticLogger.instance.exception('Unhandled', error, stackTrace);

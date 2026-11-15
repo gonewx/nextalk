@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../constants/settings_constants.dart';
 import '../../services/model_manager.dart';
@@ -11,6 +12,7 @@ import '../deepseek_settings_view.dart';
 import '../init_wizard/init_wizard.dart';
 import 'model_selection_view.dart';
 import 'recording_blocked_notice.dart';
+import 'update_section.dart';
 
 /// 所有模型的配置、下载和选择共用一个普通窗口。
 class SettingsWindow extends StatefulWidget {
@@ -126,169 +128,186 @@ class _SettingsWindowState extends State<SettingsWindow> {
       ),
       child: Material(
           color: const Color(0xFF1A1A1A),
-          child: Column(children: [
-            Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                child: Row(children: [
-                  const Icon(Icons.graphic_eq, color: Color(0xFFEF5350)),
-                  const SizedBox(width: 10),
-                  const Text('Nextalk',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() {
-                                _detail = null;
-                                _general = false;
-                                _message = null;
-                              }),
-                      child: Text(tr('模型选择', 'Models'))),
-                  TextButton(
-                      onPressed: _busy
-                          ? null
-                          : () => setState(() {
-                                _detail = null;
-                                _general = true;
-                              }),
-                      child: Text(tr('设置', 'Settings'))),
+          child: LayoutBuilder(builder: (context, constraints) {
+            final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+            // 短窗口/大字体下让整个外壳滚动，正文仍保有独立的有限高度。
+            final minimumHeight = (widget.recordingRequested ? 640.0 : 380.0) *
+                math.max(1.0, scale);
+            return SingleChildScrollView(
+                child: SizedBox(
+                    height: math.max(constraints.maxHeight, minimumHeight),
+                    child: Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1040),
+                            child: _buildFrame(context)))));
+          })));
+
+  Widget _buildFrame(BuildContext context) => Column(children: [
+        Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 24,
+                runSpacing: 8,
+                children: [
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.graphic_eq, color: Color(0xFFEF5350)),
+                    const SizedBox(width: 10),
+                    const Text('Nextalk',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.bold)),
+                  ]),
+                  Wrap(spacing: 8, children: [
+                    TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                  _detail = null;
+                                  _general = false;
+                                  _message = null;
+                                }),
+                        child: Text(tr('模型选择', 'Models'))),
+                    TextButton(
+                        onPressed: _busy
+                            ? null
+                            : () => setState(() {
+                                  _detail = null;
+                                  _general = true;
+                                }),
+                        child: Text(tr('设置', 'Settings'))),
+                  ]),
                 ])),
-            const Divider(height: 1),
-            if (widget.recordingRequested)
-              RecordingBlockedNotice(
-                  key: ValueKey(widget.recordingHintRevision),
-                  isZh: isZh,
-                  busy: _busy,
-                  editing: _detail != null,
-                  modelReady: widget.modelManager
-                      .isEngineReady(SettingsService.instance.actualEngineType),
-                  onCloseSettings: widget.onClose,
-                  onDismiss: widget.onDismissRecordingHint),
-            if (_busy) const LinearProgressIndicator(),
-            if (_loadingEngine != null)
-              Padding(
-                  padding: const EdgeInsets.all(16),
+        const Divider(height: 1),
+        if (widget.recordingRequested)
+          RecordingBlockedNotice(
+              key: ValueKey(widget.recordingHintRevision),
+              isZh: isZh,
+              busy: _busy,
+              editing: _detail != null,
+              modelReady: widget.modelManager
+                  .isEngineReady(SettingsService.instance.actualEngineType),
+              onCloseSettings: widget.onClose,
+              onDismiss: widget.onDismissRecordingHint),
+        if (_busy) const LinearProgressIndicator(),
+        if (_loadingEngine != null)
+          Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(children: [
+                const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Text(
+                        tr('正在加载 ${modelName(_loadingEngine!)}，请稍候…',
+                            'Loading ${modelName(_loadingEngine!)}. Please wait…'),
+                        key: const ValueKey('model-loading-status'))),
+              ])),
+        if (_detail != null)
+          Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(children: [
+                TextButton.icon(
+                    onPressed:
+                        _busy ? null : () => setState(() => _detail = null),
+                    icon: const Icon(Icons.arrow_back, size: 18),
+                    label: Text(tr('模型选择', 'Models'))),
+                const SizedBox(width: 12),
+                Expanded(child: Text(modelName(_detail!))),
+              ])),
+        if (widget.notice != null)
+          Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text(widget.notice!,
+                  style: const TextStyle(color: Colors.orangeAccent))),
+        if (_message != null)
+          Padding(
+              padding: const EdgeInsets.all(12),
+              child: Semantics(
+                  liveRegion: true,
                   child: Row(children: [
-                    const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2)),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: Text(
-                            tr('正在加载 ${modelName(_loadingEngine!)}，请稍候…',
-                                'Loading ${modelName(_loadingEngine!)}. Please wait…'),
-                            key: const ValueKey('model-loading-status'))),
-                  ])),
-            if (_detail != null)
-              Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(children: [
-                    TextButton.icon(
-                        onPressed:
-                            _busy ? null : () => setState(() => _detail = null),
-                        icon: const Icon(Icons.arrow_back, size: 18),
-                        label: Text(tr('模型选择', 'Models'))),
-                    const SizedBox(width: 12),
-                    Text(modelName(_detail!)),
-                  ])),
-            if (widget.notice != null)
-              Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Text(widget.notice!,
-                      style: const TextStyle(color: Colors.orangeAccent))),
-            if (_message != null)
-              Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Semantics(
-                      liveRegion: true,
-                      child: Row(children: [
-                        Icon(
-                            _messageError
-                                ? Icons.error_outline
-                                : Icons.check_circle_outline,
-                            color: _messageError
-                                ? Colors.orangeAccent
-                                : Colors.greenAccent,
-                            size: 20),
-                        const SizedBox(width: 8),
-                        Expanded(child: Text(_message!)),
-                      ]))),
-            Expanded(
-                child: _detail == EngineType.deepseek
-                    ? DeepSeekSettingsView(
-                        initialKey: SettingsService.instance.deepseekApiKey,
-                        fromEnvironment:
-                            SettingsService.instance.deepseekKeyFromEnvironment,
-                        isZh: isZh,
-                        onSave: (key) async {
-                          _setBusy(true);
-                          try {
-                            await SettingsService.instance
-                                .saveDeepSeekApiKey(key);
-                            if (mounted) {
-                              setState(() {
-                                _detail = null;
-                                _message = tr('配置已保存，可在列表中选择 DeepSeek。',
-                                    'Configuration saved. Select DeepSeek from the list.');
-                              });
-                            }
-                          } finally {
-                            if (mounted) _setBusy(false);
-                          }
-                        },
-                        onCancel: () => setState(() => _detail = null),
+                    Icon(
+                        _messageError
+                            ? Icons.error_outline
+                            : Icons.check_circle_outline,
+                        color: _messageError
+                            ? Colors.orangeAccent
+                            : Colors.greenAccent,
+                        size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_message!)),
+                  ]))),
+        Expanded(
+            child: _detail == EngineType.deepseek
+                ? DeepSeekSettingsView(
+                    initialKey: SettingsService.instance.deepseekApiKey,
+                    fromEnvironment:
+                        SettingsService.instance.deepseekKeyFromEnvironment,
+                    isZh: isZh,
+                    onSave: (key) async {
+                      _setBusy(true);
+                      try {
+                        await SettingsService.instance.saveDeepSeekApiKey(key);
+                        if (mounted) {
+                          setState(() {
+                            _detail = null;
+                            _message = tr('配置已保存，可在列表中选择 DeepSeek。',
+                                'Configuration saved. Select DeepSeek from the list.');
+                          });
+                        }
+                      } finally {
+                        if (mounted) _setBusy(false);
+                      }
+                    },
+                    onCancel: () => setState(() => _detail = null),
+                  )
+                : _detail != null
+                    ? InitWizard(
+                        key: ValueKey(_detail),
+                        modelManager: widget.modelManager,
+                        targetEngineType: _detail,
+                        embedded: true,
+                        onBusyChanged: _setBusy,
+                        onCompleted: () => setState(() {
+                          _detail = null;
+                          _message = tr('下载完成，请选择要使用的模型。',
+                              'Download complete. Select a model to use.');
+                        }),
                       )
-                    : _detail != null
-                        ? InitWizard(
-                            key: ValueKey(_detail),
-                            modelManager: widget.modelManager,
-                            targetEngineType: _detail,
-                            embedded: true,
-                            onBusyChanged: _setBusy,
-                            onCompleted: () => setState(() {
-                              _detail = null;
-                              _message = tr('下载完成，请选择要使用的模型。',
-                                  'Download complete. Select a model to use.');
-                            }),
-                          )
-                        : _general
-                            ? _settings()
-                            : ModelSelectionView(
-                                isZh: isZh,
-                                selected:
-                                    SettingsService.instance.actualEngineType,
-                                readiness: {
-                                  for (final type in EngineType.values)
-                                    type:
-                                        widget.modelManager.isEngineReady(type)
-                                },
-                                busy: _busy,
-                                loading: _loadingEngine,
-                                onSelect: _select,
-                                onManage: (type) => setState(() {
-                                      _detail = type;
-                                      _message = null;
-                                    }))),
-            const Divider(height: 1),
-            Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                child: Row(children: [
-                  Expanded(
-                      child: Text(
-                          tr('配置或下载不会自动切换模型',
-                              'Configuring or downloading does not switch models'),
-                          style: const TextStyle(
-                              color: Colors.white54, fontSize: 12))),
-                  TextButton(
-                      onPressed: _busy ? null : widget.onClose,
-                      child: Text(tr('完成', 'Done'))),
-                ])),
-          ])));
+                    : _general
+                        ? _settings()
+                        : ModelSelectionView(
+                            isZh: isZh,
+                            selected: SettingsService.instance.actualEngineType,
+                            readiness: {
+                              for (final type in EngineType.values)
+                                type: widget.modelManager.isEngineReady(type)
+                            },
+                            busy: _busy,
+                            loading: _loadingEngine,
+                            onSelect: _select,
+                            onManage: (type) => setState(() {
+                                  _detail = type;
+                                  _message = null;
+                                }))),
+        const Divider(height: 1),
+        Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            child: Row(children: [
+              Expanded(
+                  child: Text(
+                      tr('配置或下载不会自动切换模型',
+                          'Configuring or downloading does not switch models'),
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 12))),
+              TextButton(
+                  onPressed: _busy ? null : widget.onClose,
+                  child: Text(tr('完成', 'Done'))),
+            ])),
+      ]);
 
   Widget _audioSettings() {
     _devices ??= AudioDeviceService.instance.listInputDevices();
@@ -329,13 +348,36 @@ class _SettingsWindowState extends State<SettingsWindow> {
     ]);
   }
 
+  Widget _settingControl(
+          {required Widget title, Widget? subtitle, required Widget control}) =>
+      LayoutBuilder(builder: (context, constraints) {
+        final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+        if (constraints.maxWidth < 560 * scale) {
+          return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    title,
+                    if (subtitle != null) subtitle,
+                    const SizedBox(height: 8),
+                    control,
+                  ]));
+        }
+        return ListTile(
+            title: title,
+            subtitle: subtitle,
+            trailing: SizedBox(width: 180, child: control));
+      });
+
   Widget _settings() => ListView(padding: const EdgeInsets.all(24), children: [
         Text(tr('设置', 'Settings'),
             style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 24),
-        ListTile(
+        _settingControl(
             title: Text(tr('界面语言', 'Language')),
-            trailing: DropdownButton<String>(
+            control: DropdownButton<String>(
+                isExpanded: true,
                 value: isZh ? 'zh' : 'en',
                 items: const [
                   DropdownMenuItem(value: 'zh', child: Text('简体中文')),
@@ -347,10 +389,11 @@ class _SettingsWindowState extends State<SettingsWindow> {
                   await TrayService.instance.rebuildMenu();
                   if (mounted) setState(() {});
                 })),
-        ListTile(
+        _settingControl(
             title: Text(tr('Zipformer 模型版本', 'Zipformer variant')),
             subtitle: Text(tr('更改后重启应用生效', 'Restart the app to apply')),
-            trailing: DropdownButton<ModelType>(
+            control: DropdownButton<ModelType>(
+                isExpanded: true,
                 value: SettingsService.instance.modelType,
                 items: const [
                   DropdownMenuItem(value: ModelType.int8, child: Text('INT8')),
@@ -369,6 +412,7 @@ class _SettingsWindowState extends State<SettingsWindow> {
                     ? 'tray_hotkey_mode_portal'
                     : 'tray_hotkey_mode_system'))),
         _audioSettings(),
+        UpdateSection(isZh: isZh, onBusyChanged: _setBusy),
         const SizedBox(height: 16),
         const Divider(),
         ListTile(

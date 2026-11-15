@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:voice_capsule/constants/window_constants.dart';
 import 'package:voice_capsule/services/flutter_window_backend.dart';
 import 'package:voice_capsule/services/window_service.dart';
+import 'package:voice_capsule/constants/settings_window_geometry.dart';
 import 'package:window_manager/window_manager.dart';
 
 /// FlutterWindowBackend 真实接线测试
@@ -45,6 +46,7 @@ void main() {
   /// 有状态的假窗口管理器
   late Rect bounds;
   late bool nativeVisible;
+  late bool nativeMaximized;
   late int focusedReads;
   late List<String> calls;
 
@@ -65,6 +67,7 @@ void main() {
       WindowConstants.windowHeight,
     );
     nativeVisible = false;
+    nativeMaximized = false;
     focusedReads = 0;
     calls = <String>[];
     resizeInducedShift = null;
@@ -113,8 +116,9 @@ void main() {
           return null;
         case 'isFocused':
           return focusedReads-- > 0;
-        case 'isFullScreen':
         case 'isMaximized':
+          return nativeMaximized;
+        case 'isFullScreen':
         case 'isMinimized':
         case 'isPreventClose':
           return false;
@@ -245,6 +249,40 @@ void main() {
     }
     onMapConfigureEvent = null;
     removeStubs();
+  });
+
+  test('设置窗口记忆尺寸，与胶囊位置独立并在重新打开时恢复', () async {
+    final backend = await createBackend({});
+    backend.configurationMode = true;
+    await backend.prepareConfigurationSize();
+    await backend.show();
+    bounds = const Rect.fromLTWH(300, 200, 900, 700);
+    await backend.hide();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getDouble(SettingsWindowGeometry.widthKey), 900);
+    expect(prefs.getDouble(SettingsWindowGeometry.heightKey), 700);
+    expect(await readStored(), (null, null));
+    backend.configurationMode = false;
+    await backend.setSize(400, 120);
+    backend.configurationMode = true;
+    await backend.prepareConfigurationSize();
+    expect(bounds.size, const Size(900, 700));
+  });
+
+  test('最大化窗口关闭时不把全屏尺寸写入普通设置尺寸', () async {
+    final backend = await createBackend({
+      SettingsWindowGeometry.widthKey: 880.0,
+      SettingsWindowGeometry.heightKey: 650.0,
+    });
+    backend.configurationMode = true;
+    await backend.prepareConfigurationSize();
+    await backend.show();
+    nativeMaximized = true;
+    bounds = primaryWorkArea;
+    await backend.hide();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getDouble(SettingsWindowGeometry.widthKey), 880);
+    expect(prefs.getDouble(SettingsWindowGeometry.heightKey), 650);
   });
 
   test('设置隐藏等待焦点释放后才允许重新映射胶囊', () async {

@@ -19,7 +19,17 @@
 - **双语界面** - 中英双语 UI，在统一设置窗口中切换
 - **引擎与模型可选** - 通过托盘“模型选择”热切换 Qwen3-ASR / SenseVoice / Zipformer / DeepSeek 引擎，在设置中选择 Zipformer int8/standard 版本；Qwen3-ASR 支持自定义热词
 
-当前版本：[v0.4.1](https://github.com/gonewx/nextalk/releases/tag/v0.4.1) · [更新说明](CHANGELOG.md)
+当前版本：[v0.5.0](https://github.com/gonewx/nextalk/releases/tag/v0.5.0) · [更新说明](CHANGELOG.md)
+
+设置窗口会根据屏幕可用工作区选择初始尺寸，支持拖动缩放，并记住普通窗口的大小。切换到较小屏幕时会自动缩回可见范围；窄窗口中的表单和模型按钮会上下排列，内容过多或字体放大时可以滚动查看。
+
+## 版本升级
+
+正式安装版启动后会在后台检查 GitHub 的新正式版本，每天最多自动检查一次。发现更新时显示桌面通知和托盘提示；录音或识别期间延后通知，不抢占输入焦点。
+
+在托盘中打开“设置”，找到“版本与更新”，可以手动检查更新或关闭自动检查。点击“立即升级”并确认后，应用自动下载、校验安装包，再弹出系统管理员授权。支持 x86_64 Debian/Ubuntu（apt-get）和 Fedora/RHEL 系（dnf）；需系统提供 pkexec 和图形认证代理。其他系统、架构或缺少 SHA-256 摘要的发布包可通过“发布页面”手动更新。
+
+下载支持取消，失败后可以重试。安装期间不能录音或退出应用，Fcitx5 可能重启。安装成功后请退出并重新打开 Nextalk，使新版本生效。开发构建（版本为 `dev`）禁用升级。
 
 ## 快速开始
 
@@ -29,7 +39,7 @@
 
 ```bash
 # 推荐: apt 会自动安装依赖
-sudo apt install ./nextalk_0.4.1-1_amd64.deb
+sudo apt install ./nextalk_0.5.0-1_amd64.deb
 ```
 
 > 若使用 `sudo dpkg -i` 安装，dpkg 不会解析依赖，提示缺依赖时需再执行 `sudo apt -f install` 补齐。
@@ -38,7 +48,7 @@ sudo apt install ./nextalk_0.4.1-1_amd64.deb
 
 ```bash
 # 推荐: dnf 会自动安装依赖
-sudo dnf install ./nextalk-0.4.1-1.x86_64.rpm
+sudo dnf install ./nextalk-0.5.0-1.x86_64.rpm
 ```
 
 安装后 Fcitx5 会自动重启以加载插件。

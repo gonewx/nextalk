@@ -74,82 +74,80 @@ class ModelSelectionView extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             side: BorderSide(
                 color: active ? const Color(0xFFEF5350) : Colors.white12)),
-        child: Row(children: [
-          Expanded(
-              child: Semantics(
-                  selected: active,
-                  enabled: ready && !busy,
-                  button: true,
-                  child: InkWell(
-                    key: ValueKey('select-${type.name}'),
-                    mouseCursor: ready && !busy
-                        ? SystemMouseCursors.click
-                        : SystemMouseCursors.forbidden,
-                    hoverColor: const Color(0x24FFFFFF),
-                    focusColor: const Color(0x30EF5350),
-                    splashColor: const Color(0x40EF5350),
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: ready && !busy ? () => onSelect(type) : null,
-                    child: Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Row(children: [
-                          if (isLoading)
-                            const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2))
-                          else
-                            Icon(
-                                active
-                                    ? Icons.radio_button_checked
-                                    : Icons.radio_button_off,
-                                color: active
-                                    ? const Color(0xFFEF5350)
-                                    : ready
+        child: LayoutBuilder(builder: (context, constraints) {
+          final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
+          final compact = constraints.maxWidth < 520 * scale;
+          final selection = Semantics(
+              selected: active,
+              enabled: ready && !busy,
+              button: true,
+              child: InkWell(
+                key: ValueKey('select-${type.name}'),
+                mouseCursor: ready && !busy
+                    ? SystemMouseCursors.click
+                    : SystemMouseCursors.forbidden,
+                hoverColor: const Color(0x24FFFFFF),
+                focusColor: const Color(0x30EF5350),
+                splashColor: const Color(0x40EF5350),
+                borderRadius: BorderRadius.circular(12),
+                onTap: ready && !busy ? () => onSelect(type) : null,
+                child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(children: [
+                      if (isLoading)
+                        const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                      else
+                        Icon(
+                            active
+                                ? Icons.radio_button_checked
+                                : Icons.radio_button_off,
+                            color: active
+                                ? const Color(0xFFEF5350)
+                                : ready
+                                    ? Colors.white60
+                                    : Colors.white24),
+                      const SizedBox(width: 14),
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Text(modelName(type),
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color:
+                                        ready ? Colors.white : Colors.white38)),
+                            const SizedBox(height: 5),
+                            Text(description,
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: ready
                                         ? Colors.white60
-                                        : Colors.white24),
-                          const SizedBox(width: 14),
-                          Expanded(
-                              child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                Text(modelName(type),
-                                    style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w600,
-                                        color: ready
-                                            ? Colors.white
-                                            : Colors.white38)),
-                                const SizedBox(height: 5),
-                                Text(description,
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: ready
-                                            ? Colors.white60
-                                            : Colors.white38)),
-                                const SizedBox(height: 5),
-                                Text(
-                                    isLoading
-                                        ? tr('正在加载…', 'Loading…')
-                                        : active
-                                            ? tr('当前使用', 'In use')
-                                            : ready
-                                                ? tr('已就绪', 'Ready')
-                                                : cloud
-                                                    ? tr(
-                                                        '未配置', 'Not configured')
-                                                    : tr('未下载完整',
-                                                        'Download required'),
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color: active
-                                            ? const Color(0xFFEF9A9A)
-                                            : Colors.white54)),
-                              ])),
-                        ])),
-                  ))),
-          Padding(
+                                        : Colors.white38)),
+                            const SizedBox(height: 5),
+                            Text(
+                                isLoading
+                                    ? tr('正在加载…', 'Loading…')
+                                    : active
+                                        ? tr('当前使用', 'In use')
+                                        : ready
+                                            ? tr('已就绪', 'Ready')
+                                            : cloud
+                                                ? tr('未配置', 'Not configured')
+                                                : tr('未下载完整',
+                                                    'Download required'),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: active
+                                        ? const Color(0xFFEF9A9A)
+                                        : Colors.white54)),
+                          ])),
+                    ])),
+              ));
+          final manage = Padding(
               padding: const EdgeInsets.only(right: 16),
               child: OutlinedButton(
                   key: ValueKey('manage-${type.name}'),
@@ -158,8 +156,19 @@ class ModelSelectionView extends StatelessWidget {
                       ? tr('配置', 'Configure')
                       : ready
                           ? tr('管理', 'Manage')
-                          : tr('下载', 'Download')))),
-        ]),
+                          : tr('下载', 'Download'))));
+          return compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                      selection,
+                      Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Align(
+                              alignment: Alignment.centerRight, child: manage)),
+                    ])
+              : Row(children: [Expanded(child: selection), manage]);
+        }),
       ),
     );
   }

@@ -9,6 +9,7 @@ import '../constants/tray_constants.dart';
 import 'hotkey_service.dart';
 import 'language_service.dart';
 import 'window_service.dart';
+import 'update_service.dart';
 
 /// 退出回调类型 - 用于注入 Pipeline 释放逻辑
 typedef ExitCallback = Future<void> Function();
@@ -154,6 +155,19 @@ class TrayService {
         label: lang.tr('tray_settings'),
         onClicked: (_) => onShowSettings?.call(),
       ),
+      MenuItemLabel(
+        label: UpdateService.instance.phase == UpdatePhase.installed
+            ? (lang.isZh ? '已升级，请重启 Nextalk' : 'Updated; restart Nextalk')
+            : UpdateService.instance.release == null
+                ? (lang.isZh ? '检查更新…' : 'Check for updates…')
+                : (lang.isZh
+                    ? '发现新版本 ${UpdateService.instance.release!.version}'
+                    : 'Update available: ${UpdateService.instance.release!.version}'),
+        onClicked: (_) {
+          onShowSettings?.call();
+          UpdateService.instance.check();
+        },
+      ),
       MenuSeparator(),
       MenuItemLabel(
         label: lang.tr('tray_reconnect'),
@@ -222,6 +236,10 @@ class TrayService {
 
   /// 退出应用 - ⚠️ 必须释放所有资源 (AC7, AC8)
   Future<void> _exitApp() async {
+    if (UpdateService.instance.installing) {
+      onShowSettings?.call();
+      return;
+    }
     // 0. 注销全局快捷键 (Story 3-5 AC9)
     await HotkeyService.instance.dispose();
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
@@ -11,6 +12,7 @@ import '../services/language_service.dart';
 import '../services/model_manager.dart';
 import '../services/settings_service.dart';
 import '../services/tray_service.dart';
+import '../services/update_service.dart';
 import '../services/window_service.dart';
 import '../state/capsule_state.dart';
 import '../ui/capsule_widget.dart';
@@ -64,10 +66,54 @@ class _NextalkAppState extends State<NextalkApp> {
   bool _windowTransition = false;
   EngineType? _initialEngine;
   int _settingsGeneration = 0;
+  Timer? _updateNoticeTimer;
+  String? _notifiedVersion;
+  String? _trayUpdateVersion;
+
+  void _onUpdateChanged() {
+    final updater = UpdateService.instance;
+    final release = updater.release;
+    final trayVersion =
+        '${release?.version}:${updater.phase == UpdatePhase.installed}';
+    if (_trayUpdateVersion != trayVersion) {
+      _trayUpdateVersion = trayVersion;
+      unawaited(TrayService.instance.rebuildMenu());
+    }
+    if (release == null ||
+        release.version == _notifiedVersion ||
+        updater.phase != UpdatePhase.available) {
+      _updateNoticeTimer?.cancel();
+      _updateNoticeTimer = null;
+      return;
+    }
+    _updateNoticeTimer ??=
+        Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (!mounted ||
+          HotkeyController.instance.state != HotkeyState.idle ||
+          _windowTransition) {
+        return;
+      }
+      _updateNoticeTimer?.cancel();
+      _updateNoticeTimer = null;
+      _notifiedVersion = release.version;
+      final zh = LanguageService.instance.isZh;
+      try {
+        // 不抢焦点；系统通知不可用时仍保留托盘和设置页提示。
+        await Process.run('notify-send', [
+          '--app-name=Nextalk',
+          'Nextalk',
+          zh
+              ? '发现新版本 ${release.version}，请打开设置查看并升级。'
+              : 'Version ${release.version} is available. Open Settings to update.'
+        ]);
+      } catch (_) {/* 桌面可能未安装 libnotify */}
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    UpdateService.instance.addListener(_onUpdateChanged);
     TrayService.instance.onShowModelSelection = () => _openSettings();
     TrayService.instance.onShowSettings = () => _openSettings(general: true);
     TrayService.instance.onShowDeepSeekSettings =
@@ -86,6 +132,8 @@ class _NextalkAppState extends State<NextalkApp> {
 
   @override
   void dispose() {
+    UpdateService.instance.removeListener(_onUpdateChanged);
+    _updateNoticeTimer?.cancel();
     TrayService.instance.onShowModelSelection = null;
     TrayService.instance.onShowSettings = null;
     TrayService.instance.onShowInitWizard = null;
@@ -136,7 +184,6 @@ class _NextalkAppState extends State<NextalkApp> {
     try {
       await window.hide();
       await window.setConfigurationMode(true);
-      await window.setSize(720, 680);
       if (!mounted) return;
       setState(() {
         _settingsOpen = true;
