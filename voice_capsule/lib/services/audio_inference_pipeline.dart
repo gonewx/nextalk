@@ -150,6 +150,10 @@ class AudioInferencePipeline {
   PipelineState _state = PipelineState.idle;
   PipelineError _lastError = PipelineError.none;
   bool _stopRequested = false;
+  Future<String>? _cloudStop;
+  Future<void>? _cancelInFlight;
+  bool _cloudCancelled = false;
+  bool get isCloud => _asrEngine.engineType == ASREngineType.deepseek;
   String _lastEmittedText = ''; // 用于去重
   Completer<void>? _loopCompleter; // 跟踪循环完成状态
   Completer<void>? _firstChunkCompleter; // 首帧处理完成信号 (冷启动优化)
@@ -282,6 +286,9 @@ class AudioInferencePipeline {
     required ModelManager modelManager,
     double? silenceThresholdSec,
   }) {
+    if (engineType == ASREngineType.deepseek) {
+      return DeepSeekConfig(apiKey: SettingsService.instance.deepseekApiKey);
+    }
     final silenceThreshold = silenceThresholdSec ?? kDefaultRule2Silence;
     final useInt8 = SettingsService.instance.isInitialized
         ? SettingsService.instance.modelType == ModelType.int8
@@ -347,6 +354,10 @@ class AudioInferencePipeline {
       return PipelineError.none;
     }
 
+    if (_state == PipelineState.stopping || _isDisposed) {
+      return PipelineError.recognizerFailed;
+    }
+    _cloudCancelled = false;
     _setState(PipelineState.initializing);
 
     // AC5: 重置延迟统计
@@ -362,8 +373,9 @@ class AudioInferencePipeline {
       ASREngineType.zipformer => EngineType.zipformer,
       ASREngineType.sensevoice => EngineType.sensevoice,
       ASREngineType.qwen3Asr => EngineType.qwen3Asr,
+      ASREngineType.deepseek => EngineType.deepseek,
     };
-    if (!_modelManager.isEngineReady(engineType)) {
+    if (!isCloud && !_modelManager.isEngineReady(engineType)) {
       _setError(PipelineError.modelNotReady);
       return _lastError;
     }
@@ -423,6 +435,17 @@ class AudioInferencePipeline {
   ///
   /// 停止采集，处理剩余数据，返回最终识别结果。
   Future<String> stop() async {
+    if (isCloud) {
+      if (_cloudStop != null) return _cloudStop!;
+      if (_state != PipelineState.running) return "";
+      final pending = _stopCloud();
+      _cloudStop = pending;
+      try {
+        return await pending;
+      } finally {
+        _cloudStop = null;
+      }
+    }
     if (_state != PipelineState.running) {
       return _lastEmittedText;
     }
@@ -466,7 +489,7 @@ class AudioInferencePipeline {
     // 也违反 finalizeUtterance() "一次发话只调用一次"的契约。
     final finalResult = _vadTriggeredStop
         ? _asrEngine.getResult()
-        : _asrEngine.finalizeUtterance();
+        : await _asrEngine.finalizeUtterance();
 
     // Story 2-6: 发送手动停止事件 (仅当不是 VAD 触发时)
     if (!_vadTriggeredStop && !_isDisposed && !_endpointController.isClosed) {
@@ -499,11 +522,60 @@ class AudioInferencePipeline {
     return finalResult.text;
   }
 
+  /// 云端收尾：先彻底停止采集，再发送请求。取消不会走上传路径。
+  Future<String> _stopCloud() async {
+    _setState(PipelineState.stopping);
+    _stopRequested = true;
+    try {
+      await _loopCompleter?.future;
+      if (!_cloudCancelled) {
+        for (var i = 0; i < 3; i++) {
+          final count = await _audioCapture.readAsync(
+              _audioCapture.buffer, AudioConfig.framesPerBuffer);
+          if (_cloudCancelled || count <= 0) break;
+          _asrEngine.acceptWaveform(
+              AudioConfig.sampleRate, _audioCapture.buffer, count);
+        }
+      }
+      await _audioCapture.stop();
+      if (_cloudCancelled || _isDisposed) return '';
+      final result = await _asrEngine.finalizeUtterance();
+      return _cloudCancelled || _isDisposed ? '' : result.text;
+    } finally {
+      await _audioCapture.stop();
+      _asrEngine.reset();
+      _stopRequested = false;
+      _lastEmittedText = '';
+      _loopCompleter = null;
+      _recordingStartTime = null;
+      _setState(PipelineState.idle);
+    }
+  }
+
   /// 取消本次录音并丢弃结果 (Esc 取消)
   ///
   /// 与 [stop] 的区别：不排空尾音、不发送端点事件，尽快释放麦克风。
   /// 仍需调用一次 finalizeUtterance() 重建流，否则本次残留音频会串入下一次发话。
   Future<void> cancel() async {
+    if (_cancelInFlight != null) return _cancelInFlight!;
+    final pending = _cancelRecording();
+    _cancelInFlight = pending;
+    try {
+      await pending;
+    } finally {
+      _cancelInFlight = null;
+    }
+  }
+
+  Future<void> _cancelRecording() async {
+    if (isCloud && _state == PipelineState.stopping) {
+      _cloudCancelled = true;
+      _asrEngine.reset();
+      try {
+        await _cloudStop;
+      } catch (_) {}
+      return;
+    }
     if (_state != PipelineState.running) return;
 
     _setState(PipelineState.stopping);
@@ -524,7 +596,11 @@ class AudioInferencePipeline {
     // VAD 触发的停止已在 _handleEndpoint() 收过尾，不得重复收尾
     if (!_vadTriggeredStop) {
       try {
-        _asrEngine.finalizeUtterance();
+        if (isCloud) {
+          _asrEngine.reset();
+        } else {
+          await _asrEngine.finalizeUtterance();
+        }
       } catch (e) {
         if (enableDebugLog) {
           // ignore: avoid_print
@@ -545,6 +621,7 @@ class AudioInferencePipeline {
   Future<void> dispose() async {
     // M1 修复: 标记已释放，防止后续访问 StreamController
     _isDisposed = true;
+    if (isCloud) await cancel();
 
     // 1. 如果正在运行或正在停止，先确保停止
     if (_state == PipelineState.running || _state == PipelineState.stopping) {
@@ -672,7 +749,7 @@ class AudioInferencePipeline {
       final error = _audioCapture.lastReadError;
       if (error == AudioCaptureError.deviceUnavailable) {
         // Story 3-7: 设备丢失时发送 EndpointEvent 并保存已识别文本
-        _handleDeviceLost();
+        await _handleDeviceLost();
         _setError(PipelineError.deviceUnavailable);
         _stopRequested = true; // 触发循环退出
       }
@@ -728,7 +805,7 @@ class AudioInferencePipeline {
   /// Story 3-7: 处理设备丢失事件
   /// 当 PortAudio 检测到设备不可用时调用
   /// 发送带有 isDeviceLost=true 的 EndpointEvent，保存当前识别的文本
-  void _handleDeviceLost() {
+  Future<void> _handleDeviceLost() async {
     if (_isDisposed || _endpointController.isClosed) return;
 
     // 1. 尝试获取当前已识别的文本
@@ -737,7 +814,9 @@ class AudioInferencePipeline {
     // 尝试从 ASREngine 获取最新结果。设备丢失同样是一次发话的终结，
     // 走 finalizeUtterance() 才能连尾字一起保住，并让下一次录音从干净流开始。
     try {
-      final result = _asrEngine.finalizeUtterance();
+      final result =
+          isCloud ? ASRResult.empty() : await _asrEngine.finalizeUtterance();
+      if (isCloud) _asrEngine.reset();
       if (result.text.isNotEmpty) {
         preservedText = result.text;
       }
@@ -784,7 +863,7 @@ class AudioInferencePipeline {
       // PTT 累积模式则只读当前结果，绝不收尾，否则后续音频无法继续累积。
       final finalResult = isPttAccumulateMode
           ? _asrEngine.getResult()
-          : _asrEngine.finalizeUtterance();
+          : await _asrEngine.finalizeUtterance();
 
       // 2. 计算录音时长
       final durationMs = _recordingStartTime != null

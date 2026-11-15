@@ -93,8 +93,8 @@ void main() {
         expect(EngineType.values, contains(EngineType.sensevoice));
       });
 
-      test('EngineType 应包含三种引擎', () {
-        expect(EngineType.values.length, equals(3));
+      test('EngineType 应包含四种引擎', () {
+        expect(EngineType.values.length, equals(4));
       });
     });
 

@@ -18,8 +18,8 @@ void main() {
       expect(ASREngineType.values, contains(ASREngineType.sensevoice));
     });
 
-    test('应该有且仅有 3 种引擎类型', () {
-      expect(ASREngineType.values.length, equals(3));
+    test('应该有且仅有 4 种引擎类型', () {
+      expect(ASREngineType.values.length, equals(4));
     });
   });
 
@@ -327,8 +327,7 @@ void main() {
       expect(senseVoiceConfig.vadModelPath, equals('/vad/path'));
     });
 
-    test('createConfig() 应该对 SenseVoice 缺少 vadModelPath 时抛出 ArgumentError',
-        () {
+    test('createConfig() 应该对 SenseVoice 缺少 vadModelPath 时抛出 ArgumentError', () {
       expect(
         () => ASREngineFactory.createConfig(
           ASREngineType.sensevoice,
@@ -590,7 +589,8 @@ void main() {
 
       expect(zipformer.isInitialized, equals(sensevoice.isInitialized));
       expect(zipformer.lastError, equals(sensevoice.lastError));
-      expect(zipformer.getResult().isEmpty, equals(sensevoice.getResult().isEmpty));
+      expect(zipformer.getResult().isEmpty,
+          equals(sensevoice.getResult().isEmpty));
     });
   });
 
@@ -637,4 +637,3 @@ void main() {
     });
   });
 }
-

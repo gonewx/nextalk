@@ -45,6 +45,7 @@ void main() {
   /// 有状态的假窗口管理器
   late Rect bounds;
   late bool nativeVisible;
+  late int focusedReads;
   late List<String> calls;
 
   /// 模拟 WM 在 resize 时顺带平移窗口（实测 4600,1300 → 4580,900）
@@ -64,12 +65,12 @@ void main() {
       WindowConstants.windowHeight,
     );
     nativeVisible = false;
+    focusedReads = 0;
     calls = <String>[];
     resizeInducedShift = null;
     mapPseudoPosition = null;
 
-    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(wmChannel, (MethodCall call) async {
+    Future<dynamic> handleWindowCall(MethodCall call) async {
       calls.add(call.method);
       switch (call.method) {
         case 'getBounds':
@@ -110,6 +111,8 @@ void main() {
         case 'hide':
           nativeVisible = false;
           return null;
+        case 'isFocused':
+          return focusedReads-- > 0;
         case 'isFullScreen':
         case 'isMaximized':
         case 'isMinimized':
@@ -121,7 +124,18 @@ void main() {
           // startDragging ... 一律成功
           return null;
       }
-    });
+    }
+
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      ..setMockMethodCallHandler(wmChannel, handleWindowCall)
+      ..setMockMethodCallHandler(const MethodChannel('nextalk/window'),
+          (call) async {
+        if (call.method == 'showCapsule') {
+          calls.add('showCapsule');
+          return handleWindowCall(const MethodCall('show'));
+        }
+        return null;
+      });
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(srChannel, (MethodCall call) async {
@@ -157,6 +171,7 @@ void main() {
 
   void removeStubs() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      ..setMockMethodCallHandler(const MethodChannel('nextalk/window'), null)
       ..setMockMethodCallHandler(wmChannel, null)
       ..setMockMethodCallHandler(srChannel, null);
   }
@@ -184,8 +199,7 @@ void main() {
   /// 直接调 `backend.onWindowMove()` 会绕过注册，测不出来。
   Future<void> simulateUserDragViaPlugin(Offset to) async {
     bounds = Rect.fromLTWH(to.dx, to.dy, bounds.width, bounds.height);
-    await TestDefaultBinaryMessengerBinding
-        .instance.defaultBinaryMessenger
+    await TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .handlePlatformMessage(
       wmChannel.name,
       wmChannel.codec.encodeMethodCall(
@@ -233,13 +247,98 @@ void main() {
     removeStubs();
   });
 
+  test('设置隐藏等待焦点释放后才允许重新映射胶囊', () async {
+    final backend = await createBackend({});
+    backend.configurationMode = true;
+    await backend.show();
+    calls.clear();
+    focusedReads = 2;
+    await backend.hide();
+    expect(calls.where((call) => call == 'isFocused'), hasLength(3));
+    backend.configurationMode = false;
+    await backend.show();
+    expect(calls.lastIndexOf('showCapsule'),
+        greaterThan(calls.lastIndexOf('isFocused')));
+  });
+
+  test('胶囊使用不激活的原生显示，不调用普通窗口恢复或聚焦', () async {
+    final backend = await createBackend({});
+    calls.clear();
+    await backend.show();
+    expect(calls, contains('showCapsule'));
+    expect(calls, isNot(contains('restore')));
+    expect(calls, isNot(contains('focus')));
+    expect(calls, isNot(contains('isMinimized')));
+  });
+
+  test('重复录音请求每次激活设置窗口，携带一次性 token', () async {
+    final backend = await createBackend({});
+    backend.configurationMode = true;
+    final requests = <MethodCall>[];
+    const channel = MethodChannel('nextalk/window');
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+      requests.add(call);
+      return null;
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding
+        .instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null));
+    await backend.presentConfigurationAttention(activationToken: 'token-1');
+    await backend.presentConfigurationAttention();
+    expect(requests.map((call) => call.method),
+        ['presentConfigurationAttention', 'presentConfigurationAttention']);
+    expect(requests.first.arguments['activationToken'], 'token-1');
+    expect(requests.last.arguments['activationToken'], isNull);
+    expect(backend.isVisible, true);
+    backend.configurationMode = false;
+    await backend.presentConfigurationAttention();
+    expect(requests, hasLength(2));
+  });
+
+  test('设置窗口不恢复或覆盖胶囊坐标，关闭不销毁后端', () async {
+    final backend = await createBackend({
+      WindowConstants.positionXKey: 3000.0,
+      WindowConstants.positionYKey: 900.0,
+    });
+    backend.configurationMode = true;
+    await backend.setSize(720, 680);
+    bounds = const Rect.fromLTWH(300, 100, 720, 680);
+    calls.clear();
+    await backend.show();
+    expect(calls.where((e) => e == 'show').length, 1);
+    expect(bounds.topLeft, isNot(const Offset(3000, 900)));
+    expect(bounds.size, const Size(720, 680));
+    await Future<void>.delayed(FlutterWindowBackend.geometrySettleWindow);
+    backend.onWindowMove();
+    await backend.hide();
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getDouble(WindowConstants.positionXKey), 3000.0);
+    expect(prefs.getDouble(WindowConstants.positionYKey), 900.0);
+    var closed = false;
+    backend.onConfigurationClose = () => closed = true;
+    backend.onWindowClose();
+    expect(closed, true);
+    expect(backend.isInitialized, true);
+    backend.configurationMode = false;
+    await backend.setSize(400, 120);
+    await backend.show();
+    expect(bounds.topLeft, const Offset(3000, 900));
+  });
+
+  test('初始化保持隐藏，不先显示胶囊再隐藏', () async {
+    await createBackend({});
+    expect(calls, isNot(contains('show')));
+  });
+
   group('事件订阅注册 (真实接线)', () {
     test('initialize() 必须把自己注册为 window_manager 监听者', () async {
       final before = windowManager.listeners.length;
       await createBackend({});
 
       expect(
-        windowManager.listeners, contains(backend),
+        windowManager.listeners,
+        contains(backend),
         reason: '缺少 windowManager.addListener(this) 时应用收不到任何 move 事件，'
             '位置永不保存',
       );
@@ -357,7 +456,8 @@ void main() {
     });
   });
 
-  group('程序化几何变更不污染位置记忆 (真实接线)', () {    test('setSize() 引发的 WM 平移不被当成用户位置', () async {
+  group('程序化几何变更不污染位置记忆 (真实接线)', () {
+    test('setSize() 引发的 WM 平移不被当成用户位置', () async {
       await createBackend({});
       await backend.show();
       await settleSuppression();
@@ -523,7 +623,8 @@ void main() {
     });
   });
 
-  group('存量脏值恢复 (真实接线)', () {    test('(0,0) 被清键，并把窗口移到工作区底部居中', () async {
+  group('存量脏值恢复 (真实接线)', () {
+    test('(0,0) 被清键，并把窗口移到工作区底部居中', () async {
       await createBackend({
         'flutter.${WindowConstants.positionXKey}': 0.0,
         'flutter.${WindowConstants.positionYKey}': 0.0,

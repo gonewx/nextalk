@@ -16,8 +16,12 @@ enum EngineType {
 
   /// SenseVoice 离线引擎 (VAD 分段后识别，高精度)
   sensevoice,
+
   /// Qwen3-ASR 0.6B 离线引擎（VAD 分段）
   qwen3Asr,
+
+  /// DeepSeek 云端识别
+  deepseek,
 }
 
 /// 设置服务常量
@@ -32,7 +36,7 @@ class SettingsConstants {
   /// 模型类型键名 (Zipformer 版本: int8 | standard)
   static const String keyModelType = '${keyPrefix}model_type';
 
-  /// 引擎类型键名 (Story 2-7: zipformer | sensevoice | qwen3_asr)
+  /// 引擎类型键名 (Story 2-7: zipformer | sensevoice | qwen3_asr | deepseek)
   static const String keyEngineType = '${keyPrefix}engine_type';
 
   /// 音频输入设备名称键名 (Story 3-9)
@@ -92,11 +96,15 @@ class SettingsConstants {
 # 修改后重启应用生效
 
 model:
-  # ASR 引擎类型: zipformer | sensevoice | qwen3_asr
+  # ASR 引擎类型: zipformer | sensevoice | qwen3_asr | deepseek
   # zipformer: 流式识别，边听边识别，低延迟 (<200ms)
   # sensevoice: 离线识别，VAD 分段后识别，高精度，自动标点
   # qwen3_asr: 离线识别 (默认推荐)，Qwen3-ASR 0.6B，精度最高，多语言
   engine: qwen3_asr
+
+  # DeepSeek 云端：也可在托盘“DeepSeek 配置…”中设置并测试
+  deepseek:
+    api_key: ""
 
   # Zipformer 配置 (流式引擎)
   zipformer:
@@ -174,11 +182,15 @@ text:
 # Restart the app after making changes
 
 model:
-  # ASR engine type: zipformer | sensevoice | qwen3_asr
+  # ASR engine type: zipformer | sensevoice | qwen3_asr | deepseek
   # zipformer: Streaming recognition, real-time, low latency (<200ms)
   # sensevoice: Offline recognition, VAD segmented, high accuracy, auto punctuation
   # qwen3_asr: Offline recognition (recommended), Qwen3-ASR 0.6B, best accuracy, multilingual
   engine: qwen3_asr
+
+  # DeepSeek cloud: configure and test using the tray settings window
+  deepseek:
+    api_key: ""
 
   # Zipformer configuration (streaming engine)
   zipformer:

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
 
 import '../constants/settings_constants.dart';
 import '../l10n/app_localizations.dart';
@@ -12,10 +13,9 @@ import '../services/settings_service.dart';
 import '../services/tray_service.dart';
 import '../services/window_service.dart';
 import '../state/capsule_state.dart';
-import '../ui/audio_device_error_dialog.dart';
 import '../ui/capsule_widget.dart';
+import '../ui/settings/settings_window.dart';
 import '../ui/error_action_widget.dart';
-import '../ui/init_wizard/init_wizard.dart';
 
 /// Nextalk 应用根组件
 /// Story 3-6: 完整业务流串联
@@ -54,149 +54,157 @@ class NextalkApp extends StatefulWidget {
 }
 
 class _NextalkAppState extends State<NextalkApp> {
-  /// 是否需要显示初始化向导
-  late bool _needsInit;
-
-  /// 当前是否处于扩展窗口模式
   bool _isExpanded = false;
-
-  /// 初始化向导的目标引擎类型 (从托盘菜单触发时设置)
-  EngineType? _targetEngineType;
+  bool _settingsOpen = false;
+  bool _settingsBusy = false;
+  bool _recordingHint = false;
+  int _recordingHintRevision = 0;
+  bool _presentingRecordingHint = false;
+  bool _initialGeneral = false;
+  bool _windowTransition = false;
+  EngineType? _initialEngine;
+  int _settingsGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    // Story 3-7 AC1: 首次运行检测到模型缺失时显示初始化向导
-    // 使用 hasAnyEngineReady 检查是否有任何引擎可用 (支持回退机制)
-    _needsInit = !widget.modelManager.hasAnyEngineReady;
-
-    // 注册托盘服务回调：当用户尝试切换到没有模型的引擎时显示初始化向导
-    TrayService.instance.onShowInitWizard = (targetEngine) {
-      _showInitWizard(targetEngine: targetEngine);
-    };
-
-    // Story 3-9 AC16: 启动时检测到音频设备错误，延迟显示错误对话框
-    if (widget.audioDeviceError != null &&
-        widget.audioDeviceError != AudioCaptureError.none) {
-      // 延迟显示对话框，确保 MaterialApp 已完全构建
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _showAudioDeviceErrorDialog();
-      });
+    TrayService.instance.onShowModelSelection = () => _openSettings();
+    TrayService.instance.onShowSettings = () => _openSettings(general: true);
+    TrayService.instance.onShowDeepSeekSettings =
+        () => _openSettings(engine: EngineType.deepseek);
+    TrayService.instance.onShowInitWizard =
+        (engine) => _showInitWizard(targetEngine: engine);
+    WindowService.instance.onConfigurationClose = _closeSettings;
+    HotkeyController.instance.onRecordingBlocked = _explainRecordingBlocked;
+    final settings = SettingsService.instance;
+    if (!widget.modelManager.isEngineReady(settings.engineType) ||
+        (widget.audioDeviceError != null &&
+            widget.audioDeviceError != AudioCaptureError.none)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openSettings());
     }
   }
 
   @override
   void dispose() {
-    // 清理回调
+    TrayService.instance.onShowModelSelection = null;
+    TrayService.instance.onShowSettings = null;
     TrayService.instance.onShowInitWizard = null;
+    TrayService.instance.onShowDeepSeekSettings = null;
+    WindowService.instance.onConfigurationClose = null;
+    HotkeyController.instance.configurationOpen = false;
+    HotkeyController.instance.onRecordingBlocked = null;
     super.dispose();
   }
 
-  /// 初始化向导完成回调
-  void _onInitCompleted() {
-    // 重置窗口尺寸为正常胶囊尺寸并隐藏
-    WindowService.instance.resetToNormalSize();
-    WindowService.instance.hide();
-
-    // 确定下载完成的引擎类型
-    final downloadedEngine = _targetEngineType ?? SettingsService.instance.engineType;
-
-    // 先更新状态，避免异步操作后 widget 已销毁
+  Future<void> _explainRecordingBlocked() async {
+    if (!mounted || !_settingsOpen) return;
     setState(() {
-      _needsInit = false;
-      _targetEngineType = null; // 清除目标引擎
+      _recordingHint = true;
+      _recordingHintRevision++;
     });
-
-    // ignore: avoid_print
-    print('[NextalkApp] 初始化完成，窗口已隐藏，等待快捷键唤醒');
-
-    // 异步触发引擎重新初始化（会更新 SettingsService.actualEngineType 并重建托盘菜单）
-    _reinitializeEngineIfNeeded(downloadedEngine);
-  }
-
-  /// 异步重新初始化引擎（初始化向导完成后调用）
-  Future<void> _reinitializeEngineIfNeeded(EngineType downloadedEngine) async {
-    // 如果下载的引擎与当前配置不同，需要切换引擎
-    // 这会触发 onEngineSwitch 回调，重新初始化 ASR 引擎
-    if (downloadedEngine != SettingsService.instance.engineType) {
-      // ignore: avoid_print
-      print('[NextalkApp] 切换引擎配置: ${SettingsService.instance.engineType} -> $downloadedEngine');
-      await SettingsService.instance.switchEngineType(downloadedEngine);
-    } else {
-      // 引擎类型相同，但可能是首次下载或重新下载，仍需触发引擎重新初始化
-      // 直接调用 onEngineSwitch 回调（如果已注入）
-      if (SettingsService.instance.onEngineSwitch != null) {
-        // ignore: avoid_print
-        print('[NextalkApp] 触发引擎重新初始化: $downloadedEngine');
-        await SettingsService.instance.onEngineSwitch!(downloadedEngine);
-      }
+    if (_windowTransition || _presentingRecordingHint) return;
+    _presentingRecordingHint = true;
+    try {
+      // 保留当前页面及未保存草稿，重复快捷键只更新同一条提示。
+      await _prepareHiddenFrame();
+      await WindowService.instance.presentConfigurationAttention();
+    } finally {
+      _presentingRecordingHint = false;
     }
   }
 
-  /// 重新显示初始化向导（用于模型缺失时重新下载）
-  /// [targetEngine] 目标引擎类型，从托盘菜单触发时传入
-  void _showInitWizard({EngineType? targetEngine}) {
-    setState(() {
-      _needsInit = true;
-      _targetEngineType = targetEngine;
-    });
-    // 设置初始化向导窗口大小并显示
-    WindowService.instance.setInitWizardSize();
-    WindowService.instance.show();
-
-    // ignore: avoid_print
-    print('[NextalkApp] 重新显示初始化向导, 目标引擎: $targetEngine');
+  Future<void> _openSettings({EngineType? engine, bool general = false}) async {
+    if (!mounted || _windowTransition) return;
+    if (_settingsOpen) {
+      if (!_settingsBusy) {
+        setState(() {
+          _initialEngine = engine;
+          _initialGeneral = general;
+          _settingsGeneration++;
+        });
+        await _prepareHiddenFrame();
+      }
+      await WindowService.instance.show();
+      await windowManager.focus();
+      return;
+    }
+    if (HotkeyController.instance.state != HotkeyState.idle) return;
+    _windowTransition = true;
+    HotkeyController.instance.configurationOpen = true;
+    final window = WindowService.instance;
+    window.preventAutoHide = true;
+    try {
+      await window.hide();
+      await window.setConfigurationMode(true);
+      await window.setSize(720, 680);
+      if (!mounted) return;
+      setState(() {
+        _settingsOpen = true;
+        _recordingHint = false;
+        _initialEngine = engine;
+        _initialGeneral = general;
+        _settingsGeneration++;
+      });
+      // 内容和最终几何均准备好后只映射一次窗口。
+      await _prepareHiddenFrame();
+      await window.show();
+    } finally {
+      _windowTransition = false;
+    }
   }
 
-  /// Story 3-9 AC16: 显示音频设备错误对话框
-  void _showAudioDeviceErrorDialog() {
-    if (!mounted) return;
+  /// 隐藏窗口没有正常 vsync，不能直接等待 endOfFrame。
+  /// Warm-up frame 不依赖窗口映射，先完成布局再显示，避免死锁和旧内容闪现。
+  Future<void> _prepareHiddenFrame() async {
+    final binding = WidgetsBinding.instance;
+    final frame = binding.endOfFrame;
+    binding.scheduleWarmUpFrame();
+    await frame;
+  }
 
-    final lang = LanguageService.instance;
-    final deviceName = widget.audioDeviceName ?? 'default';
+  Future<void> _closeSettings() async {
+    if (!mounted || _windowTransition || _settingsBusy) return;
+    _windowTransition = true;
+    final window = WindowService.instance;
+    try {
+      await window.hide();
+      await windowManager.unmaximize();
+      await window.setConfigurationMode(false);
+      await window.resetToNormalSize();
+      if (mounted) {
+        setState(() {
+          _settingsOpen = false;
+          _isExpanded = false;
+        });
+      }
+      await _prepareHiddenFrame();
+      window.preventAutoHide = false;
+      HotkeyController.instance.configurationOpen = false;
+    } finally {
+      _windowTransition = false;
+    }
+  }
 
-    // 根据错误类型生成错误原因描述
-    final errorReason = _getAudioErrorReason(widget.audioDeviceError!, lang);
-
-    // 显示窗口 (对话框需要可见的窗口)
-    WindowService.instance.show();
-
-    // 显示错误对话框
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => AudioDeviceErrorDialog(
-        deviceName: deviceName,
-        errorReason: errorReason,
-        onDismiss: () {
-          // 对话框关闭后隐藏窗口
-          WindowService.instance.hide();
-        },
-      ),
-    );
+  void _showInitWizard({EngineType? targetEngine}) {
+    _openSettings(engine: targetEngine);
   }
 
   /// Story 3-9: 根据错误类型获取本地化的错误原因描述
   String _getAudioErrorReason(AudioCaptureError error, LanguageService lang) {
     return switch (error) {
-      AudioCaptureError.initializationFailed => lang.isZh
-          ? 'PortAudio 初始化失败'
-          : 'PortAudio initialization failed',
-      AudioCaptureError.noInputDevice => lang.isZh
-          ? '未检测到音频输入设备'
-          : 'No audio input device detected',
-      AudioCaptureError.deviceUnavailable => lang.isZh
-          ? '设备不可用'
-          : 'Device unavailable',
+      AudioCaptureError.initializationFailed =>
+        lang.isZh ? 'PortAudio 初始化失败' : 'PortAudio initialization failed',
+      AudioCaptureError.noInputDevice =>
+        lang.isZh ? '未检测到音频输入设备' : 'No audio input device detected',
+      AudioCaptureError.deviceUnavailable =>
+        lang.isZh ? '设备不可用' : 'Device unavailable',
       AudioCaptureError.streamOpenFailed => lang.isZh
           ? '无法打开音频流 (设备可能被其他应用占用)'
           : 'Failed to open audio stream (device may be in use by another app)',
-      AudioCaptureError.streamStartFailed => lang.isZh
-          ? '无法启动音频流'
-          : 'Failed to start audio stream',
-      AudioCaptureError.readFailed => lang.isZh
-          ? '音频读取失败'
-          : 'Audio read failed',
+      AudioCaptureError.streamStartFailed =>
+        lang.isZh ? '无法启动音频流' : 'Failed to start audio stream',
+      AudioCaptureError.readFailed =>
+        lang.isZh ? '音频读取失败' : 'Audio read failed',
       AudioCaptureError.none => '',
     };
   }
@@ -215,24 +223,36 @@ class _NextalkAppState extends State<NextalkApp> {
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           theme: ThemeData.dark().copyWith(
+            colorScheme: ColorScheme.fromSeed(
+                seedColor: const Color(0xFFEF5350),
+                brightness: Brightness.dark),
             scaffoldBackgroundColor: Colors.transparent,
           ),
           home: Scaffold(
-            backgroundColor: Colors.transparent,
+            backgroundColor:
+                _settingsOpen ? const Color(0xFF1A1A1A) : Colors.transparent,
             // Story 3-7: 根据初始化状态路由 UI
-            body: _needsInit ? _buildInitWizard() : _buildCapsuleUI(),
+            body: _settingsOpen
+                ? SettingsWindow(
+                    key: ValueKey(_settingsGeneration),
+                    modelManager: widget.modelManager,
+                    initialEngine: _initialEngine,
+                    initialGeneral: _initialGeneral,
+                    onBusyChanged: (busy) => _settingsBusy = busy,
+                    recordingRequested: _recordingHint,
+                    recordingHintRevision: _recordingHintRevision,
+                    onDismissRecordingHint: () =>
+                        setState(() => _recordingHint = false),
+                    notice: widget.audioDeviceError != null &&
+                            widget.audioDeviceError != AudioCaptureError.none
+                        ? _getAudioErrorReason(
+                            widget.audioDeviceError!, LanguageService.instance)
+                        : null,
+                    onClose: _closeSettings)
+                : _buildCapsuleUI(),
           ),
         );
       },
-    );
-  }
-
-  /// 构建初始化向导 (AC1-AC7)
-  Widget _buildInitWizard() {
-    return InitWizard(
-      modelManager: widget.modelManager,
-      onCompleted: _onInitCompleted,
-      targetEngineType: _targetEngineType,
     );
   }
 
@@ -255,14 +275,19 @@ class _NextalkAppState extends State<NextalkApp> {
         // Story 3-8: 错误状态的提示文字 (国际化)
         final hintText = state.state == CapsuleState.error
             ? state.displayMessage
-            : (l10n?.listening ?? '正在聆听...');
+            : SettingsService.instance.actualEngineType == EngineType.deepseek
+                ? (LanguageService.instance.isZh
+                    ? '正在录音（最长 120 秒）'
+                    : 'Recording (up to 120 seconds)')
+                : (l10n?.listening ?? '正在聆听...');
 
         // Story 3-7: 错误状态时显示操作按钮
         final isErrorWithActions = state.state == CapsuleState.error &&
             _shouldShowErrorActions(state.errorType);
 
         // SCP-002: 剪贴板复制成功状态（复制完成后才显示）
-        final isCopiedToClipboard = state.state == CapsuleState.copiedToClipboard;
+        final isCopiedToClipboard =
+            state.state == CapsuleState.copiedToClipboard;
 
         // 动态调整窗口大小：错误状态需要更多空间
         _updateWindowSize(isErrorWithActions);
@@ -331,6 +356,7 @@ class _NextalkAppState extends State<NextalkApp> {
       _isExpanded = needsExpanded;
       // 使用 post-frame callback 确保在布局完成后调整窗口
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _settingsOpen || _windowTransition) return;
         WindowService.instance.setExpandedMode(needsExpanded);
         // 当显示错误操作按钮时，阻止快捷键自动隐藏窗口
         WindowService.instance.preventAutoHide = needsExpanded;

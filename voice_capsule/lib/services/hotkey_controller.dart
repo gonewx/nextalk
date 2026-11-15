@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import '../constants/settings_constants.dart';
+import 'language_service.dart';
+import 'asr/deepseek_asr_client.dart';
+
 import 'package:flutter/services.dart';
 
 import 'asr/asr_engine.dart';
@@ -88,6 +92,13 @@ class HotkeyController {
   /// 提交流程取消标志：用户按 Esc 放弃本次输入 (与 _submitInterrupted 不同，
   /// 取消后文本直接丢弃，不保存、不上屏)
   bool _submitCancelled = false;
+  int _submissionId = 0;
+  Timer? _cloudLimitTimer;
+  Future<void>? _cancelOperation;
+  bool configurationOpen = false;
+
+  /// 设置窗口占用时，由界面层解释阻止录音的原因。
+  Future<void> Function()? onRecordingBlocked;
 
   /// 最近一次预览文本 (处理中状态继续显示，避免胶囊文字突然清空)
   String _lastPreviewText = '';
@@ -115,6 +126,11 @@ class HotkeyController {
 
   /// 显示窗口并开始录音
   Future<void> show() async {
+    await _cancelOperation;
+    if (configurationOpen) {
+      await onRecordingBlocked?.call();
+      return;
+    }
     // ignore: avoid_print
     print('[HotkeyController] show() 调用，当前状态: $_state');
 
@@ -125,6 +141,11 @@ class HotkeyController {
       // ignore: avoid_print
       print('[HotkeyController] 用户快速重按，打断提交流程');
       _submitInterrupted = true;
+      if (_pipeline?.isCloud == true) {
+        final restartingSession = ++_submissionId;
+        await _pipeline?.cancel();
+        if (restartingSession != _submissionId) return;
+      }
       // 立即开始新的录音（不等待 submitting 完成）
       await _startRecording();
     }
@@ -170,6 +191,31 @@ class HotkeyController {
   /// - 提交中：在上屏前拦截，丢弃文本
   /// - 空闲但胶囊仍显示 (错误提示/剪贴板提示)：关闭胶囊
   Future<void> cancel() async {
+    if (_cancelOperation != null) return _cancelOperation!;
+    final pending = _cancelCurrent();
+    _cancelOperation = pending;
+    try {
+      await pending;
+    } finally {
+      _cancelOperation = null;
+    }
+  }
+
+  Future<void> _cancelCurrent() async {
+    _cloudLimitTimer?.cancel();
+    if (configurationOpen) return;
+    if (_pipeline?.isCloud == true && _state == HotkeyState.submitting) {
+      final id = ++_submissionId;
+      _submitCancelled = true;
+      await _pipeline?.cancel();
+      if (id != _submissionId) return;
+      CancelKeyService.instance.disarm();
+      await WindowService.instance.hide();
+      if (id != _submissionId) return;
+      _state = HotkeyState.idle;
+      _updateState(CapsuleStateData.idle());
+      return;
+    }
     // ignore: avoid_print
     print('[HotkeyController] cancel() 调用，当前状态: $_state');
 
@@ -177,14 +223,17 @@ class HotkeyController {
 
     switch (_state) {
       case HotkeyState.recording:
+        final cancelledSession = ++_submissionId;
         CancelKeyService.instance.disarm();
         // 先置为 submitting，挡住取消过程中到达的快捷键
         _state = HotkeyState.submitting;
         _lastPreviewText = '';
         // 先隐藏窗口给出即时反馈，再慢慢释放麦克风
         await WindowService.instance.hide();
+        if (cancelledSession != _submissionId) return;
         _updateState(CapsuleStateData.idle());
         await _pipeline?.cancel();
+        if (cancelledSession != _submissionId) return;
         // 取消期间用户可能已经开始了新的录音，不能覆盖它
         if (_state == HotkeyState.submitting) {
           _state = HotkeyState.idle;
@@ -315,6 +364,11 @@ class HotkeyController {
   /// AC2: 按下 Right Alt 键时自动开始录音
   /// AC3: 正在录音时再次按下 Right Alt 立即停止录音
   Future<void> _onHotkeyPressed() async {
+    await _cancelOperation;
+    if (configurationOpen) {
+      await onRecordingBlocked?.call();
+      return;
+    }
     // 防止快速按键导致的竞态条件
     if (_isProcessing) {
       // ignore: avoid_print
@@ -349,6 +403,18 @@ class HotkeyController {
   /// AC1: 窗口瞬间出现
   /// AC2: 自动开始录音
   Future<void> _startRecording() async {
+    await _cancelOperation;
+    if (configurationOpen) {
+      await onRecordingBlocked?.call();
+      return;
+    }
+    if (SettingsService.instance.actualEngineType == EngineType.deepseek &&
+        !SettingsService.instance.hasDeepSeekConfig) {
+      TrayService.instance.onShowDeepSeekSettings?.call();
+      return;
+    }
+    _submissionId++;
+    _cloudLimitTimer?.cancel();
     _state = HotkeyState.recording;
     _submitCancelled = false;
     _lastPreviewText = '';
@@ -374,6 +440,12 @@ class HotkeyController {
       return;
     }
 
+    if (_pipeline!.isCloud) {
+      _cloudLimitTimer = Timer(const Duration(seconds: 120), () {
+        if (_state == HotkeyState.recording) _stopAndSubmit();
+      });
+    }
+
     // 录音期间允许 Esc 取消 (由 Fcitx5 插件 / GNOME 扩展代为捕获)
     CancelKeyService.instance.arm();
 
@@ -393,6 +465,8 @@ class HotkeyController {
   ///
   /// SCP-002: 剪贴板模式时保持窗口显示，复制完成后显示提示
   Future<void> _stopAndSubmit() async {
+    _cloudLimitTimer?.cancel();
+    final submission = _submissionId;
     _state = HotkeyState.submitting;
     _submitInterrupted = false; // 重置中断标志
     _submitCancelled = false;
@@ -402,7 +476,19 @@ class HotkeyController {
 
     // 2. 停止录音，获取最终文本 (AC3)
     // 注意：pipeline.stop() 会等待所有处理中的数据完成
-    final rawText = await _pipeline!.stop();
+    String rawText;
+    try {
+      rawText = await _pipeline!.stop();
+    } on DeepSeekException catch (e) {
+      if (submission != _submissionId) return;
+      CancelKeyService.instance.disarm();
+      _state = HotkeyState.idle;
+      _updateState(CapsuleStateData.error(CapsuleErrorType.unknown,
+          message: e.message(LanguageService.instance.isZh)));
+      TrayService.instance.updateStatus(TrayStatus.warning);
+      return;
+    }
+    if (submission != _submissionId) return;
     final finalText = _postProcess(rawText);
     _lastPreviewText = '';
 
@@ -410,7 +496,9 @@ class HotkeyController {
     print('[HotkeyController] 📝 最终文本: "$finalText" (原始: "$rawText")');
 
     // 用户在收尾期间按了 Esc：丢弃文本 (收尾期间 Esc 仍保持捕获)
+    if (submission != _submissionId) return;
     if (await _finishIfCancelled()) return;
+    if (submission != _submissionId) return;
 
     // 即将上屏，把 Esc 还给应用；若已被快速重按打断，新的录音仍需要它
     if (_state != HotkeyState.recording) {
@@ -438,11 +526,12 @@ class HotkeyController {
       gnomeAvailable: _gnomeClient!.isAvailable,
     );
 
+    if (submission != _submissionId) return;
     if (backend != InjectBackend.fcitx) {
       // GNOME 扩展或剪贴板模式
       // ignore: avoid_print
       print('[HotkeyController] Fcitx5 不可用，注入后端: $backend');
-      await _submitViaGnomeOrClipboard(finalText, backend);
+      await _submitViaGnomeOrClipboard(finalText, backend, session: submission);
       return;
     }
 
@@ -455,7 +544,9 @@ class HotkeyController {
     await Future.delayed(const Duration(milliseconds: 100));
 
     // 7. 再次检查是否被中断（在等待焦点恢复期间可能被打断）
+    if (submission != _submissionId) return;
     if (await _finishIfCancelled()) return;
+    if (submission != _submissionId) return;
     if (_submitInterrupted) {
       // ignore: avoid_print
       print('[HotkeyController] ⚡ 提交在焦点等待期间被中断');
@@ -466,8 +557,9 @@ class HotkeyController {
     }
 
     // 8. 提交文本到 Fcitx5 (AC4)
-    await _submitTextToFcitx(finalText);
+    await _submitTextToFcitx(finalText, session: submission);
 
+    if (submission != _submissionId) return;
     // 9. 重置状态
     _state = HotkeyState.idle;
     _updateState(CapsuleStateData.idle());
@@ -479,13 +571,13 @@ class HotkeyController {
   /// （焦点不在目标应用时 Main.inputMethod.commit 无效）；
   /// 任何失败恢复窗口并走剪贴板 fallback，保证文本不丢失。
   /// 剪贴板模式与现状一致：保持窗口显示，直接复制。
-  Future<void> _submitViaGnomeOrClipboard(
-    String text,
-    InjectBackend backend,
-  ) async {
+  Future<void> _submitViaGnomeOrClipboard(String text, InjectBackend backend,
+      {int? session}) async {
+    final submission = session ?? _submissionId;
+    if (submission != _submissionId) return;
     if (backend != InjectBackend.gnome) {
       // 剪贴板模式：保持窗口显示，直接复制（空文本在其内部直接收尾）
-      await _copyToClipboardWithPrompt(text);
+      await _copyToClipboardWithPrompt(text, session: submission);
       return;
     }
 
@@ -494,7 +586,9 @@ class HotkeyController {
     await Future.delayed(const Duration(milliseconds: 100));
 
     // 焦点等待期间可能被用户快速重按打断或 Esc 取消
+    if (submission != _submissionId) return;
     if (await _finishIfCancelled()) return;
+    if (submission != _submissionId) return;
     if (_submitInterrupted) {
       // ignore: avoid_print
       print('[HotkeyController] ⚡ GNOME 提交在焦点等待期间被中断');
@@ -504,7 +598,9 @@ class HotkeyController {
       return;
     }
 
-    if (await _gnomeClient!.commitText(text)) {
+    final committed = await _gnomeClient!.commitText(text);
+    if (submission != _submissionId) return;
+    if (committed) {
       _lastRecognizedText = null; // 成功后清空
       // ignore: avoid_print
       print('[HotkeyController] ✅ 文本已通过 GNOME 扩展提交');
@@ -517,7 +613,7 @@ class HotkeyController {
     // ignore: avoid_print
     print('[HotkeyController] ❌ GNOME 扩展提交失败，降级剪贴板');
     await WindowService.instance.show();
-    await _copyToClipboardWithPrompt(text);
+    await _copyToClipboardWithPrompt(text, session: submission);
   }
 
   /// 若用户在提交流程中按了 Esc，则丢弃文本并回到 idle，返回 true
@@ -546,22 +642,29 @@ class HotkeyController {
 
   /// 提交文本到 Fcitx5 (仅用于 Fcitx5 可用时)
   /// Story 3-7: 增强错误处理，保护提交失败的文本 (AC15)
-  Future<void> _submitTextToFcitx(String text) async {
+  Future<void> _submitTextToFcitx(String text, {int? session}) async {
+    final submission = session ?? _submissionId;
+    if (submission != _submissionId) return;
     if (text.isEmpty) return;
 
     try {
       await _fcitxClient!.sendText(text);
+      if (submission != _submissionId) return;
       _lastRecognizedText = null; // 成功后清空
       // ignore: avoid_print
       print('[HotkeyController] ✅ 文本已提交');
     } on FcitxError catch (e) {
+      if (submission != _submissionId) return;
       // 连接失败时先尝试 GNOME 扩展，再降级剪贴板 (三级注入链)
       if (e == FcitxError.connectionFailed ||
           e == FcitxError.reconnectFailed ||
           e == FcitxError.socketNotFound) {
         // 此时窗口已隐藏、焦点已回到目标应用，可直接尝试 GNOME 提交
-        if (await _gnomeClient!.isAvailable() &&
-            await _gnomeClient!.commitText(text)) {
+        final available = await _gnomeClient!.isAvailable();
+        if (submission != _submissionId) return;
+        final committed = available && await _gnomeClient!.commitText(text);
+        if (submission != _submissionId) return;
+        if (committed) {
           _lastRecognizedText = null; // 成功后清空
           // ignore: avoid_print
           print('[HotkeyController] ✅ 文本已通过 GNOME 扩展提交 (fcitx5 fallback)');
@@ -569,7 +672,8 @@ class HotkeyController {
         }
         // 重新显示窗口（已隐藏），使用剪贴板模式
         await WindowService.instance.show();
-        await _copyToClipboardWithPrompt(text);
+        if (submission != _submissionId) return;
+        await _copyToClipboardWithPrompt(text, session: submission);
         return;
       }
 
@@ -579,6 +683,7 @@ class HotkeyController {
       print('[HotkeyController] ❌ 文本提交失败 (FcitxError): $e');
       // 重新显示窗口显示错误
       await WindowService.instance.show();
+      if (submission != _submissionId) return;
       _updateState(CapsuleStateData.error(
         CapsuleErrorType.socketError,
         fcitxError: e,
@@ -589,18 +694,23 @@ class HotkeyController {
       // 不自动隐藏，等待用户操作 (AC15)
       _state = HotkeyState.idle; // 允许用户重新触发
     } catch (e) {
+      if (submission != _submissionId) return;
       // 其他异常：重新显示窗口，使用剪贴板 fallback
       await WindowService.instance.show();
-      await _copyToClipboardWithPrompt(text);
+      if (submission != _submissionId) return;
+      await _copyToClipboardWithPrompt(text, session: submission);
     }
   }
 
   /// SCP-002: 剪贴板模式 - 保持窗口显示，复制文本并显示提示
   /// 此方法在窗口**保持显示**的状态下调用，不需要重新显示窗口
-  Future<void> _copyToClipboardWithPrompt(String text) async {
+  Future<void> _copyToClipboardWithPrompt(String text, {int? session}) async {
+    final submission = session ?? _submissionId;
+    if (submission != _submissionId) return;
     if (text.isEmpty) {
       // 没有文本，直接隐藏窗口
       await WindowService.instance.hide();
+      if (submission != _submissionId) return;
       _state = HotkeyState.idle;
       _updateState(CapsuleStateData.idle());
       return;
@@ -608,6 +718,7 @@ class HotkeyController {
 
     try {
       await Clipboard.setData(ClipboardData(text: text));
+      if (submission != _submissionId) return;
       _lastRecognizedText = null; // 成功复制后清空
 
       // ignore: avoid_print
@@ -619,12 +730,15 @@ class HotkeyController {
 
       // 2秒后自动隐藏窗口
       Future.delayed(const Duration(seconds: 2), () {
-        if (_state == HotkeyState.idle) {
+        if (submission == _submissionId &&
+            _state == HotkeyState.idle &&
+            !configurationOpen) {
           WindowService.instance.hide();
           _updateState(CapsuleStateData.idle());
         }
       });
     } catch (e) {
+      if (submission != _submissionId) return;
       // 剪贴板也失败，保存文本显示错误
       _lastRecognizedText = text;
       // ignore: avoid_print
@@ -817,6 +931,8 @@ class HotkeyController {
 
   /// 释放资源
   Future<void> dispose() async {
+    _cloudLimitTimer?.cancel();
+    _submissionId++;
     await _endpointSubscription?.cancel();
     await _resultSubscription?.cancel();
     await _gnomeClient?.dispose();

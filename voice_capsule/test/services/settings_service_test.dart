@@ -30,8 +30,8 @@ void main() {
   });
 
   group('SettingsConstants', () {
-    test('EngineType 枚举包含三种引擎', () {
-      expect(EngineType.values.length, equals(3));
+    test('EngineType 枚举包含四种引擎', () {
+      expect(EngineType.values.length, equals(4));
       expect(EngineType.values.contains(EngineType.zipformer), isTrue);
       expect(EngineType.values.contains(EngineType.sensevoice), isTrue);
     });
@@ -50,8 +50,8 @@ void main() {
 
     test('defaultSettingsYaml 默认引擎为 qwen3_asr', () {
       // 默认推荐 Qwen3-ASR 引擎
-      expect(SettingsConstants.defaultSettingsYaml,
-          contains('engine: qwen3_asr'));
+      expect(
+          SettingsConstants.defaultSettingsYaml, contains('engine: qwen3_asr'));
     });
 
     test('defaultSettingsYaml 包含 zipformer 配置块', () {
@@ -71,8 +71,7 @@ void main() {
     });
 
     test('defaultEngineType 为 qwen3Asr', () {
-      expect(
-          SettingsConstants.defaultEngineType, equals(EngineType.qwen3Asr));
+      expect(SettingsConstants.defaultEngineType, equals(EngineType.qwen3Asr));
     });
 
     test('keyEngineType 键名正确', () {
@@ -94,8 +93,7 @@ void main() {
 
       // 由于 SettingsService 是单例，我们只测试默认值逻辑
       // engineType getter 在没有存储值时应返回默认值
-      expect(
-          SettingsConstants.defaultEngineType, equals(EngineType.qwen3Asr));
+      expect(SettingsConstants.defaultEngineType, equals(EngineType.qwen3Asr));
     });
 
     test('EngineType 可以通过 name 解析', () {

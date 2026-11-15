@@ -11,10 +11,12 @@ class InitModeSelector extends StatelessWidget {
     super.key,
     required this.onAutoDownload,
     required this.onManualInstall,
+    this.title,
   });
 
   /// 自动下载回调
   final VoidCallback onAutoDownload;
+  final String? title;
 
   /// 手动安装回调
   final VoidCallback onManualInstall;
@@ -26,9 +28,9 @@ class InitModeSelector extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: CapsuleColors.background,
+        color: const Color(0xFF242424),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: CapsuleColors.borderGlow),
+        border: Border.all(color: Colors.white12),
         boxShadow: [
           BoxShadow(
             color: CapsuleColors.shadow,
@@ -42,7 +44,7 @@ class InitModeSelector extends StatelessWidget {
         children: [
           // 标题
           Text(
-            '🎤 ${l10n?.wizardFirstLaunch ?? 'Nextalk 首次启动'}',
+            title ?? '🎤 ${l10n?.wizardFirstLaunch ?? 'Nextalk 首次启动'}',
             style: const TextStyle(
               color: CapsuleColors.textWhite,
               fontSize: 20,

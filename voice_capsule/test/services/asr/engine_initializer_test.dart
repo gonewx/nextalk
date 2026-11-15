@@ -79,7 +79,7 @@ void main() {
 
   group('Story 2-7: 回退逻辑边界情况测试', () {
     test('所有引擎类型都有对应回退', () {
-      for (final type in EngineType.values) {
+      for (final type in EngineType.values.where((type) => type != EngineType.deepseek)) {
         final fallback = type == EngineType.sensevoice
             ? EngineType.zipformer
             : EngineType.sensevoice;
@@ -94,7 +94,7 @@ void main() {
       expect(SettingsConstants.defaultEngineType, EngineType.qwen3Asr);
     });
 
-    test('每个引擎类型都应该有有效的回退目标', () {
+    test('每个本地引擎类型都应该有有效的回退目标', () {
       // 验证回退映射的完整性
       final fallbackMap = {
         EngineType.sensevoice: EngineType.zipformer,
@@ -102,8 +102,8 @@ void main() {
         EngineType.qwen3Asr: EngineType.sensevoice,
       };
 
-      // 确保所有引擎类型都有回退
-      for (final type in EngineType.values) {
+      // 云端引擎不自动回退；本地引擎均需有回退目标
+      for (final type in EngineType.values.where((type) => type != EngineType.deepseek)) {
         expect(fallbackMap.containsKey(type), isTrue,
             reason: '引擎类型 $type 缺少回退映射');
         expect(fallbackMap[type], isNot(type),

@@ -1,4 +1,5 @@
 import 'asr_engine.dart';
+import 'deepseek_asr_engine.dart';
 import 'sensevoice_engine.dart';
 import 'qwen3_asr_engine.dart';
 import 'zipformer_engine.dart';
@@ -20,6 +21,8 @@ class ASREngineFactory {
     bool enableDebugLog = false,
   }) {
     switch (engineType) {
+      case ASREngineType.deepseek:
+        return DeepSeekAsrEngine();
       case ASREngineType.qwen3Asr:
         return Qwen3AsrEngine(enableDebugLog: enableDebugLog);
       case ASREngineType.zipformer:
@@ -49,8 +52,11 @@ class ASREngineFactory {
     int numThreads = 2,
     int maxNewTokens = 128,
     String hotwords = '',
+    String apiKey = '',
   }) {
     switch (engineType) {
+      case ASREngineType.deepseek:
+        return DeepSeekConfig(apiKey: apiKey);
       case ASREngineType.zipformer:
         return ZipformerConfig(
           modelDir: modelDir,

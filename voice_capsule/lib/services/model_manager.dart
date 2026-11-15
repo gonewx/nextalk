@@ -128,6 +128,8 @@ class ModelConfigs {
   /// 根据引擎类型获取配置
   static ModelConfig forEngine(EngineType type) {
     switch (type) {
+      case EngineType.deepseek:
+        throw StateError("云端引擎没有本地模型");
       case EngineType.zipformer:
         return zipformer;
       case EngineType.sensevoice:
@@ -145,7 +147,7 @@ class ModelManager {
   static const String _archiveName =
       'sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20';
   static const String _defaultDownloadUrl =
-        'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
+      'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/'
       '$_archiveName.tar.bz2';
   static const String _expectedSha256 =
       '27ffbd9ee24ad186d99acc2f6354d7992b27bcab490812510665fa8f9389c5f8';
@@ -680,7 +682,8 @@ models/$_modelName/
 
     if (engineType == EngineType.qwen3Asr) {
       return Qwen3AsrConstants.hasRequiredFiles(modelDir.path)
-          ? ModelStatus.ready : ModelStatus.incomplete;
+          ? ModelStatus.ready
+          : ModelStatus.incomplete;
     }
     // 检查必需文件
     for (final prefix in config.requiredFilePrefixes) {
@@ -690,7 +693,8 @@ models/$_modelName/
     }
 
     // 检查 tokens.txt (除了单文件模型)
-    if (!config.isSingleFile && !File('${modelDir.path}/tokens.txt').existsSync()) {
+    if (!config.isSingleFile &&
+        !File('${modelDir.path}/tokens.txt').existsSync()) {
       return ModelStatus.incomplete;
     }
 
@@ -703,7 +707,9 @@ models/$_modelName/
     if (!vadFile.existsSync()) {
       return ModelStatus.notFound;
     }
-    return vadFile.lengthSync() > 0 ? ModelStatus.ready : ModelStatus.incomplete;
+    return vadFile.lengthSync() > 0
+        ? ModelStatus.ready
+        : ModelStatus.incomplete;
   }
 
   /// 检查指定引擎的模型是否就绪
@@ -725,6 +731,8 @@ models/$_modelName/
   /// - SenseVoice / Qwen3-ASR: 需要 ASR 模型 + VAD 模型
   bool isEngineReady(EngineType engineType) {
     switch (engineType) {
+      case EngineType.deepseek:
+        return SettingsService.instance.hasDeepSeekConfig;
       case EngineType.zipformer:
         return isModelReadyForEngine(EngineType.zipformer);
       case EngineType.sensevoice:
@@ -736,7 +744,9 @@ models/$_modelName/
 
   /// 检查是否有任何引擎可用 (用于判断是否需要显示初始化向导)
   bool get hasAnyEngineReady {
-    return EngineType.values.any(isEngineReady);
+    return EngineType.values
+        .where((e) => e != EngineType.deepseek)
+        .any(isEngineReady);
   }
 
   /// 在指定目录中查找模型文件
@@ -778,6 +788,7 @@ models/$_modelName/
   /// 从配置获取引擎的自定义 URL
   String? _getCustomUrlForEngine(EngineType engineType) {
     return switch (engineType) {
+      EngineType.deepseek => null,
       EngineType.zipformer => SettingsService.instance.zipformerCustomUrl,
       EngineType.sensevoice => SettingsService.instance.senseVoiceCustomUrl,
       EngineType.qwen3Asr => SettingsService.instance.qwen3AsrCustomUrl,
@@ -789,6 +800,8 @@ models/$_modelName/
   String getExpectedStructureForEngine(EngineType engineType) {
     final config = ModelConfigs.forEngine(engineType);
     switch (engineType) {
+      case EngineType.deepseek:
+        return "";
       case EngineType.qwen3Asr:
         return 'models/${config.dirName}/\n'
             '${Qwen3AsrConstants.requiredFiles.map((name) => '  $name').join('\n')}\n';
@@ -853,7 +866,8 @@ models/vad/
       onProgress: onProgress,
       maxRetries: maxRetries,
     );
-    if (!await _verifyChecksumForFile(downloaded, ModelConfigs.sileroVad.sha256!)) {
+    if (!await _verifyChecksumForFile(
+        downloaded, ModelConfigs.sileroVad.sha256!)) {
       await File(downloaded).delete();
       throw const FormatException('VAD 模型 SHA256 校验失败');
     }
@@ -893,7 +907,8 @@ models/vad/
             Platform.environment['HTTPS_PROXY'] ??
             Platform.environment['https_proxy'];
         if (httpProxy != null && httpProxy.isNotEmpty) {
-          final proxy = Uri.parse(httpProxy.contains('://') ? httpProxy : 'http://$httpProxy');
+          final proxy = Uri.parse(
+              httpProxy.contains('://') ? httpProxy : 'http://$httpProxy');
           client.findProxy = (uri) => 'PROXY ${proxy.host}:${proxy.port}';
           client.badCertificateCallback = (cert, host, port) => true;
         }
@@ -1044,10 +1059,15 @@ models/vad/
     final staging = await target.parent.createTemp('qwen3-asr.extract-');
     try {
       final result = await Process.run('tar', [
-        '-xjf', archivePath, '--no-same-owner', '--no-same-permissions',
-        '--strip-components=1', '-C', staging.path,
-        ...Qwen3AsrConstants.requiredFiles.map(
-          (name) => '${ModelConfigs.qwen3Asr.archiveTopDir}/$name'),
+        '-xjf',
+        archivePath,
+        '--no-same-owner',
+        '--no-same-permissions',
+        '--strip-components=1',
+        '-C',
+        staging.path,
+        ...Qwen3AsrConstants.requiredFiles
+            .map((name) => '${ModelConfigs.qwen3Asr.archiveTopDir}/$name'),
       ]);
       if (result.exitCode != 0 ||
           !Qwen3AsrConstants.hasRequiredFiles(staging.path)) {
@@ -1070,7 +1090,8 @@ models/vad/
     // 1. 检查现有模型
     final status = checkModelStatusForEngine(engineType);
     if (status == ModelStatus.ready) {
-      onProgress?.call(1.0, '${config.displayName} 模型已就绪', downloaded: 0, total: 0);
+      onProgress?.call(1.0, '${config.displayName} 模型已就绪',
+          downloaded: 0, total: 0);
       return ModelError.none;
     }
 
@@ -1080,7 +1101,8 @@ models/vad/
 
     try {
       // 2. 下载 (0% - 60%)
-      onProgress?.call(0.0, '开始下载 ${config.displayName}...', downloaded: 0, total: 0);
+      onProgress?.call(0.0, '开始下载 ${config.displayName}...',
+          downloaded: 0, total: 0);
       await downloadModelForEngine(
         engineType,
         onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
@@ -1113,8 +1135,11 @@ models/vad/
         tempFile.deleteSync();
       }
 
-      if (!isModelReadyForEngine(engineType)) return ModelError.extractionFailed;
-      onProgress?.call(1.0, '${config.displayName} 模型准备完成', downloaded: 0, total: 0);
+      if (!isModelReadyForEngine(engineType)) {
+        return ModelError.extractionFailed;
+      }
+      onProgress?.call(1.0, '${config.displayName} 模型准备完成',
+          downloaded: 0, total: 0);
       return ModelError.none;
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) {
@@ -1182,9 +1207,8 @@ models/vad/
       ensureOfflineEngineReady(EngineType.sensevoice, onProgress: onProgress);
 
   /// 确保离线引擎的识别模型和 VAD 都已就绪。
-  Future<ModelError> ensureOfflineEngineReady(
-    EngineType engineType, {ProgressCallback? onProgress}
-  ) async {
+  Future<ModelError> ensureOfflineEngineReady(EngineType engineType,
+      {ProgressCallback? onProgress}) async {
     final modelError = await ensureModelReadyForEngine(
       engineType,
       onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
@@ -1192,13 +1216,14 @@ models/vad/
     );
     if (modelError != ModelError.none) return modelError;
     return ensureVadModelReady(
-      onProgress: (p, s, {int downloaded = 0, int total = 0}) =>
-          onProgress?.call(0.8 + p * 0.2, s, downloaded: downloaded, total: total),
+      onProgress: (p, s, {int downloaded = 0, int total = 0}) => onProgress
+          ?.call(0.8 + p * 0.2, s, downloaded: downloaded, total: total),
     );
   }
 
   /// 校验文件 SHA256
-  Future<bool> _verifyChecksumForFile(String filePath, String expectedSha256) async {
+  Future<bool> _verifyChecksumForFile(
+      String filePath, String expectedSha256) async {
     final actual = await _computeSha256(filePath);
     return actual == expectedSha256;
   }

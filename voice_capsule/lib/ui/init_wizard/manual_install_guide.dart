@@ -61,15 +61,16 @@ class ManualInstallGuide extends StatelessWidget {
       EngineType.zipformer => 'Zipformer',
       EngineType.sensevoice => 'SenseVoice',
       EngineType.qwen3Asr => 'Qwen3-ASR 0.6B',
+      EngineType.deepseek => 'DeepSeek',
     };
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 520),
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: CapsuleColors.background,
+        color: const Color(0xFF242424),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: CapsuleColors.borderGlow),
+        border: Border.all(color: Colors.white12),
         boxShadow: [
           BoxShadow(
             color: CapsuleColors.shadow,

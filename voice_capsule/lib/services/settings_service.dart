@@ -6,6 +6,7 @@ import 'package:yaml/yaml.dart';
 
 import '../constants/settings_constants.dart';
 import 'text_post_processor.dart';
+import 'deepseek_settings_store.dart';
 
 /// 模型切换回调类型 (Zipformer 版本切换)
 typedef ModelSwitchCallback = Future<void> Function(ModelType newType);
@@ -104,7 +105,7 @@ class SettingsService {
         }
       }
     } catch (e) {
-      debugPrint('SettingsService: 加载 YAML 配置失败: $e');
+      debugPrint('SettingsService: 加载 YAML 配置失败，请检查格式');
       _yamlConfig = null;
     }
   }
@@ -218,15 +219,21 @@ class SettingsService {
       // 尝试从 YAML 读取
       final yamlEngine = _yamlConfig?['model']?['engine'] as String?;
       if (yamlEngine != null) {
-        final parsed = EngineType.values.where((e) => e.name == yamlEngine || (e == EngineType.qwen3Asr && yamlEngine == 'qwen3_asr'));
+        final parsed = EngineType.values.where((e) =>
+            e.name == yamlEngine ||
+            (e == EngineType.qwen3Asr && yamlEngine == 'qwen3_asr'));
         if (parsed.isNotEmpty) return parsed.first;
       }
       return SettingsConstants.defaultEngineType;
     }
 
     // 解析 SharedPreferences 中的值
-    final parsed = EngineType.values.where((e) => e.name == typeStr || (e == EngineType.qwen3Asr && typeStr == 'qwen3_asr'));
-    return parsed.isNotEmpty ? parsed.first : SettingsConstants.defaultEngineType;
+    final parsed = EngineType.values.where((e) =>
+        e.name == typeStr ||
+        (e == EngineType.qwen3Asr && typeStr == 'qwen3_asr'));
+    return parsed.isNotEmpty
+        ? parsed.first
+        : SettingsConstants.defaultEngineType;
   }
 
   /// 设置引擎类型
@@ -234,43 +241,29 @@ class SettingsService {
     if (_prefs == null) return;
 
     final typeStr = type == EngineType.qwen3Asr ? 'qwen3_asr' : type.name;
-    await _prefs!.setString(SettingsConstants.keyEngineType, typeStr);
-
-    // 同步更新 YAML 配置文件
+    // 先持久化文件，失败时不改变运行期选择。
     await _updateYamlEngineType(typeStr);
+    if (!await _prefs!.setString(SettingsConstants.keyEngineType, typeStr)) {
+      throw StateError("无法保存引擎选择");
+    }
 
     debugPrint('SettingsService: 引擎类型已设置为 $typeStr');
   }
 
   /// 更新 YAML 文件中的引擎类型
   Future<void> _updateYamlEngineType(String typeStr) async {
-    try {
-      final settingsFile = File(SettingsConstants.settingsFilePath);
-      if (!settingsFile.existsSync()) return;
-
-      final content = settingsFile.readAsStringSync();
-      // 匹配 "engine: xxx" 行 (保留缩进和注释)
-      final updatedContent = content.replaceFirstMapped(
-        RegExp(r'^(\s*engine:\s*)\S+', multiLine: true),
-        (match) => '${match.group(1)}$typeStr',
-      );
-
-      if (content != updatedContent) {
-        settingsFile.writeAsStringSync(updatedContent);
-        // 更新内存缓存
-        if (_yamlConfig != null && _yamlConfig!['model'] != null) {
-          (_yamlConfig!['model'] as Map<String, dynamic>)['engine'] = typeStr;
-        }
-        debugPrint('SettingsService: YAML 引擎类型已更新');
-      }
-    } catch (e) {
-      debugPrint('SettingsService: 更新 YAML 引擎类型失败: $e');
-    }
+    final file = File(SettingsConstants.settingsFilePath);
+    if (!file.existsSync()) return;
+    await DeepSeekSettingsStore.saveEngine(file, typeStr);
+    await _loadYamlConfig();
   }
 
   /// 切换引擎类型并触发回调 (AC5: 需销毁并重建 Pipeline)
   Future<bool> switchEngineType(EngineType newType) async {
-    if (engineType == newType) return true;
+    if (actualEngineType == newType && newType != EngineType.deepseek) {
+      return true;
+    }
+    final previous = engineType;
 
     try {
       // 1. 先保存配置 (确保回调读取到新值)
@@ -284,9 +277,34 @@ class SettingsService {
       debugPrint('SettingsService: 引擎切换成功: $newType');
       return true;
     } catch (e) {
-      debugPrint('SettingsService: 引擎切换失败: $e');
+      try {
+        await setEngineType(previous);
+      } catch (_) {}
+      debugPrint('SettingsService: 引擎切换失败');
       return false;
     }
+  }
+
+  String get deepseekApiKey {
+    final model = _yamlConfig?['model'];
+    final config = model is Map ? model['deepseek'] : null;
+    final key = config is Map ? config['api_key'] : null;
+    if (key is String && key.trim().isNotEmpty) return key.trim();
+    return Platform.environment['DEEPSEEK_API_KEY']?.trim() ?? '';
+  }
+
+  bool get hasDeepSeekConfig => deepseekApiKey.isNotEmpty;
+  bool get deepseekKeyFromEnvironment {
+    final model = _yamlConfig?['model'];
+    final config = model is Map ? model['deepseek'] : null;
+    final key = config is Map ? config['api_key'] : null;
+    return !(key is String && key.trim().isNotEmpty) && hasDeepSeekConfig;
+  }
+
+  Future<void> saveDeepSeekApiKey(String key) async {
+    await DeepSeekSettingsStore.save(
+        File(SettingsConstants.settingsFilePath), key);
+    await _loadYamlConfig();
   }
 
   Map get _qwen3AsrSettings {
@@ -294,19 +312,23 @@ class SettingsService {
     final settings = model is Map ? model['qwen3_asr'] : null;
     return settings is Map ? settings : const {};
   }
+
   /// Qwen3-ASR 参数无效时使用安全默认值。
   int get qwen3AsrNumThreads {
     final value = _qwen3AsrSettings['num_threads'];
     return value is int && value > 0 && value <= 256 ? value : 2;
   }
+
   int get qwen3AsrMaxNewTokens {
     final value = _qwen3AsrSettings['max_new_tokens'];
     return value is int && value > 0 && value <= 512 ? value : 128;
   }
+
   String get qwen3AsrHotwords {
     final value = _qwen3AsrSettings['hotwords'];
     return value is String ? value : '';
   }
+
   String? get qwen3AsrCustomUrl {
     final value = _qwen3AsrSettings['custom_url'];
     return value is String && value.isNotEmpty ? value : null;
@@ -421,8 +443,10 @@ class SettingsService {
       final content = settingsFile.readAsStringSync();
 
       // 检查是否存在 audio.input_device 配置
-      final hasAudioSection = RegExp(r'^audio:', multiLine: true).hasMatch(content);
-      final hasInputDevice = RegExp(r'^\s*input_device:', multiLine: true).hasMatch(content);
+      final hasAudioSection =
+          RegExp(r'^audio:', multiLine: true).hasMatch(content);
+      final hasInputDevice =
+          RegExp(r'^\s*input_device:', multiLine: true).hasMatch(content);
 
       String updatedContent;
       if (hasInputDevice) {
@@ -435,7 +459,8 @@ class SettingsService {
         // audio 段存在但没有 input_device，添加到 audio 段
         updatedContent = content.replaceFirstMapped(
           RegExp(r'^(audio:)(.*)$', multiLine: true),
-          (match) => '${match.group(1)}${match.group(2)}\n  input_device: $deviceName',
+          (match) =>
+              '${match.group(1)}${match.group(2)}\n  input_device: $deviceName',
         );
       } else {
         // 没有 audio 段，追加到文件末尾
@@ -451,7 +476,8 @@ audio:
         // 更新内存缓存
         _yamlConfig ??= {};
         _yamlConfig!['audio'] ??= <String, dynamic>{};
-        (_yamlConfig!['audio'] as Map<String, dynamic>)['input_device'] = deviceName;
+        (_yamlConfig!['audio'] as Map<String, dynamic>)['input_device'] =
+            deviceName;
         debugPrint('SettingsService: YAML 音频设备配置已更新');
       }
     } catch (e) {

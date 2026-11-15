@@ -65,6 +65,12 @@ class EngineInitializer {
     required EngineType preferredType,
     bool enableDebugLog = false,
   }) async {
+    if (preferredType == EngineType.deepseek) {
+      return EngineInitResult(
+          engine: ASREngineFactory.create(ASREngineType.deepseek),
+          actualEngineType: preferredType,
+          configuredEngineType: preferredType);
+    }
     final triedEngines = <String>[];
 
     // 1. 尝试用户配置的引擎
@@ -89,10 +95,13 @@ class EngineInitializer {
 
     // 2. 按原有优先级尝试其余引擎，避免遗漏已安装的第三个引擎。
     for (final fallbackType in [
-      EngineType.sensevoice, EngineType.zipformer, EngineType.qwen3Asr,
+      EngineType.sensevoice,
+      EngineType.zipformer,
+      EngineType.qwen3Asr,
     ].where((type) => type != preferredType)) {
       final fallbackResult = await _tryInitializeEngine(
-        fallbackType, enableDebugLog: enableDebugLog,
+        fallbackType,
+        enableDebugLog: enableDebugLog,
       );
       if (fallbackResult != null) {
         await _notifyFallback(preferredType, fallbackType);
@@ -129,7 +138,8 @@ class EngineInitializer {
     // 创建引擎实例
     try {
       final asrType = _toASREngineType(type);
-      final engine = ASREngineFactory.create(asrType, enableDebugLog: enableDebugLog);
+      final engine =
+          ASREngineFactory.create(asrType, enableDebugLog: enableDebugLog);
       return engine;
     } catch (e) {
       debugPrint('[EngineInitializer] 创建引擎 $type 失败: $e');
@@ -143,6 +153,7 @@ class EngineInitializer {
       EngineType.zipformer => ASREngineType.zipformer,
       EngineType.sensevoice => ASREngineType.sensevoice,
       EngineType.qwen3Asr => ASREngineType.qwen3Asr,
+      EngineType.deepseek => ASREngineType.deepseek,
     };
   }
 
@@ -154,12 +165,15 @@ class EngineInitializer {
   /// 获取模型未就绪的原因描述
   String _getModelNotReadyReason(EngineType type) {
     switch (type) {
+      case EngineType.deepseek:
+        return "DeepSeek 配置缺失";
       case EngineType.qwen3Asr:
         return 'Qwen3-ASR 模型或 VAD 模型未下载或不完整';
       case EngineType.zipformer:
         return 'Zipformer 模型未下载或不完整';
       case EngineType.sensevoice:
-        final modelReady = _modelManager.isModelReadyForEngine(EngineType.sensevoice);
+        final modelReady =
+            _modelManager.isModelReadyForEngine(EngineType.sensevoice);
         final vadReady = _modelManager.isVadModelReady;
         if (!modelReady && !vadReady) {
           return 'SenseVoice 模型和 VAD 模型都未下载';
@@ -198,6 +212,7 @@ class EngineInitializer {
       EngineType.zipformer => lang.tr('tray_engine_zipformer'),
       EngineType.sensevoice => lang.tr('tray_engine_sensevoice'),
       EngineType.qwen3Asr => lang.tr('tray_engine_qwen3_asr'),
+      EngineType.deepseek => lang.isZh ? 'DeepSeek（云端）' : 'DeepSeek (Cloud)',
     };
   }
 
@@ -237,4 +252,3 @@ class EngineInitializer {
     return null;
   }
 }
-

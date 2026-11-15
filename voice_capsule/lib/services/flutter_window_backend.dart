@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ui';
+import 'package:flutter/services.dart';
 
 import 'package:meta/meta.dart';
 import 'package:screen_retriever/screen_retriever.dart';
@@ -70,6 +70,8 @@ class FlutterWindowBackend with WindowListener {
   SharedPreferences? _prefs;
   bool _isInitialized = false;
   bool _isVisible = false;
+  bool configurationMode = false;
+  VoidCallback? onConfigurationClose;
 
   /// 当前实际窗口尺寸
   ///
@@ -141,13 +143,21 @@ class FlutterWindowBackend with WindowListener {
   Future<void> _onReadyToShow() async {
     await windowManager.setAsFrameless();
     await _restorePosition();
-    await windowManager.show(inactive: true);
     await windowManager.hide();
     _isVisible = false;
   }
 
   Future<void> show() async {
     if (!_isInitialized) return;
+    if (configurationMode) {
+      if (await windowManager.isMinimized()) await windowManager.restore();
+      await windowManager.show();
+      // GTK 在 map 时才提交隐藏窗口的尺寸；使用映射后的实际尺寸居中。
+      if (!_isVisible) await windowManager.center();
+      _isVisible = true;
+      await windowManager.focus();
+      return;
+    }
     if (_isVisible) return;
 
     // 整个"map 窗口 → 恢复位置"期间都算程序化几何变更：
@@ -155,7 +165,8 @@ class FlutterWindowBackend with WindowListener {
     // 那不是用户位置，绝不能落盘
     await _runProgrammaticGeometryChange(
       () async {
-        await windowManager.show(inactive: true);
+        await const MethodChannel('nextalk/window')
+            .invokeMethod<void>('showCapsule');
         await windowManager.setSkipTaskbar(true);
         _isVisible = true;
 
@@ -167,6 +178,14 @@ class FlutterWindowBackend with WindowListener {
     );
   }
 
+  Future<void> presentConfigurationAttention({String? activationToken}) async {
+    if (!_isInitialized || !configurationMode) return;
+    await const MethodChannel('nextalk/window').invokeMethod<void>(
+        'presentConfigurationAttention', {'activationToken': activationToken});
+    if (!_isVisible) await windowManager.center();
+    _isVisible = true;
+  }
+
   Future<void> hide() async {
     if (!_isInitialized) return;
     if (!_isVisible) return;
@@ -175,6 +194,14 @@ class FlutterWindowBackend with WindowListener {
     await flushPendingSave();
     await windowManager.hide();
     _isVisible = false;
+    if (configurationMode) {
+      // 等待桌面处理设置窗口的焦点释放，避免立即重映射同一窗口时继承焦点。
+      final deadline = DateTime.now().add(const Duration(milliseconds: 500));
+      while (await windowManager.isFocused()) {
+        if (DateTime.now().isAfter(deadline)) break;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
   }
 
   Future<void> setPosition(double x, double y) async {
@@ -207,7 +234,7 @@ class FlutterWindowBackend with WindowListener {
   Future<void> _persistCurrentPosition({bool force = false}) async {
     if (!_isInitialized || _prefs == null) return;
     // 窗口不可见时读到的坐标不可信，跳过以免覆盖上一次有效坐标
-    if (!_isVisible) return;
+    if (!_isVisible || configurationMode) return;
     // ⚠️ 抑制守卫必须在**写入路径**上，不能只放在 _schedulePositionSave()：
     // hide() → flushPendingSave() → savePosition() 完全绕过防抖，
     // 于是"程序化 setSize() 后在静置窗内 hide()"会把 WM 平移后的伪坐标
@@ -499,7 +526,7 @@ class FlutterWindowBackend with WindowListener {
   /// 防抖保存位置：一次拖动的连续 move 事件只落盘一次
   void _schedulePositionSave() {
     // 程序化几何变更引发的移动不是用户意图，直接丢弃
-    if (_isSaveSuppressed) return;
+    if (configurationMode || _isSaveSuppressed) return;
 
     _saveDebounceTimer?.cancel();
     _saveDebounceTimer = Timer(savePositionDebounce, () {
@@ -514,6 +541,10 @@ class FlutterWindowBackend with WindowListener {
 
   @override
   void onWindowClose() {
+    if (configurationMode) {
+      onConfigurationClose?.call();
+      return;
+    }
     // WindowListener 回调签名是 void，无法被框架 await；
     // dispose() 内部的 flush 仍会串行完成写入
     dispose();

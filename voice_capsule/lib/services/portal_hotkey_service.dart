@@ -7,6 +7,7 @@ import 'package:meta/meta.dart';
 import '../constants/hotkey_constants.dart';
 import '../utils/diagnostic_logger.dart';
 import 'hotkey_controller.dart';
+import 'window_service.dart';
 
 /// Story 3-10: XDG Desktop Portal 全局快捷键（第四代方案）
 ///
@@ -63,7 +64,8 @@ class PortalRequestFailedException implements Exception {
   const PortalRequestFailedException(this.code, this.results);
 
   @override
-  String toString() => 'PortalRequestFailedException: Portal 请求失败 (response=$code)';
+  String toString() =>
+      'PortalRequestFailedException: Portal 请求失败 (response=$code)';
 }
 
 /// 一次快捷键激活事件（backend → service）
@@ -74,7 +76,9 @@ class PortalShortcutActivation {
   /// 被触发的 shortcut id
   final String shortcutId;
 
-  const PortalShortcutActivation(this.sessionHandle, this.shortcutId);
+  final String? activationToken;
+  const PortalShortcutActivation(this.sessionHandle, this.shortcutId,
+      {this.activationToken});
 }
 
 /// 待绑定的快捷键描述
@@ -296,7 +300,9 @@ class DBusGlobalShortcutsBackend implements GlobalShortcutsBackend {
     _activatedSubscription = signalStream.listen((signal) {
       final sessionHandle = signal.values[0].asObjectPath().value;
       final shortcutId = signal.values[1].asString();
-      controller.add(PortalShortcutActivation(sessionHandle, shortcutId));
+      final token = signal.values[3].asStringVariantDict()['activation_token'];
+      controller.add(PortalShortcutActivation(sessionHandle, shortcutId,
+          activationToken: token is DBusString ? token.value : null));
     });
 
     return controller.stream;
@@ -463,8 +469,7 @@ class PortalHotkeyService {
       }
       _registered = false;
       _fallbackReason = '用户取消了 Portal 快捷键绑定';
-      DiagnosticLogger.instance
-          .info('PortalHotkey', 'ℹ️ 用户取消绑定，暂用系统快捷键（可重试）');
+      DiagnosticLogger.instance.info('PortalHotkey', 'ℹ️ 用户取消绑定，暂用系统快捷键（可重试）');
       return PortalRegistrationResult.cancelled;
     } catch (e) {
       // 非取消类失败：视为已尝试，避免重复重绑骚扰（GNOME 反复弹窗）
@@ -487,11 +492,14 @@ class PortalHotkeyService {
     _activatedSubscription = _backend.onActivated.listen((event) {
       if (event.sessionHandle != _sessionHandle) return;
       if (event.shortcutId != _shortcutId) return;
+      WindowService.instance.shortcutActivationToken =
+          HotkeyController.instance.configurationOpen
+              ? event.activationToken
+              : null;
       // 交给唯一业务入口，复用其 _isProcessing 重入保护（AC6）。
       // fire-and-forget：显式吞掉并记录异常，避免逃逸为未处理的异步错误。
       unawaited(_onActivated().catchError((Object e) {
-        DiagnosticLogger.instance
-            .warn('PortalHotkey', 'toggle 执行异常: $e');
+        DiagnosticLogger.instance.warn('PortalHotkey', 'toggle 执行异常: $e');
       }));
     });
 
@@ -508,8 +516,7 @@ class PortalHotkeyService {
   ) {
     _registered = false;
     _fallbackReason = reason;
-    DiagnosticLogger.instance
-        .warn('PortalHotkey', '⚠️ 降级到系统快捷键: $reason');
+    DiagnosticLogger.instance.warn('PortalHotkey', '⚠️ 降级到系统快捷键: $reason');
     return result;
   }
 

@@ -21,10 +21,14 @@ class InitWizard extends StatefulWidget {
     required this.modelManager,
     required this.onCompleted,
     this.targetEngineType,
+    this.embedded = false,
+    this.onBusyChanged,
   });
 
   /// 模型管理器
   final ModelManager modelManager;
+  final bool embedded;
+  final ValueChanged<bool>? onBusyChanged;
 
   /// 初始化完成回调
   final VoidCallback onCompleted;
@@ -40,6 +44,9 @@ class InitWizard extends StatefulWidget {
 class _InitWizardState extends State<InitWizard> {
   InitStateData _state = InitStateData.checking();
   bool _windowSizeSet = false;
+  bool _cancelRequested = false;
+  bool _downloading = false;
+  bool _manualAfterCancel = false;
 
   /// 获取目标引擎类型
   /// 优先级: widget.targetEngineType > SettingsService.actualEngineType
@@ -56,6 +63,10 @@ class _InitWizardState extends State<InitWizard> {
   void initState() {
     super.initState();
     // 首次渲染前设置足够大的窗口
+    if (widget.embedded) {
+      _state = InitStateData.selectMode();
+      return;
+    }
     _ensureWindowSize();
     // 检查是否有待恢复的下载/解压
     _checkPendingDownload();
@@ -63,6 +74,7 @@ class _InitWizardState extends State<InitWizard> {
 
   @override
   void dispose() {
+    if (widget.embedded) widget.modelManager.cancelDownload();
     super.dispose();
   }
 
@@ -198,6 +210,11 @@ class _InitWizardState extends State<InitWizard> {
 
   /// 开始自动下载
   Future<void> _startAutoDownload() async {
+    if (_downloading) return;
+    _downloading = true;
+    _manualAfterCancel = false;
+    _cancelRequested = false;
+    widget.onBusyChanged?.call(true);
     setState(() {
       _state = InitStateData.downloading(
         progress: 0,
@@ -232,7 +249,11 @@ class _InitWizardState extends State<InitWizard> {
 
       if (!mounted) return;
 
-      if (error == ModelError.none) {
+      if (_cancelRequested) {
+        setState(() => _state = _manualAfterCancel
+            ? InitStateData.manualGuide()
+            : InitStateData.selectMode());
+      } else if (error == ModelError.none) {
         // 下载完成，显示完成界面
         setState(() {
           _state = InitStateData.completed();
@@ -258,40 +279,40 @@ class _InitWizardState extends State<InitWizard> {
       });
       // 错误时更新托盘状态
       TrayService.instance.updateStatus(TrayStatus.error);
+    } finally {
+      _downloading = false;
+      if (mounted) widget.onBusyChanged?.call(false);
     }
   }
 
   /// 下载进度回调
   void _onDownloadProgress(double progress, String status,
       {int downloaded = 0, int total = 0}) {
-    if (!mounted) return;
+    if (!mounted || _cancelRequested) return;
+    // 离线引擎的 ASR / VAD 分阶段汇总后，进度数值不能用来推断当前阶段。
+    final phase = status.contains('解压')
+        ? InitPhase.extracting
+        : status.contains('校验')
+            ? InitPhase.verifying
+            : InitPhase.downloading;
     setState(() {
-      // 根据进度和状态判断当前阶段
-      if (progress >= 0.7 || status.contains('解压')) {
-        _state = InitStateData.extracting(progress);
-      } else if (progress >= 0.6 || status.contains('校验')) {
-        _state = InitStateData(
-          phase: InitPhase.verifying,
-          progress: progress,
+      _state = InitStateData(
+          phase: phase,
+          progress: progress.clamp(0.0, 1.0),
           statusMessage: status,
-        );
-      } else {
-        _state = InitStateData.downloading(
-          progress: progress,
-          downloaded: downloaded,
-          total: total,
-        );
-      }
+          downloadedBytes: downloaded,
+          totalBytes: total);
     });
   }
 
   /// 切换到手动安装
   void _switchToManual() {
-    // 取消正在进行的下载
-    widget.modelManager.cancelDownload();
-    setState(() {
-      _state = InitStateData.manualGuide();
-    });
+    if (_downloading) {
+      _manualAfterCancel = true;
+      _cancelDownload();
+      return;
+    }
+    setState(() => _state = InitStateData.manualGuide());
   }
 
   /// 切换到自动下载
@@ -303,10 +324,8 @@ class _InitWizardState extends State<InitWizard> {
 
   /// 取消下载
   void _cancelDownload() {
+    setState(() => _cancelRequested = true);
     widget.modelManager.cancelDownload();
-    setState(() {
-      _state = InitStateData.selectMode();
-    });
     // 取消下载后恢复托盘状态为正常
     TrayService.instance.updateStatus(TrayStatus.normal);
   }
@@ -389,6 +408,13 @@ class _InitWizardState extends State<InitWizard> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.embedded) {
+      return SingleChildScrollView(
+          child: Center(
+              child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: _buildContent())));
+    }
     return GestureDetector(
       // 支持拖动窗口
       onPanStart: (_) => WindowService.instance.startDragging(),
@@ -405,8 +431,8 @@ class _InitWizardState extends State<InitWizard> {
                   right: 8,
                   child: IconButton(
                     onPressed: _onClose,
-                    icon:
-                        const Icon(Icons.close, color: Colors.white54, size: 20),
+                    icon: const Icon(Icons.close,
+                        color: Colors.white54, size: 20),
                     tooltip: '退出',
                   ),
                 ),
@@ -434,6 +460,9 @@ class _InitWizardState extends State<InitWizard> {
     switch (_state.phase) {
       case InitPhase.selectingMode:
         return InitModeSelector(
+          title: widget.embedded
+              ? ModelConfigs.forEngine(_targetEngine).displayName
+              : null,
           onAutoDownload: _startAutoDownload,
           onManualInstall: _switchToManual,
         );
@@ -444,6 +473,7 @@ class _InitWizardState extends State<InitWizard> {
       case InitPhase.error:
         return DownloadProgress(
           state: _state,
+          cancelling: _cancelRequested && _downloading,
           onSwitchToManual: _switchToManual,
           onCancel: _cancelDownload,
           onRetry: _state.canRetry ? _startAutoDownload : null,
@@ -460,11 +490,14 @@ class _InitWizardState extends State<InitWizard> {
           onVerifyModel: _verifyModel,
           onSwitchToAuto: _switchToAuto,
           engineType: engineType,
-          modelUrl: widget.modelManager.getDefaultDownloadUrlForEngine(engineType),
+          modelUrl:
+              widget.modelManager.getDefaultDownloadUrlForEngine(engineType),
           targetPath: ModelManager.modelDirectory,
-          expectedStructure: widget.modelManager.getExpectedStructureForEngine(engineType),
+          expectedStructure:
+              widget.modelManager.getExpectedStructureForEngine(engineType),
           vadUrl: needsVad ? widget.modelManager.vadDownloadUrl : null,
-          vadExpectedStructure: needsVad ? widget.modelManager.vadExpectedStructure : null,
+          vadExpectedStructure:
+              needsVad ? widget.modelManager.vadExpectedStructure : null,
         );
 
       case InitPhase.checkingModel:
@@ -475,7 +508,8 @@ class _InitWizardState extends State<InitWizard> {
               const CircularProgressIndicator(),
               const SizedBox(height: 16),
               Text(
-                AppLocalizations.of(context)?.wizardCheckingStatus ?? '检查下载状态...',
+                AppLocalizations.of(context)?.wizardCheckingStatus ??
+                    '检查下载状态...',
                 style: const TextStyle(color: Colors.white70),
               ),
             ],
@@ -495,9 +529,9 @@ class _InitWizardState extends State<InitWizard> {
     return Container(
       padding: const EdgeInsets.all(32),
       decoration: BoxDecoration(
-        color: CapsuleColors.background,
+        color: const Color(0xFF242424),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: CapsuleColors.borderGlow),
+        border: Border.all(color: Colors.white12),
         boxShadow: [
           BoxShadow(
             color: CapsuleColors.shadow,
@@ -526,7 +560,11 @@ class _InitWizardState extends State<InitWizard> {
           const SizedBox(height: 12),
           Text(
             // Story 3-10: 默认快捷键统一为 Alt+Space（Portal 与系统回退共用）
-            l10n?.wizardPressHotkeyHint ?? '按下 Super+Z 开始语音输入',
+            widget.embedded
+                ? (Localizations.localeOf(context).languageCode == 'zh'
+                    ? '下载完成。返回列表后选择此模型即可使用。'
+                    : 'Download complete. Select this model from the list to use it.')
+                : (l10n?.wizardPressHotkeyHint ?? '按下 Super+Z 开始语音输入'),
             style: const TextStyle(
               color: Colors.white70,
               fontSize: 14,
@@ -552,7 +590,11 @@ class _InitWizardState extends State<InitWizard> {
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
             ),
-            child: Text(l10n?.wizardStartUsing ?? '开始使用'),
+            child: Text(widget.embedded
+                ? (Localizations.localeOf(context).languageCode == 'zh'
+                    ? '返回模型选择'
+                    : 'Back to models')
+                : (l10n?.wizardStartUsing ?? '开始使用')),
           ),
         ],
       ),

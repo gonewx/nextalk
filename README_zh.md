@@ -99,7 +99,7 @@ gnome-extensions enable nextalk@gonewx.com
 
 > **自动纠错**: 上屏前会自动修正全大写英文、口头禅（嗯、呃）、重复词和中文语境下的半角标点。可在 `~/.config/nextalk/settings.yaml` 的 `text:` 节调整开关，并通过 `replacements` 配置自定义纠错词典（如 `"派森": "Python"`）。
 
-> **首次运行**: 应用会自动下载语音识别模型（默认 Qwen3-ASR 约 840MB，需 1.8GB 以上可用空间；SenseVoice/Zipformer 约 200MB），解压依赖系统 `tar` 与 `bzip2`
+> **首次运行**: 应用会打开模型选择窗口，可点击下载本地语音识别模型（默认 Qwen3-ASR 约 840MB，需 1.8GB 以上可用空间；SenseVoice/Zipformer 约 200MB），解压依赖系统 `tar` 与 `bzip2`
 
 ### 命令行参数
 
@@ -125,14 +125,15 @@ gnome-extensions enable nextalk@gonewx.com
 
 应用支持系统托盘（在支持的桌面环境中），右键菜单提供:
 
-- 显示/隐藏窗口
+- **模型选择** - 选择已就绪的模型，或通过同行按钮配置／下载
+- **设置** - 界面语言、录音设备、快捷键信息、Zipformer 版本与高级配置入口
 - **重新连接 Fcitx5** - 输入法通道断开时手动重连
-- **快捷键模式（只读）** - 显示当前生效的快捷键方式：`快捷键: Super+Z (Portal 自动注册)` 或 `快捷键: 系统设置 (nextalk-toggle)`
-- 模型设置 - 切换 ASR 引擎 (Qwen3-ASR / SenseVoice / Zipformer) 与 Zipformer 模型版本 (int8 / 标准)
-- 切换界面语言 (中文 / English)
-- **音频输入设备** - 选择可用的音频输入设备
-- 设置 - 打开配置目录
-- 退出应用
+- **关于** - 版本信息与项目地址
+- **退出**
+
+左键点击托盘直接打开设置。模型加载时显示目标模型和加载状态；下载时显示进度、当前处理阶段及取消状态。
+
+设置窗口打开时，录音快捷键会显示操作提示。关闭设置后，请点击 IDE 或其他应用的目标输入框，再按快捷键开始录音；关闭设置本身不会启动录音，也不保证恢复打开托盘菜单前的输入焦点。
 
 > **注意**: GNOME 桌面需安装并启用 `gnome-shell-extension-appindicator` 扩展才会显示托盘图标（KDE 原生支持），详见[常见问题](#系统托盘图标不显示-gnomefedora)。无托盘时应用仍可通过 `nextalk --toggle` 命令使用。
 
@@ -436,3 +437,7 @@ pactl list sources    # 系统级调试命令
 ---
 
 **问题反馈**: [GitHub Issues](../../issues)
+
+### DeepSeek 云端识别
+
+托盘“模型选择”打开统一设置窗口。点击 DeepSeek 同行的“配置”，填写 API Key、测试连接并保存，再回到列表选择 DeepSeek。未配置时不可选择，保存不会自动切换。

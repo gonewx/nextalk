@@ -1,7 +1,6 @@
+import 'package:flutter/services.dart';
 import 'dart:async';
-import 'dart:ui';
 
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../constants/window_constants.dart';
@@ -23,7 +22,8 @@ class WindowService with WindowListener {
   FlutterWindowBackend? _backend;
 
   bool _isInitialized = false;
-  SharedPreferences? _prefs;
+  VoidCallback? onConfigurationClose;
+  String? shortcutActivationToken;
 
   /// 是否处于初始化向导模式 (此时快捷键释放不应隐藏窗口)
   bool _isInInitWizardMode = false;
@@ -58,13 +58,13 @@ class WindowService with WindowListener {
   Future<void> initialize({bool showOnStartup = false}) async {
     if (_isInitialized) return;
 
-    _prefs = await SharedPreferences.getInstance();
-
     // 初始化 Flutter 窗口后端
     _backend = FlutterWindowBackend();
     await _backend!.initialize();
     _log('Flutter window backend initialized');
 
+    _isInitialized = true;
+    _backend!.onConfigurationClose = () => onConfigurationClose?.call();
     if (showOnStartup) {
       await show();
     } else {
@@ -85,6 +85,29 @@ class WindowService with WindowListener {
     }
 
     await _backend!.show();
+  }
+
+  /// 配置窗口允许输入，胶囊恢复为不抢焦点。
+  Future<void> setConfigurationMode(bool enabled) async {
+    if (!_isInitialized) return;
+    _backend!.configurationMode = enabled;
+    if (!enabled) shortcutActivationToken = null;
+    _isInInitWizardMode = enabled;
+    await windowManager.setPreventClose(enabled);
+    await windowManager.setAlwaysOnTop(!enabled);
+    await windowManager.setSkipTaskbar(!enabled);
+    await windowManager.setResizable(enabled);
+    await windowManager
+        .setMinimumSize(enabled ? const Size(560, 560) : Size.zero);
+    await windowManager.setTitle(enabled ? 'Nextalk — 设置' : 'Nextalk');
+    await const MethodChannel('nextalk/window')
+        .invokeMethod<void>('setConfigurationMode', enabled);
+  }
+
+  Future<void> presentConfigurationAttention() async {
+    final token = shortcutActivationToken;
+    shortcutActivationToken = null;
+    await _backend?.presentConfigurationAttention(activationToken: token);
   }
 
   /// 隐藏窗口

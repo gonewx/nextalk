@@ -95,6 +95,109 @@ static void nextalk_use_separate_ui_thread(FlDartProject* project) {
   set_policy(project, kRunOnSeparateThread);
 }
 
+// 用户主动请求录音却被设置阻挡时，短暂抬高设置窗口。
+// 不永久置顶；重复按键重新计时，切回胶囊时取消旧计时器。
+static void nextalk_cancel_attention(GtkWindow* window) {
+  const guint id = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(window), "nextalk-attention"));
+  if (id != 0) {
+    g_object_set_data(G_OBJECT(window), "nextalk-attention", nullptr);
+    g_source_remove(id);
+  }
+}
+
+static gboolean nextalk_end_attention(gpointer data) {
+  GtkWindow* window = GTK_WINDOW(data);
+  g_object_set_data(G_OBJECT(window), "nextalk-attention", nullptr);
+  if (gtk_window_get_decorated(window)) gtk_window_set_keep_above(window, FALSE);
+  return G_SOURCE_REMOVE;
+}
+
+// 每次映射胶囊前清除普通设置窗口留下的激活状态。
+static void nextalk_prepare_capsule(GtkWindow* window) {
+  nextalk_cancel_attention(window);
+  gtk_window_set_accept_focus(window, FALSE);
+  gtk_window_set_focus_on_map(window, FALSE);
+  gtk_window_set_startup_id(window, "");
+  GdkWindow* native = gtk_widget_get_window(GTK_WIDGET(window));
+  if (native != nullptr) {
+    gdk_window_set_accept_focus(native, FALSE);
+    gdk_window_set_focus_on_map(native, FALSE);
+#ifdef GDK_WINDOWING_X11
+    if (GDK_IS_X11_WINDOW(native)) {
+      // _NET_WM_USER_TIME=0 明确要求窗口管理器不要在映射时授予焦点。
+      gdk_x11_window_set_user_time(native, 0);
+    }
+#endif
+  }
+}
+
+// 胶囊默认不抢焦点；配置表单需要显式允许键盘输入。
+static void nextalk_window_method_call(FlMethodChannel* channel,
+                                      FlMethodCall* call,
+                                      gpointer user_data) {
+  (void)channel;
+  GtkWindow* window = GTK_WINDOW(user_data);
+  g_autoptr(FlMethodResponse) response = nullptr;
+  if (g_strcmp0(fl_method_call_get_name(call), "setConfigurationMode") == 0) {
+    FlValue* args = fl_method_call_get_args(call);
+    if (fl_value_get_type(args) == FL_VALUE_TYPE_BOOL) {
+      const gboolean enabled = fl_value_get_bool(args);
+      nextalk_cancel_attention(window);
+      gtk_window_set_decorated(window, enabled);
+      gtk_window_set_type_hint(window, enabled ? GDK_WINDOW_TYPE_HINT_NORMAL
+                                               : GDK_WINDOW_TYPE_HINT_UTILITY);
+      gtk_window_set_skip_taskbar_hint(window, !enabled);
+      gtk_window_set_skip_pager_hint(window, !enabled);
+      gtk_window_set_keep_above(window, !enabled);
+      gtk_widget_set_app_paintable(GTK_WIDGET(window), !enabled);
+      GtkWidget* child = gtk_bin_get_child(GTK_BIN(window));
+      if (FL_IS_VIEW(child)) {
+        GdkRGBA color = {0.102, 0.102, 0.102, enabled ? 1.0 : 0.0};
+        fl_view_set_background_color(FL_VIEW(child), &color);
+      }
+      gtk_window_set_accept_focus(window, enabled);
+      gtk_window_set_focus_on_map(window, enabled);
+      if (!enabled) nextalk_prepare_capsule(window);
+      response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+    } else {
+      response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+          "invalid_argument", "Expected boolean", nullptr));
+    }
+  } else if (g_strcmp0(fl_method_call_get_name(call), "showCapsule") == 0) {
+    nextalk_prepare_capsule(window);
+    // 不使用 gtk_window_present，也不通过会调用 present 的插件 restore 路径。
+    gtk_window_deiconify(window);
+    gtk_widget_show(GTK_WIDGET(window));
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+  } else if (g_strcmp0(fl_method_call_get_name(call), "presentConfigurationAttention") == 0) {
+    FlValue* args = fl_method_call_get_args(call);
+    FlValue* token = fl_value_get_type(args) == FL_VALUE_TYPE_MAP
+        ? fl_value_lookup_string(args, "activationToken") : nullptr;
+    if (token != nullptr && fl_value_get_type(token) == FL_VALUE_TYPE_STRING) {
+      gtk_window_set_startup_id(window, fl_value_get_string(token));
+    }
+    nextalk_cancel_attention(window);
+    gtk_window_set_keep_above(window, TRUE);
+    gtk_window_deiconify(window);
+    gtk_widget_show(GTK_WIDGET(window));
+    guint32 timestamp = gtk_get_current_event_time();
+#ifdef GDK_WINDOWING_X11
+    GdkWindow* gdk_window = gtk_widget_get_window(GTK_WIDGET(window));
+    if (gdk_window != nullptr && GDK_IS_X11_WINDOW(gdk_window)) {
+      timestamp = gdk_x11_get_server_time(gdk_window);
+    }
+#endif
+    gtk_window_present_with_time(window, timestamp);
+    const guint id = g_timeout_add_full(G_PRIORITY_DEFAULT, 4000,
+        nextalk_end_attention, g_object_ref(window), g_object_unref);
+    g_object_set_data(G_OBJECT(window), "nextalk-attention", GUINT_TO_POINTER(id));
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(nullptr));
+  } else {
+    response = FL_METHOD_RESPONSE(fl_method_not_implemented_response_new());
+  }
+  fl_method_call_respond(call, response, nullptr);
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
@@ -148,10 +251,17 @@ static void my_application_activate(GApplication* application) {
   fl_view_set_background_color(view, &background_color);
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
+  g_autoptr(FlStandardMethodCodec) window_codec = fl_standard_method_codec_new();
+  g_autoptr(FlMethodChannel) window_channel = fl_method_channel_new(
+      fl_engine_get_binary_messenger(fl_view_get_engine(view)),
+      "nextalk/window", FL_METHOD_CODEC(window_codec));
+  fl_method_channel_set_method_call_handler(window_channel,
+      nextalk_window_method_call, g_object_ref(window), g_object_unref);
 
-  // 显示然后隐藏，让 window_manager 插件控制显示
-  gtk_widget_show_all(GTK_WIDGET(window));
-  gtk_widget_hide(GTK_WIDGET(window));
+  // 实现视图以启动 Flutter，但不要映射顶层窗口，避免首帧胶囊闪现。
+  gtk_widget_realize(GTK_WIDGET(window));
+  gtk_widget_show(GTK_WIDGET(view));
+  gtk_widget_realize(GTK_WIDGET(view));
 
   // NEXTALK: 启动 engine 死亡看门狗 (详见文件顶部说明)。
   // 状态随进程存活, 故意不释放。

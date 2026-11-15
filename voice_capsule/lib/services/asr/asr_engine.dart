@@ -1,4 +1,5 @@
 import 'dart:ffi';
+import 'dart:async';
 
 /// ASR 引擎类型枚举
 enum ASREngineType {
@@ -7,8 +8,12 @@ enum ASREngineType {
 
   /// SenseVoice 离线引擎 (VAD 分段后识别，高精度)
   sensevoice,
+
   /// Qwen3-ASR 0.6B 离线引擎（VAD 分段）
   qwen3Asr,
+
+  /// DeepSeek 云端识别
+  deepseek,
 }
 
 /// ASR 引擎错误类型
@@ -161,6 +166,7 @@ class SenseVoiceConfig extends ASRConfig {
 class Qwen3AsrConfig extends ASRConfig {
   final String vadModelPath;
   final int maxNewTokens;
+
   /// 以英文逗号分隔的热词。
   final String hotwords;
   final double vadThreshold;
@@ -306,7 +312,7 @@ abstract class ASREngine {
   ///   chunk 的尾帧永远进不了解码循环。实现方式为补静音 padding 把尾音顶过
   ///   chunk 边界，解码后重建 OnlineStream 隔离会话。
   /// - SenseVoiceEngine: 离线引擎，flush VAD 并处理最后一个语音段。
-  ASRResult finalizeUtterance();
+  FutureOr<ASRResult> finalizeUtterance();
 
   /// 确保流就绪，必要时恢复。
   ///
@@ -328,4 +334,10 @@ abstract class ASREngine {
 
   /// 释放资源
   void dispose();
+}
+
+/// 云端配置不依赖本地模型。
+class DeepSeekConfig extends ASRConfig {
+  final String apiKey;
+  const DeepSeekConfig({required this.apiKey}) : super(modelDir: "");
 }

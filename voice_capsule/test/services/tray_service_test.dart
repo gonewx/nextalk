@@ -171,7 +171,7 @@ void main() {
 
   group('Story 2-7: EngineType 枚举测试', () {
     test('EngineType 应包含所有预期类型', () {
-      expect(EngineType.values.length, 3);
+      expect(EngineType.values.length, 4);
       expect(EngineType.values, contains(EngineType.zipformer));
       expect(EngineType.values, contains(EngineType.sensevoice));
     });

@@ -14,10 +14,12 @@ class DownloadProgress extends StatelessWidget {
     required this.onSwitchToManual,
     required this.onCancel,
     this.onRetry,
+    this.cancelling = false,
   });
 
   /// 当前初始化状态
   final InitStateData state;
+  final bool cancelling;
 
   /// 切换到手动安装回调
   final VoidCallback onSwitchToManual;
@@ -34,6 +36,7 @@ class DownloadProgress extends StatelessWidget {
 
   /// Story 3-8: 使用国际化获取标题
   String _getTitle(AppLocalizations? l10n) {
+    if (cancelling) return l10n?.localeName == 'en' ? 'Cancelling…' : '正在取消…';
     if (_isError) return '❌ ${l10n?.wizardDownloadFailed ?? '下载失败'}';
     if (_isExtracting) return '📦 ${l10n?.wizardExtractingModel ?? '解压模型...'}';
     if (_isVerifying) return '🔍 ${l10n?.wizardVerifyingFile ?? '校验文件...'}';
@@ -47,9 +50,9 @@ class DownloadProgress extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: CapsuleColors.background,
+        color: const Color(0xFF242424),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: CapsuleColors.borderGlow),
+        border: Border.all(color: Colors.white12),
         boxShadow: [
           BoxShadow(
             color: CapsuleColors.shadow,
@@ -96,7 +99,11 @@ class DownloadProgress extends StatelessWidget {
 
             // 进度条
             LinearProgressIndicator(
-              value: state.progress,
+              value: cancelling ||
+                      (_isExtracting || _isVerifying) ||
+                      (state.totalBytes == 0 && state.progress == 0)
+                  ? null
+                  : state.progress,
               backgroundColor: CapsuleColors.borderGlow,
               valueColor:
                   AlwaysStoppedAnimation<Color>(CapsuleColors.accentRed),
@@ -117,13 +124,28 @@ class DownloadProgress extends StatelessWidget {
             const SizedBox(height: 16),
           ],
 
+          if (!_isError && state.statusMessage.isNotEmpty)
+            Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Semantics(
+                    liveRegion: true,
+                    child: Text(
+                        cancelling
+                            ? (Localizations.localeOf(context).languageCode ==
+                                    'zh'
+                                ? '正在停止任务，请稍候…'
+                                : 'Stopping the task. Please wait…')
+                            : state.statusMessage,
+                        key: const ValueKey('download-status'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white70)))),
           // 按钮区域
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               // 切换手动安装
               TextButton(
-                onPressed: onSwitchToManual,
+                onPressed: cancelling ? null : onSwitchToManual,
                 child: Text(
                   l10n?.wizardSwitchManual ?? '切换手动安装',
                   style: TextStyle(
@@ -148,7 +170,7 @@ class DownloadProgress extends StatelessWidget {
                 )
               else
                 TextButton(
-                  onPressed: onCancel,
+                  onPressed: cancelling ? null : onCancel,
                   child: Text(
                     l10n?.wizardCancel ?? '取消',
                     style: TextStyle(

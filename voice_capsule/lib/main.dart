@@ -41,6 +41,7 @@ ASREngineType _toASREngineType(EngineType type) {
     EngineType.zipformer => ASREngineType.zipformer,
     EngineType.sensevoice => ASREngineType.sensevoice,
     EngineType.qwen3Asr => ASREngineType.qwen3Asr,
+    EngineType.deepseek => ASREngineType.deepseek,
   };
 }
 
@@ -89,7 +90,8 @@ Future<bool> _handleCommandLineArgs(List<String> args) async {
     final cmdName = command.substring(2); // 移除 '--' 前缀
 
     // 尝试发送命令给运行中的实例
-    final sent = await SingleInstance.instance.sendCommandToRunningInstance(cmdName);
+    final sent =
+        await SingleInstance.instance.sendCommandToRunningInstance(cmdName);
 
     final decision = decideCommandAction(command, commandSent: sent);
     _pendingStartupCommand = decision.pendingCommand;
@@ -173,8 +175,7 @@ void _runPendingStartupCommand() {
       HotkeyController.instance.toggle();
     }
   } catch (e) {
-    DiagnosticLogger.instance
-        .warn('main', '冷启动补执行 $command 失败(不影响应用运行): $e');
+    DiagnosticLogger.instance.warn('main', '冷启动补执行 $command 失败(不影响应用运行): $e');
   }
 }
 
@@ -235,7 +236,9 @@ Future<void> _preInitializeEngine(ModelManager modelManager) async {
   if (error == ASRError.none) {
     DiagnosticLogger.instance.info('main', '✅ ASR 引擎预初始化完成');
     // 传入局部 engine：await 期间全局 _asrEngine 可能已被引擎切换替换
-    _warmupEngineWithSilence(engine);
+    if (engine.engineType != ASREngineType.deepseek) {
+      _warmupEngineWithSilence(engine);
+    }
   } else {
     DiagnosticLogger.instance.warn('main', '⚠️ ASR 引擎预初始化失败: $error');
   }
@@ -291,9 +294,8 @@ Future<void> _setupPortalHotkey() async {
 
     if (result == PortalRegistrationResult.registered) {
       HotkeyService.instance.hotkeyMode = HotkeyMode.portal;
-      DiagnosticLogger.instance
-          .info('main',
-              'Portal 全局快捷键已启用 (${HotkeyConstants.portalDefaultTrigger})');
+      DiagnosticLogger.instance.info(
+          'main', 'Portal 全局快捷键已启用 (${HotkeyConstants.portalDefaultTrigger})');
     } else {
       // 降级（不支持 / 失败 / 用户取消）：保持系统快捷键模式，记录原因 (AC4)
       HotkeyService.instance.hotkeyMode = HotkeyMode.system;
@@ -308,8 +310,7 @@ Future<void> _setupPortalHotkey() async {
   } catch (e) {
     // 探测/注册意外异常也不能影响启动
     HotkeyService.instance.hotkeyMode = HotkeyMode.system;
-    DiagnosticLogger.instance
-        .warn('main', 'Portal 快捷键装配异常，回退到系统快捷键: $e');
+    DiagnosticLogger.instance.warn('main', 'Portal 快捷键装配异常，回退到系统快捷键: $e');
     // 立即释放半开的连接，避免运行期泄漏（与正常降级路径行为一致）
     await service.dispose();
     _portalHotkeyService = null;
@@ -321,8 +322,7 @@ Future<void> _setupPortalHotkey() async {
   try {
     await TrayService.instance.rebuildMenu();
   } catch (e) {
-    DiagnosticLogger.instance
-        .warn('main', '刷新托盘菜单失败（不影响快捷键功能）: $e');
+    DiagnosticLogger.instance.warn('main', '刷新托盘菜单失败（不影响快捷键功能）: $e');
   }
 }
 
@@ -338,7 +338,8 @@ Future<void> main(List<String> args) async {
     WidgetsFlutterBinding.ensureInitialized();
 
     // SCP-002: 单实例检测
-    final isMainInstance = await SingleInstance.instance.tryBecomeMainInstance();
+    final isMainInstance =
+        await SingleInstance.instance.tryBecomeMainInstance();
     if (!isMainInstance) {
       // ignore: avoid_print
       print('[main] 已有实例运行，退出');
@@ -400,7 +401,8 @@ Future<void> main(List<String> args) async {
 
     // 6.1 Story 3-9: 预热音频设备，使用配置的设备名称 (AC2, AC3)
     final configuredDevice = SettingsService.instance.audioInputDevice;
-    final warmupError = await _audioCapture!.warmup(deviceName: configuredDevice);
+    final warmupError =
+        await _audioCapture!.warmup(deviceName: configuredDevice);
     String? audioErrorDetail;
     if (warmupError == AudioCaptureError.none) {
       DiagnosticLogger.instance.info('main', '✅ 音频设备预热完成');
@@ -429,7 +431,8 @@ Future<void> main(List<String> args) async {
       audioErrorDetail = _audioCapture!.lastErrorDetail;
       if (audioErrorDetail != null) {
         DiagnosticLogger.instance.warn('main', '📋 $audioErrorDetail');
-        DiagnosticLogger.instance.warn('main', '💡 可能原因: 1) PulseAudio/PipeWire 未运行 2) 设备被占用 3) 权限不足');
+        DiagnosticLogger.instance.warn(
+            'main', '💡 可能原因: 1) PulseAudio/PipeWire 未运行 2) 设备被占用 3) 权限不足');
       }
     }
 
@@ -451,17 +454,21 @@ Future<void> main(List<String> args) async {
         DiagnosticLogger.instance.warn(
           'main',
           '引擎回退: $configuredEngineType → ${initResult.actualEngineType}, '
-          '原因: ${initResult.fallbackReason}',
+              '原因: ${initResult.fallbackReason}',
         );
         // 重建托盘菜单以显示实际引擎标记
         await TrayService.instance.rebuildMenu();
       } else {
-        DiagnosticLogger.instance.info('main', '创建 ASR 引擎: $configuredEngineType');
+        DiagnosticLogger.instance
+            .info('main', '创建 ASR 引擎: $configuredEngineType');
       }
     } on EngineNotAvailableException catch (e) {
       // 所有引擎都不可用，创建一个空壳引擎 (实际使用配置的类型)
-      DiagnosticLogger.instance.warn('main', '${e.message}, 尝试的引擎: ${e.triedEngines}');
-      _asrEngine = ASREngineFactory.create(_toASREngineType(configuredEngineType), enableDebugLog: false);
+      DiagnosticLogger.instance
+          .warn('main', '${e.message}, 尝试的引擎: ${e.triedEngines}');
+      _asrEngine = ASREngineFactory.create(
+          _toASREngineType(configuredEngineType),
+          enableDebugLog: false);
       SettingsService.instance.setActualEngineType(configuredEngineType);
       // 注意：此时应用会在后续尝试使用引擎时显示下载引导
     }
@@ -481,7 +488,6 @@ Future<void> main(List<String> args) async {
 
     // 7.1 预初始化 ASR 引擎 (触发 onnxruntime JIT 编译，避免第一次录音延迟)
     await _preInitializeEngine(modelManager);
-
 
     // 8. 创建 FcitxClient (延迟连接)
     _fcitxClient = FcitxClient();
@@ -565,7 +571,6 @@ Future<void> main(List<String> args) async {
     };
 
     // 设置 TrayService 的 ModelManager 引用 (用于切换引擎时检查模型状态)
-    TrayService.instance.setModelManager(modelManager);
 
     // 11. 设置模型切换回调 (热切换模型版本)
     SettingsService.instance.onModelSwitch = (newType) async {
@@ -585,9 +590,25 @@ Future<void> main(List<String> args) async {
       if (_pipeline != null) {
         DiagnosticLogger.instance.info('main', '切换 ASR 引擎: $newEngineType');
 
+        if (HotkeyController.instance.state != HotkeyState.idle ||
+            _pipeline!.state == PipelineState.stopping) {
+          throw StateError('引擎忙碌');
+        }
         // 创建新引擎实例
-        final newEngine = ASREngineFactory.create(_toASREngineType(newEngineType), enableDebugLog: false);
+        final newEngine = ASREngineFactory.create(
+            _toASREngineType(newEngineType),
+            enableDebugLog: false);
 
+        if (newEngineType == EngineType.deepseek) {
+          final error = await newEngine.initialize(
+              AudioInferencePipeline.buildEngineConfig(
+                  engineType: ASREngineType.deepseek,
+                  modelManager: modelManager));
+          if (error != ASRError.none) {
+            newEngine.dispose();
+            throw StateError('DeepSeek 配置无效');
+          }
+        }
         // 切换引擎 (销毁旧引擎，使用新引擎)
         await _pipeline!.switchEngine(newEngine);
 
@@ -617,7 +638,8 @@ Future<void> main(List<String> args) async {
     runApp(NextalkApp(
       stateController: _stateController,
       modelManager: modelManager,
-      audioDeviceError: warmupError != AudioCaptureError.none ? warmupError : null,
+      audioDeviceError:
+          warmupError != AudioCaptureError.none ? warmupError : null,
       audioDeviceName: configuredDevice,
       audioErrorDetail: audioErrorDetail,
     ));

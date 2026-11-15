@@ -9,6 +9,30 @@ Widget buildTestWidget(Widget child) {
 }
 
 void main() {
+  testWidgets('cancelling shows feedback and disables repeated actions',
+      (tester) async {
+    var actions = 0;
+    await tester.pumpWidget(buildTestWidget(DownloadProgress(
+      state: const InitStateData(
+          phase: InitPhase.downloading, progress: .2, statusMessage: '下载模型文件'),
+      cancelling: true,
+      onCancel: () => actions++,
+      onSwitchToManual: () => actions++,
+    )));
+    expect(find.textContaining('正在取消'), findsOneWidget);
+    expect(
+        tester
+            .widget<LinearProgressIndicator>(
+                find.byType(LinearProgressIndicator))
+            .value,
+        isNull);
+    for (final button
+        in tester.widgetList<TextButton>(find.byType(TextButton))) {
+      expect(button.onPressed, isNull);
+    }
+    expect(actions, 0);
+  });
+
   group('DownloadProgress Tests', () {
     testWidgets('displays progress percentage', (tester) async {
       await tester.pumpWidget(buildTestWidget(
@@ -23,7 +47,7 @@ void main() {
         ),
       ));
 
-      expect(find.textContaining('45'), findsOneWidget);
+      expect(find.text('45.0%'), findsOneWidget);
     });
 
     testWidgets('displays download size', (tester) async {
