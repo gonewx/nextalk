@@ -63,6 +63,9 @@ typedef PaReadStreamC = Int32 Function(
   Pointer<Float> buffer,
   Uint32 frames,
 );
+typedef PaGetStreamReadAvailableC = Long Function(Pointer<Void> stream);
+typedef PaGetStreamReadAvailableDart = int Function(Pointer<Void> stream);
+
 typedef PaGetErrorTextC = Pointer<Utf8> Function(Int32 errorCode);
 
 // Pa_OpenStream 完整签名
@@ -117,6 +120,7 @@ class PortAudioBindings {
   late final PaStartStreamDart startStream;
   late final PaStopStreamDart stopStream;
   late final PaReadStreamDart readStream;
+  late final PaGetStreamReadAvailableDart getStreamReadAvailable;
   late final PaGetErrorTextDart getErrorText;
 
   PortAudioBindings() {
@@ -129,8 +133,9 @@ class PortAudioBindings {
     );
     getDefaultInputDevice = _lib.lookupFunction<PaGetDefaultInputDeviceC,
         PaGetDefaultInputDeviceDart>('Pa_GetDefaultInputDevice');
-    getDeviceCount = _lib.lookupFunction<PaGetDeviceCountC,
-        PaGetDeviceCountDart>('Pa_GetDeviceCount');
+    getDeviceCount =
+        _lib.lookupFunction<PaGetDeviceCountC, PaGetDeviceCountDart>(
+            'Pa_GetDeviceCount');
     getDeviceInfo = _lib.lookupFunction<PaGetDeviceInfoC, PaGetDeviceInfoDart>(
       'Pa_GetDeviceInfo',
     );
@@ -149,6 +154,8 @@ class PortAudioBindings {
     readStream = _lib.lookupFunction<PaReadStreamC, PaReadStreamDart>(
       'Pa_ReadStream',
     );
+    getStreamReadAvailable = _lib.lookupFunction<PaGetStreamReadAvailableC,
+        PaGetStreamReadAvailableDart>('Pa_GetStreamReadAvailable');
     getErrorText = _lib.lookupFunction<PaGetErrorTextC, PaGetErrorTextDart>(
       'Pa_GetErrorText',
     );

@@ -453,32 +453,9 @@ class AudioInferencePipeline {
     _setState(PipelineState.stopping);
     _stopRequested = true;
 
-    // M3 优化: 使用更短的轮询间隔等待循环退出
-    if (_loopCompleter != null && !_loopCompleter!.isCompleted) {
-      const maxWaitMs = 300;
-      const pollIntervalMs = 20;
-      var waitedMs = 0;
-      while (!_loopCompleter!.isCompleted && waitedMs < maxWaitMs) {
-        await Future.delayed(const Duration(milliseconds: pollIntervalMs));
-        waitedMs += pollIntervalMs;
-      }
-    }
-
-    // 排空按停瞬间仍滞留在服务端的尾音 (~300ms)：包含最后几个字的收尾
-    // 音频，也为流式模型提供敲定最后 token 所需的尾部上下文。
-    // VAD 触发的停止已含足够静音，无需排空。
-    if (!_vadTriggeredStop) {
-      for (var i = 0; i < 3; i++) {
-        final drained = await _audioCapture.readAsync(
-            _audioCapture.buffer, AudioConfig.framesPerBuffer);
-        if (drained <= 0) break;
-        _asrEngine.acceptWaveform(
-            AudioConfig.sampleRate, _audioCapture.buffer, drained);
-        while (_asrEngine.isReady()) {
-          _asrEngine.decode();
-        }
-      }
-    }
+    // 必须等在飞读取结束，避免收尾与采集循环共用同一缓冲区。
+    await _loopCompleter?.future;
+    if (!_vadTriggeredStop) await _drainTailAudio();
 
     // 结束本次发话并取最终结果。
     // 由引擎自行处理尾帧: 流式模型末尾不足一个 chunk 的音频进不了解码循环，
@@ -522,21 +499,41 @@ class AudioInferencePipeline {
     return finalResult.text;
   }
 
+  /// 固定停止时的待读量，避免持续录音让“排空”永远追不上末尾。
+  /// 至少保留原来的 300ms 收尾余量；更长积压按设备快照读取。
+  Future<void> _drainTailAudio() async {
+    final pending = await _audioCapture.pendingFrames();
+    final minimum = AudioConfig.framesPerBuffer * 3;
+    var remaining = pending != null && pending > minimum ? pending : minimum;
+    var drained = 0;
+    while (remaining > 0 && !_cloudCancelled && !_isDisposed) {
+      final requested = remaining < AudioConfig.framesPerBuffer
+          ? remaining
+          : AudioConfig.framesPerBuffer;
+      final count =
+          await _audioCapture.readAsync(_audioCapture.buffer, requested);
+      if (_cloudCancelled || _isDisposed || count <= 0) break;
+      _asrEngine.acceptWaveform(
+          AudioConfig.sampleRate, _audioCapture.buffer, count);
+      while (_asrEngine.isReady()) {
+        _asrEngine.decode();
+      }
+      remaining -= count;
+      drained += count;
+    }
+    if (enableDebugLog) {
+      // ignore: avoid_print
+      print('[Pipeline] 尾音收尾: pendingFrames=$pending, drainedFrames=$drained');
+    }
+  }
+
   /// 云端收尾：先彻底停止采集，再发送请求。取消不会走上传路径。
   Future<String> _stopCloud() async {
     _setState(PipelineState.stopping);
     _stopRequested = true;
     try {
       await _loopCompleter?.future;
-      if (!_cloudCancelled) {
-        for (var i = 0; i < 3; i++) {
-          final count = await _audioCapture.readAsync(
-              _audioCapture.buffer, AudioConfig.framesPerBuffer);
-          if (_cloudCancelled || count <= 0) break;
-          _asrEngine.acceptWaveform(
-              AudioConfig.sampleRate, _audioCapture.buffer, count);
-        }
-      }
+      if (!_cloudCancelled) await _drainTailAudio();
       await _audioCapture.stop();
       if (_cloudCancelled || _isDisposed) return '';
       final result = await _asrEngine.finalizeUtterance();

@@ -41,6 +41,19 @@ int _blockingRead((int streamAddr, int bufferAddr, int bytes) args) {
   }
 }
 
+// 查询可能与服务端通信，放到后台，且与 read 共用在飞操作保护。
+int _blockingLatency(int streamAddr) {
+  final bindings = LibPulseSimpleBindings();
+  final error = calloc<Int32>();
+  try {
+    final usec = bindings.simpleGetLatency(
+        Pointer<PaSimple>.fromAddress(streamAddr), error);
+    return error.value == 0 && usec >= 0 ? usec : -1;
+  } finally {
+    calloc.free(error);
+  }
+}
+
 /// PulseAudio 录音错误类型
 enum PulseAudioError {
   none,
@@ -285,6 +298,22 @@ class PulseAudioCapture {
       return -1;
     }
     return samples;
+  }
+
+  /// 录音链路延迟换算为尚未读取的帧数；失败时返回 null。
+  /// 调用方必须先结束采集循环，不能与 read 并发调用。
+  Future<int?> pendingFrames() async {
+    if (!_isCapturing || _stream == null) return null;
+    final address = _stream!.address;
+    final pending = Isolate.run(() => _blockingLatency(address));
+    _pendingRead = pending;
+    try {
+      final usec = await pending;
+      if (usec < 0) return null;
+      return (usec * PulseAudioConfig.sampleRate + 999999) ~/ 1000000;
+    } finally {
+      if (identical(_pendingRead, pending)) _pendingRead = null;
+    }
   }
 
   /// 获取内部缓冲区（零拷贝接口）

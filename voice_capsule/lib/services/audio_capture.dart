@@ -694,6 +694,18 @@ class AudioCapture {
     return samples;
   }
 
+  /// 停止前获取一次待读音频快照。须在采集循环退出后调用。
+  /// PulseAudio 包含设备/服务端链路延迟，PortAudio 返回可读帧数。
+  Future<int?> pendingFrames() async {
+    if (!_isCapturing) return null;
+    if (_usePulse && _pulseCapture != null) {
+      return _pulseCapture!.pendingFrames();
+    }
+    if (_stream == null) return null;
+    final frames = _bindings.getStreamReadAvailable(_stream!);
+    return frames < 0 ? null : frames;
+  }
+
   /// 停止音频采集
   Future<void> stop() async {
     if (!_isCapturing) {

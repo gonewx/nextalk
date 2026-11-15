@@ -19,7 +19,7 @@
 - **双语界面** - 中英双语 UI，在统一设置窗口中切换
 - **引擎与模型可选** - 通过托盘“模型选择”热切换 Qwen3-ASR / SenseVoice / Zipformer / DeepSeek 引擎，在设置中选择 Zipformer int8/standard 版本；Qwen3-ASR 支持自定义热词
 
-当前版本：[v0.4.0](https://github.com/gonewx/nextalk/releases/tag/v0.4.0) · [更新说明](CHANGELOG.md)
+当前版本：[v0.4.1](https://github.com/gonewx/nextalk/releases/tag/v0.4.1) · [更新说明](CHANGELOG.md)
 
 ## 快速开始
 
@@ -29,7 +29,7 @@
 
 ```bash
 # 推荐: apt 会自动安装依赖
-sudo apt install ./nextalk_0.4.0-1_amd64.deb
+sudo apt install ./nextalk_0.4.1-1_amd64.deb
 ```
 
 > 若使用 `sudo dpkg -i` 安装，dpkg 不会解析依赖，提示缺依赖时需再执行 `sudo apt -f install` 补齐。
@@ -38,7 +38,7 @@ sudo apt install ./nextalk_0.4.0-1_amd64.deb
 
 ```bash
 # 推荐: dnf 会自动安装依赖
-sudo dnf install ./nextalk-0.4.0-1.x86_64.rpm
+sudo dnf install ./nextalk-0.4.1-1.x86_64.rpm
 ```
 
 安装后 Fcitx5 会自动重启以加载插件。

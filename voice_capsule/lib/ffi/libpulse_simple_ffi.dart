@@ -48,15 +48,15 @@ final class PaSimple extends Opaque {}
 // ===== C 函数签名 =====
 
 typedef PaSimpleNewC = Pointer<PaSimple> Function(
-  Pointer<Utf8> server,      // NULL for default
-  Pointer<Utf8> name,        // Application name
-  Int32 dir,                 // PA_STREAM_RECORD
-  Pointer<Utf8> dev,         // Device name (NULL for default)
-  Pointer<Utf8> streamName,  // Stream name
-  Pointer<PaSampleSpec> ss,  // Sample spec
-  Pointer<Void> map,         // Channel map (NULL for default)
+  Pointer<Utf8> server, // NULL for default
+  Pointer<Utf8> name, // Application name
+  Int32 dir, // PA_STREAM_RECORD
+  Pointer<Utf8> dev, // Device name (NULL for default)
+  Pointer<Utf8> streamName, // Stream name
+  Pointer<PaSampleSpec> ss, // Sample spec
+  Pointer<Void> map, // Channel map (NULL for default)
   Pointer<PaBufferAttr> attr, // Buffer attributes (NULL for default)
-  Pointer<Int32> error,      // Error code output
+  Pointer<Int32> error, // Error code output
 );
 
 typedef PaSimpleReadC = Int32 Function(
@@ -72,6 +72,11 @@ typedef PaSimpleFlushC = Int32 Function(
   Pointer<PaSimple> s,
   Pointer<Int32> error,
 );
+
+typedef PaSimpleGetLatencyC = Uint64 Function(
+    Pointer<PaSimple> s, Pointer<Int32> error);
+typedef PaSimpleGetLatencyDart = int Function(
+    Pointer<PaSimple> s, Pointer<Int32> error);
 
 typedef PaStrerrorC = Pointer<Utf8> Function(Int32 error);
 
@@ -115,14 +120,22 @@ class LibPulseSimpleBindings {
   late final PaSimpleFreeDart simpleFree;
   late final PaSimpleFlushDart simpleFlush;
   late final PaStrerrorDart strerror;
+  late final PaSimpleGetLatencyDart simpleGetLatency;
 
   LibPulseSimpleBindings() {
     _lib = _openLibPulseSimple();
 
-    simpleNew = _lib.lookupFunction<PaSimpleNewC, PaSimpleNewDart>('pa_simple_new');
-    simpleRead = _lib.lookupFunction<PaSimpleReadC, PaSimpleReadDart>('pa_simple_read');
-    simpleFree = _lib.lookupFunction<PaSimpleFreeC, PaSimpleFreeDart>('pa_simple_free');
-    simpleFlush = _lib.lookupFunction<PaSimpleFlushC, PaSimpleFlushDart>('pa_simple_flush');
+    simpleNew =
+        _lib.lookupFunction<PaSimpleNewC, PaSimpleNewDart>('pa_simple_new');
+    simpleRead =
+        _lib.lookupFunction<PaSimpleReadC, PaSimpleReadDart>('pa_simple_read');
+    simpleFree =
+        _lib.lookupFunction<PaSimpleFreeC, PaSimpleFreeDart>('pa_simple_free');
+    simpleFlush = _lib
+        .lookupFunction<PaSimpleFlushC, PaSimpleFlushDart>('pa_simple_flush');
+    simpleGetLatency =
+        _lib.lookupFunction<PaSimpleGetLatencyC, PaSimpleGetLatencyDart>(
+            'pa_simple_get_latency');
     strerror = _lib.lookupFunction<PaStrerrorC, PaStrerrorDart>('pa_strerror');
   }
 
