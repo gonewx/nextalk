@@ -1,6 +1,6 @@
 # Nextalk
 
-**专为 Linux 设计的高性能离线语音输入应用**
+**专为 Linux 设计的高性能语音输入应用，支持本地与云端识别**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-orange.svg)]()
@@ -8,7 +8,7 @@
 
 简体中文 | [English](README.md)
 
-将语音实时转换为文本，通过 Fcitx5 输入法框架输入到任意应用程序。完全离线运行，保护您的隐私。
+将语音实时转换为文本，通过 Fcitx5 输入法框架输入到任意应用程序。默认使用本地模型离线识别；也可主动配置 DeepSeek 云端识别，停止录音后上传音频。
 
 ## 特性
 
@@ -16,8 +16,10 @@
 - **低延迟** - Zipformer 流式引擎边说边转录；离线引擎每段说完即出字；文本上屏链路延迟 < 20ms
 - **透明悬浮窗** - 无边框胶囊 UI，呼吸灯动画，不干扰工作流程
 - **Wayland 原生支持** - 系统快捷键和文本提交均支持 Wayland
-- **双语界面** - 中英双语 UI，托盘菜单即可切换
-- **引擎与模型可选** - 托盘菜单热切换 Qwen3-ASR / SenseVoice / Zipformer 引擎及 Zipformer int8/standard 版本；Qwen3-ASR 支持自定义热词
+- **双语界面** - 中英双语 UI，在统一设置窗口中切换
+- **引擎与模型可选** - 通过托盘“模型选择”热切换 Qwen3-ASR / SenseVoice / Zipformer / DeepSeek 引擎，在设置中选择 Zipformer int8/standard 版本；Qwen3-ASR 支持自定义热词
+
+当前版本：[v0.4.0](https://github.com/gonewx/nextalk/releases/tag/v0.4.0) · [更新说明](CHANGELOG.md)
 
 ## 快速开始
 
@@ -86,7 +88,7 @@ gnome-extensions enable nextalk@gonewx.com
 3. 触发器: 设置为 `Super+Z`
 4. 动作: `nextalk-toggle`
 
-> 当前快捷键模式（Portal / 系统）会在托盘菜单中以只读项显示。
+> 当前快捷键模式（Portal / 系统）在设置窗口中显示。
 
 ### 使用
 
@@ -94,12 +96,12 @@ gnome-extensions enable nextalk@gonewx.com
 2. **按下快捷键** - 悬浮窗出现并开始录音
 3. **说话** - 识别的文字显示在悬浮窗中（Qwen3-ASR/SenseVoice 每段停顿后约 1–2 秒出字，Zipformer 逐字实时显示）
 4. **再次按下快捷键** - 停止录音，文字自动输入到当前应用
-5. **或等待自动提交** - 停顿后自动提交文字
+5. **或等待自动提交（本地引擎）** - 停顿后自动提交文字；DeepSeek 需停止录音后上传识别，录音中不显示实时转写，最长 120 秒自动停止
 6. **按 Esc 取消** - 录音中按 Esc 放弃本次输入，文字不会上屏（由 Fcitx5 插件或 GNOME 扩展捕获，其余时间 Esc 不受影响）
 
 > **自动纠错**: 上屏前会自动修正全大写英文、口头禅（嗯、呃）、重复词和中文语境下的半角标点。可在 `~/.config/nextalk/settings.yaml` 的 `text:` 节调整开关，并通过 `replacements` 配置自定义纠错词典（如 `"派森": "Python"`）。
 
-> **首次运行**: 应用会打开模型选择窗口，可点击下载本地语音识别模型（默认 Qwen3-ASR 约 840MB，需 1.8GB 以上可用空间；SenseVoice/Zipformer 约 200MB），解压依赖系统 `tar` 与 `bzip2`
+> **首次运行**: 应用会打开模型选择窗口，可点击下载本地语音识别模型（默认 Qwen3-ASR 约 840MB，需 1.8GB 以上可用空间；SenseVoice/Zipformer 约 200MB），解压依赖系统 `tar` 与 `bzip2`。也可配置 DeepSeek，无需下载本地模型。
 
 ### 命令行参数
 
@@ -152,15 +154,20 @@ gnome-extensions enable nextalk@gonewx.com
 
 ### 引擎与模型设置
 
-通过系统托盘菜单切换：
+通过托盘“模型选择”打开统一设置窗口。只有已就绪的模型可选择；未下载或未配置的模型通过同行按钮处理，保存配置不会自动切换引擎。
 
 | 引擎 | 说明 |
 |------|------|
 | `qwen3_asr` (默认推荐) | Qwen3-ASR 0.6B 离线引擎：VAD 分段后整段识别，精度最高，多语言及中文方言，支持热词；每段说完约 1–2 秒出字 |
 | `sensevoice` | 离线引擎：VAD 分段后整段识别，模型小、速度快，自动标点，多语言 (zh/en/ja/ko/yue) |
 | `zipformer` | 流式引擎：边听边识别，文字逐字出现 |
+| `deepseek` | 云端引擎：需要 API Key 和网络，停止录音后上传识别，无需本地模型 |
 
 Zipformer 版本：`int8`（速度快、内存小）/ `standard`（精度更高）。
+
+### DeepSeek 云端识别
+
+点击 DeepSeek 同行的“配置”，填写 API Key，可测试连接后保存，再返回模型列表选择 DeepSeek。测试连接会上传生成的 1 秒静音并产生少量 API 用量；录音中取消不会上传，已发出的请求只能尽力取消。服务错误不会自动重试或切换本地引擎。配置文件中的非空密钥优先于 `DEEPSEEK_API_KEY`。详见 [DeepSeek 使用说明](docs/deepseek-asr.md)。
 
 ### 配置文件
 
@@ -168,8 +175,11 @@ Zipformer 版本：`int8`（速度快、内存小）/ `standard`（精度更高�
 
 ```yaml
 model:
-  # ASR 引擎: qwen3_asr | sensevoice | zipformer
+  # ASR 引擎: qwen3_asr | sensevoice | zipformer | deepseek
   engine: qwen3_asr
+
+  deepseek:
+    api_key: ""         # 可选；留空时读取 DEEPSEEK_API_KEY 环境变量
 
   qwen3_asr:
     num_threads: 2       # 推理线程数
@@ -193,7 +203,7 @@ audio:
 **音频设备选择:**
 - 使用 `"default"` 自动选择系统默认音频设备
 - 指定设备名称（如 `"Built-in Audio Analog Stereo"`）使用特定设备
-- 使用 `nextalk audio` 命令或系统托盘菜单交互式选择设备
+- 使用 `nextalk audio` 命令或设置窗口交互式选择设备
 
 **快捷键配置:**
 支持的桌面环境下经 XDG Desktop Portal 自动注册（无需配置）；否则通过桌面环境的原生设置配置，不在此配置文件中。请参阅 [配置快捷键](#配置快捷键) 章节了解设置方法。
@@ -437,7 +447,3 @@ pactl list sources    # 系统级调试命令
 ---
 
 **问题反馈**: [GitHub Issues](../../issues)
-
-### DeepSeek 云端识别
-
-托盘“模型选择”打开统一设置窗口。点击 DeepSeek 同行的“配置”，填写 API Key、测试连接并保存，再回到列表选择 DeepSeek。未配置时不可选择，保存不会自动切换。

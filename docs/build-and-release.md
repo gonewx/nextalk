@@ -9,6 +9,19 @@ This document targets **maintainers and advanced contributors**. It connects the
 
 ---
 
+
+## v0.4.0 Release Notes for Maintainers
+
+The app version is **0.4.0+1** and the addon version is **0.3.1**. Older numbers below illustrate version bumps; `version.yaml` remains authoritative.
+
+- **Commit feature changes first**: `release.sh` only commits `version.yaml`, `README.md` and `README_zh.md`. Update both READMEs, architecture documentation, `CHANGELOG.md` and the GitHub Release body as part of release preparation.
+- **Version synchronization**: the script does not update `pubspec.yaml` directly; CI synchronizes it during the build. Keep the repository copy consistent with the new version too.
+- **SDK compatibility**: the release image uses Flutter 3.32.5. The audio dropdown uses `value`; the newer `initialValue` parameter is unavailable in that image.
+- **RPM staging**: `build-pkg.sh` stages files under `%{_topdir}/BUILD/staging`. Copy from that fixed path because newer RPM versions rewrite `%{_builddir}`.
+- **Completion**: script success means refs were pushed. Wait for Actions and verify both DEB/RPM attachments. Do not move an already published version tag; `current` can retry a failed build when no Release has been created.
+- **Validation**: 862 tests passed and 6 were skipped; Docker build and packaging passed. Analysis still reports 88 existing issues, with no new ones, and exits nonzero. Clean-distribution installation testing remains outstanding. See the [changelog (Chinese)](../CHANGELOG.md).
+
+
 ## Pipeline at a Glance
 
 A formal release takes code through the pipeline below. The left half is what maintainers do locally; the right half is what GitHub Actions does automatically after a tag is pushed.

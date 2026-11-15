@@ -10,13 +10,14 @@
 | 2026-07-09 | 2.2  | 新增第四代快捷键方案（Story 3-10）：XDG Desktop Portal `GlobalShortcuts` 应用内自动注册 + 系统快捷键静默降级（渐进增强，叠加不取代） | 架构师 (Winston) |
 | 2026-07-10 | 2.3  | Portal 方案 Debian 13/GNOME 48 实测校准：默认触发键改为 `LOGO+z` (Super+Z)、兼容 xdg-desktop-portal-gnome 48.0 假失败 bug、授权对话框等待放宽到 10 分钟、session token 字符约束、app_id 合规要求（desktop 文件反向 DNS 命名） | 架构师 (Winston) |
 | 2026-11-01 | 2.4 | 补记 v0.2.14 GNOME 扩展后端；记录 v0.3.3 已发布的 IBus 主 Panel 路径及 Fcitx5 → GNOME 扩展 → 剪贴板三级注入链 | Codex |
+| 2026-11-14 | 2.5 | 同步 v0.4.0：四引擎、DeepSeek 云端会话、统一设置窗口与版本号 | Codex |
 
 ## 1. 简介 (Introduction)
 
 **Nextalk** 是一款专为 Linux 设计的高性能语音输入应用，采用混合架构 (Hybrid Architecture)。它结合了现代化的 **Flutter** 前端（负责 UI、流程编排和 AI 推理）与原生的 **C++** 引擎（Fcitx5 插件）来提供系统级输入能力。
 
 系统设计为 **Monorepo (单体仓库)**，包含两个通过 IPC 通信的独立进程：
-1.  **Voice Capsule (客户端)**: 一个独立的 Flutter 桌面应用，负责 UI 显示、音频采集、模型管理和语音识别（双引擎：SenseVoice 离线 / Zipformer 流式）。
+1.  **Voice Capsule (客户端)**: 一个独立的 Flutter 桌面应用，负责 UI 显示、音频采集、模型管理和语音识别（Qwen3-ASR 默认 / SenseVoice / Zipformer / DeepSeek 云端）。
 2.  **Nextalk Addon (服务端)**: 一个轻量级的 Fcitx5 插件，负责接收文本并注入到目标应用程序。
 
 ## 2. 高层架构 (High Level Architecture)
@@ -33,7 +34,9 @@ graph TD
         Capture -- "回退" --> PA[PortAudio]
         Capture -- "FFI (零拷贝)" --> Pipeline[AudioInferencePipeline]
         Pipeline -- "ASREngine 接口" --> Engine{ASR 引擎}
-        Engine -- "默认" --> SV[SenseVoice 离线引擎]
+        Engine -- "默认" --> QW[Qwen3-ASR 离线引擎]
+        Engine -- "可选" --> DS[DeepSeek 云端: 停止后上传]
+        Engine -- "可选" --> SV[SenseVoice 离线引擎]
         Engine -- "可选" --> ZF[Zipformer 流式引擎]
         SV -- "分段" --> VAD[silero VAD]
         ZF -- "端点判定" --> EP[内置端点规则 rule1/2/3]
@@ -114,7 +117,10 @@ nextalk/
         │   │   ├── asr_engine.dart          # ASREngine 接口
         │   │   ├── asr_engine_factory.dart  # 按配置构造引擎
         │   │   ├── engine_initializer.dart  # 初始化/模型检查
-        │   │   ├── sensevoice_engine.dart   # 离线引擎 (默认)
+        │   │   ├── qwen3_asr_engine.dart   # 默认本地引擎
+        │   │   ├── deepseek_asr_engine.dart # 云端录音会话
+        │   │   ├── deepseek_asr_client.dart # HTTPS 上传与错误映射
+        │   │   ├── sensevoice_engine.dart   # 离线引擎 (可选)
         │   │   └── zipformer_engine.dart    # 流式引擎
         │   ├── audio_capture.dart           # 采集门面 (Pulse 主/PortAudio 回退)
         │   ├── pulse_audio_capture.dart     # libpulse-simple 采集实现
@@ -144,7 +150,9 @@ nextalk/
 | 组件 | 技术 | 版本 | 选型理由 |
 | :--- | :--- | :--- | :--- |
 | **前端 UI** | Flutter (Dart) | 3.x+ | Linux 上最佳的真透明无边框渲染能力。 |
-| **ASR 引擎 (默认)** | Sherpa-onnx SenseVoice (离线) | Latest | VAD 分段后整段识别，精度高，多语言，支持 ITN。 |
+| **ASR 引擎 (默认)** | Qwen3-ASR 0.6B | — | 本地分段识别，支持热词。 |
+| **ASR 引擎 (云端)** | DeepSeek | HTTPS | 停止后上传完整录音，需要 API Key。 |
+| **ASR 引擎 (可选)** | Sherpa-onnx SenseVoice (离线) | Latest | VAD 分段后整段识别，精度高，多语言，支持 ITN。 |
 | **ASR 引擎 (可选)** | Sherpa-onnx Zipformer (流式) | Latest | 边听边识别，低延迟；int8/standard 双版本。 |
 | **端点检测 (SenseVoice)** | silero VAD (经 sherpa-onnx VAD API) | Latest | 独立 VAD 模型，负责离线路径分段。 |
 | **端点检测 (Zipformer)** | sherpa-onnx 内置端点规则 (rule1/2/3) | Latest | 流式路径不加载 silero VAD。 |
@@ -206,7 +214,7 @@ nextalk/
 
 * **配置方式**: GNOME 设置 → 键盘 → 自定义快捷键（或 KDE 等桌面环境的等价设置）
 * **命令**: `nextalk-toggle`（轻量触发器，随 deb/rpm 安装为 `/usr/bin/nextalk-toggle`；底层等价 `nextalk --toggle`，另有 `--show`/`--hide`）
-* **触发条件**: Portal backend 不支持（接口缺失、版本不足、CreateSession/BindShortcuts 失败或超时）时，`PortalHotkeyService` 静默降级到此路径，降级原因写入 `DiagnosticLogger`，托盘只读项展示当前快捷键模式（Portal / 系统）。
+* **触发条件**: Portal backend 不支持（接口缺失、版本不足、CreateSession/BindShortcuts 失败或超时）时，`PortalHotkeyService` 静默降级到此路径，降级原因写入 `DiagnosticLogger`，设置窗口展示当前快捷键模式（Portal / 系统）。
 
 **支持矩阵**: KDE Plasma 5.27+、GNOME 48+、Hyprland 支持 Portal 自动注册；wlroots/Sway、Ubuntu 22.04 (GNOME 42)/24.04 (GNOME 46) 默认会话不支持，走系统快捷键回退。
 
@@ -275,27 +283,20 @@ Panel 路径跟踪 `focus-in` / `focus-out`，忽略假上下文 `InputContext_1
 
 **设备枚举**: 使用 libpulse API（`pa_context_get_source_info_list`）列出设备，并以 sink 预查询唤醒挂起的 PipeWire 节点。设备匹配顺序：精确匹配 → 子串匹配 → 智能默认回退。
 
-#### 4.2.2 双引擎推理路径 (v2.1 补记，Story 2-7)
+#### 4.2.2 四引擎推理路径（v0.4.0）
 
-`ASREngine` 接口统一两条推理路径，由 `ASREngineFactory` 按配置构造，支持托盘热切换：
+`ASREngineFactory` 通过统一的 `ASREngine` 接口构造引擎，`AudioInferencePipeline` 负责采集和会话结束。统一模型选择窗口支持在空闲时切换已就绪的引擎。
 
-```
-                       AudioInferencePipeline
-                     ┌────────────┴────────────┐
-              (默认) │                         │ (可选)
-                     ↓                         ↓
-        ┌─────────────────────┐   ┌─────────────────────┐
-        │  SenseVoiceEngine   │   │  ZipformerEngine    │
-        │  (离线引擎)          │   │  (流式引擎)          │
-        │  silero VAD 分段     │   │  边听边识别          │
-        │  → 整段识别          │   │  逐字输出            │
-        │  高精度/ITN/多语言   │   │  低延迟             │
-        └─────────────────────┘   └─────────────────────┘
-```
+| 引擎 | 处理路径 | 输出时机 |
+| :--- | :--- | :--- |
+| Qwen3-ASR（默认） | 本地模型、VAD 分段 | 每段识别后输出 |
+| SenseVoice | 本地模型、silero VAD 分段 | 每段识别后输出 |
+| Zipformer | 流式识别、内置端点规则 | 录音中逐字输出 |
+| DeepSeek | 内存缓冲录音，停止后通过 HTTPS 上传 | 整段请求完成后输出 |
 
-* **SenseVoice 路径（默认）**: 音频经 silero VAD 累积为语音段，静音触发后将整段送入离线识别器，结果一次性输出。精度高、自动标点，但文本按段出现。
-* **Zipformer 路径（可选）**: 音频块直接送入流式识别器，边听边出字；端点判定使用 sherpa-onnx **内置端点规则**（rule1/2/3），不加载 silero VAD 模型。
-* 两条路径对上层暴露统一的端点事件流（`EndpointEvent`），但端点检测机制各自独立。
+`DeepSeekAsrEngine` 不加载本地模型；`DeepSeekAsrClient` 将音频编码为 16 kHz 单声道 PCM16 WAV。录音最长 120 秒，不进行实时转写或静音自动提交。录音中取消不会上传；请求发送后尽力取消，服务错误不自动重试或回退本地模型。结果仍经过原有文本处理与三级注入链。
+
+`DeepSeekSettingsStore` 将密钥存入 XDG 配置目录的 `settings.yaml`，限制文件为当前用户读写；非空文件密钥优先于 `DEEPSEEK_API_KEY`。连接测试上传程序生成的 1 秒静音。操作说明见 [DeepSeek 云端识别](deepseek-asr.md)。
 
 #### 4.2.3 数据流与并发模型
 
@@ -341,9 +342,11 @@ typedef AcceptWaveformDart = void Function(Pointer<Void> stream, int sampleRate,
 | :--- | :--- | :--- |
 | Zipformer（int8 与 standard 权重同在一个压缩包） | 流式识别 | ✅ 压缩包有官方校验值，下载即校验 |
 | SenseVoice | 离线识别 | ⚠️ 官方未发布校验值，跳过 |
-| silero_vad.onnx | 端点检测（单文件，仅 SenseVoice 引擎使用） | ⚠️ 官方未发布校验值，跳过 |
+| silero_vad.onnx | 端点检测（单文件，本地离线分段路径） | ⚠️ 官方未发布校验值，跳过 |
 
-3. **启动流程**: 应用启动 → 检查所需模型完整性 → 缺失则进入初始化向导下载，齐备则初始化引擎进入主界面。下载支持进度显示与取消。
+以上为早期本地模型校验表；当前默认引擎还包含 Qwen3-ASR 0.6B，下载与配置见 [Qwen3-ASR 说明](qwen3-asr.md)。DeepSeek 无本地模型文件，仅需密钥配置。
+
+3. **启动流程**: 应用启动 → 检查所需模型完整性 → 缺失则打开模型选择窗口，由用户选择下载或配置；齐备则初始化引擎。DeepSeek 仅检查密钥配置，不下载模型。下载支持进度、处理阶段显示与取消。
 4. **模型来源**: GitHub Releases（`k2-fsa/sherpa-onnx`）。
 5. **自定义 URL**: 支持经配置文件按引擎（zipformer/sensevoice）分别自定义下载地址（2026-07-09 修复：此前 SenseVoice 字段不生效）。
 6. **已知限制**: 无官方校验值的模型仅做存在性/结构检查，供应链完整性依赖下载源可信（见 §6）。
@@ -362,8 +365,17 @@ typedef AcceptWaveformDart = void Function(Pointer<Void> stream, int sampleRate,
 ```yaml
 # ~/.config/nextalk/settings.yaml
 model:
-  # ASR 引擎类型: zipformer | sensevoice
-  engine: sensevoice
+  # ASR 引擎类型: qwen3_asr | sensevoice | zipformer | deepseek
+  engine: qwen3_asr
+
+  deepseek:
+    api_key: ""
+
+  qwen3_asr:
+    num_threads: 2
+    max_new_tokens: 128
+    hotwords: ""
+    custom_url: ""
 
   # Zipformer 配置 (流式引擎)
   zipformer:
@@ -387,17 +399,17 @@ audio:
   input_device: default
 ```
 
-**系统托盘集成**:
-* 引擎与模型版本切换（勾选项）
-* 音频输入设备选择（Story 3-9）
-* 界面语言切换 zh/en（Story 3-8）
-* "打开配置目录"快捷入口
+**统一设置窗口与系统托盘**：
+
+托盘提供模型选择、设置、重连 Fcitx5、关于和退出；左键打开设置。`SettingsWindow` 汇集模型列表、配置与下载，`ModelSelectionView` 仅允许选择已就绪引擎。保存 DeepSeek 配置不会自动切换。
+
+设置窗口是可聚焦的普通不透明窗口，胶囊保持透明且不抢焦点；`FlutterWindowBackend` 与 Linux runner 的 `nextalk/window` 通道负责切换。设置打开时录音快捷键显示提示；关闭后用户需选中目标输入框并再次触发录音，不自动录音或承诺恢复原焦点。语言、录音设备、快捷键信息和高级配置入口集中在设置页。
 
 ## 5. 基础设施与构建系统
 
 ### 5.1 版本管理（v2.1 新增）
 
-* **权威来源**: 根目录 `version.yaml`（`app_version` 当前 0.3.3，`addon_version` 当前 0.3.1，应用与插件版本独立管理）。
+* **权威来源**: 根目录 `version.yaml`（`app_version` 当前 0.4.0，`addon_version` 当前 0.3.1，应用与插件版本独立管理）。
 * `scripts/docker-build.sh` 读取 `version.yaml`，经 `--dart-define=APP_VERSION` 注入应用；`pubspec.yaml` 的 version 字段不作为发布版本依据。
 * **已知缺口**: `scripts/build-pkg.sh` 直接重建时未传 `--dart-define`，产出二进制自报版本为 "dev"——发布构建应走 docker-build.sh 路径，或修复 build-pkg.sh。
 

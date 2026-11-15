@@ -10,13 +10,14 @@
 | 2026-07-09 | 2.2 | Added 4th-generation hotkey scheme (Story 3-10): XDG Desktop Portal `GlobalShortcuts` in-app auto-registration + silent fallback to system shortcuts (progressive enhancement, additive not replacing) | Architect (Winston) |
 | 2026-07-10 | 2.3 | Portal scheme calibrated against Debian 13/GNOME 48 field testing: default trigger changed to `LOGO+z` (Super+Z), workaround for xdg-desktop-portal-gnome 48.0 false-failure bug, authorization dialog wait relaxed to 10 minutes, session token character constraint, app_id compliance requirement (reverse-DNS desktop file naming) | Architect (Winston) |
 | 2026-11-01 | 2.4 | Backfill the previously undocumented v0.2.14 GNOME extension backend; document the IBus main Panel path released in v0.3.3 and the Fcitx5 → GNOME extension → clipboard injection chain | Codex |
+| 2026-11-14 | 2.5 | Sync v0.4.0: four engines, DeepSeek sessions, unified Settings and version | Codex |
 
 ## 1. Introduction
 
 **Nextalk** is a high-performance voice input application designed specifically for Linux, using a Hybrid Architecture. It combines a modern **Flutter** frontend (responsible for UI, orchestration, and AI inference) with a native **C++** engine (Fcitx5 plugin) to provide system-level input capabilities.
 
 The system is designed as a **Monorepo**, containing two independent processes communicating via IPC:
-1. **Voice Capsule (Client)**: A standalone Flutter desktop application responsible for UI display, audio capture, model management, and speech recognition (dual engine: SenseVoice offline / Zipformer streaming).
+1. **Voice Capsule (Client)**: A standalone Flutter desktop application responsible for UI display, audio capture, model management, and speech recognition (Qwen3-ASR default / SenseVoice / Zipformer / DeepSeek cloud).
 2. **Nextalk Addon (Server)**: A lightweight Fcitx5 plugin responsible for receiving text and injecting it into target applications.
 
 ## 2. High Level Architecture
@@ -33,7 +34,9 @@ graph TD
         Capture -- "Fallback" --> PA[PortAudio]
         Capture -- "FFI (Zero-copy)" --> Pipeline[AudioInferencePipeline]
         Pipeline -- "ASREngine interface" --> Engine{ASR Engine}
-        Engine -- "Default" --> SV[SenseVoice Offline Engine]
+        Engine -- "Default" --> QW[Qwen3-ASR Offline Engine]
+        Engine -- "Optional" --> DS[DeepSeek Cloud: upload on stop]
+        Engine -- "Optional" --> SV[SenseVoice Offline Engine]
         Engine -- "Optional" --> ZF[Zipformer Streaming Engine]
         SV -- "Segmentation" --> VAD[silero VAD]
         ZF -- "Endpointing" --> EP[Built-in endpoint rules 1/2/3]
@@ -114,7 +117,10 @@ nextalk/
         │   │   ├── asr_engine.dart          # ASREngine interface
         │   │   ├── asr_engine_factory.dart  # Engine construction by config
         │   │   ├── engine_initializer.dart  # Initialization / model checks
-        │   │   ├── sensevoice_engine.dart   # Offline engine (default)
+        │   │   ├── qwen3_asr_engine.dart   # Default local engine
+        │   │   ├── deepseek_asr_engine.dart # Cloud recording session
+        │   │   ├── deepseek_asr_client.dart # HTTPS upload and errors
+        │   │   ├── sensevoice_engine.dart   # Offline engine (optional)
         │   │   └── zipformer_engine.dart    # Streaming engine
         │   ├── audio_capture.dart           # Capture facade (Pulse primary / PortAudio fallback)
         │   ├── pulse_audio_capture.dart     # libpulse-simple capture implementation
@@ -144,7 +150,9 @@ nextalk/
 | Component | Technology | Version | Selection Rationale |
 | :--- | :--- | :--- | :--- |
 | **Frontend UI** | Flutter (Dart) | 3.x+ | Best true-transparent, borderless rendering on Linux. |
-| **ASR Engine (default)** | Sherpa-onnx SenseVoice (offline) | Latest | Whole-segment recognition after VAD segmentation; high accuracy, multilingual, ITN support. |
+| **ASR Engine (default)** | Qwen3-ASR 0.6B | — | Local segment recognition with hotwords. |
+| **ASR Engine (cloud)** | DeepSeek | HTTPS | Uploads the recording on stop; requires an API key. |
+| **ASR Engine (optional)** | Sherpa-onnx SenseVoice (offline) | Latest | Whole-segment recognition after VAD segmentation; high accuracy, multilingual, ITN support. |
 | **ASR Engine (optional)** | Sherpa-onnx Zipformer (streaming) | Latest | Recognize-while-listening, low latency; int8/standard variants. |
 | **Endpoint Detection (SenseVoice)** | silero VAD (via sherpa-onnx VAD API) | Latest | Standalone VAD model, segments the offline path. |
 | **Endpoint Detection (Zipformer)** | sherpa-onnx built-in endpoint rules (rule1/2/3) | Latest | The streaming path does not load silero VAD. |
@@ -206,7 +214,7 @@ The plugin uses a single Unix Domain Socket for communication:
 
 * **Configuration**: GNOME Settings → Keyboard → Custom Shortcuts (or equivalent in KDE/other DEs)
 * **Command**: `nextalk-toggle` (lightweight trigger, installed as `/usr/bin/nextalk-toggle` by deb/rpm; equivalent to `nextalk --toggle` underneath, with `--show`/`--hide` also available)
-* **Trigger condition**: when the Portal backend is unsupported (interface missing, version too low, CreateSession/BindShortcuts failure or timeout), `PortalHotkeyService` silently degrades to this path, writes the reason to `DiagnosticLogger`, and the tray shows the current hotkey mode (Portal / system) as a read-only item.
+* **Trigger condition**: when the Portal backend is unsupported (interface missing, version too low, CreateSession/BindShortcuts failure or timeout), `PortalHotkeyService` silently degrades to this path, writes the reason to `DiagnosticLogger`, and Settings shows the current hotkey mode (Portal / system) as a read-only item.
 
 **Support matrix**: KDE Plasma 5.27+, GNOME 48+, and Hyprland support Portal auto-registration; wlroots/Sway and the default sessions of Ubuntu 22.04 (GNOME 42)/24.04 (GNOME 46) do not, and fall back to the system shortcut.
 
@@ -275,28 +283,20 @@ The system uses a **layered audio capture strategy** with `AudioCapture` as the 
 
 **Device Enumeration**: Uses the libpulse API (`pa_context_get_source_info_list`), with a sink pre-query to wake suspended PipeWire nodes. Device matching order: exact match → substring match → smart default fallback.
 
-#### 4.2.2 Dual-Engine Inference Paths (v2.1 addition, Story 2-7)
+#### 4.2.2 Four Inference Engines (v0.4.0)
 
-The `ASREngine` interface unifies two inference paths, constructed by `ASREngineFactory` per configuration, hot-switchable via tray:
+`ASREngineFactory` constructs engines through `ASREngine`; `AudioInferencePipeline` handles capture and finalization. The unified Models window switches ready engines while idle.
 
-```
-                       AudioInferencePipeline
-                     ┌────────────┴────────────┐
-           (default) │                         │ (optional)
-                     ↓                         ↓
-        ┌─────────────────────┐   ┌─────────────────────┐
-        │  SenseVoiceEngine   │   │  ZipformerEngine    │
-        │  (offline)          │   │  (streaming)        │
-        │  silero VAD segments│   │  recognize while    │
-        │  → whole-segment    │   │  listening,         │
-        │  recognition        │   │  char-by-char       │
-        │  accuracy/ITN/multi │   │  low latency        │
-        └─────────────────────┘   └─────────────────────┘
-```
+| Engine | Processing | Output |
+| :--- | :--- | :--- |
+| Qwen3-ASR (default) | Local model, VAD segmentation | Per recognized segment |
+| SenseVoice | Local model, silero VAD segmentation | Per recognized segment |
+| Zipformer | Streaming model, built-in endpoint rules | During recording |
+| DeepSeek | Buffer in memory, HTTPS upload on stop | After the complete request |
 
-* **SenseVoice path (default)**: Audio is accumulated into speech segments by silero VAD; on silence, the whole segment goes to the offline recognizer and the result is emitted at once. High accuracy, automatic punctuation, but text appears per segment.
-* **Zipformer path (optional)**: Audio chunks feed the streaming recognizer directly, emitting text character by character; endpointing uses sherpa-onnx **built-in endpoint rules** (rule1/2/3) — the silero VAD model is not loaded.
-* Both paths expose a unified endpoint event stream (`EndpointEvent`) upward, but their endpoint detection mechanisms are independent.
+`DeepSeekAsrEngine` requires no local model. `DeepSeekAsrClient` encodes 16 kHz mono PCM16 WAV. Recording stops at 120 seconds, without live transcription or silence-based submission. Cancellation during recording prevents upload; after sending it is best effort. Errors do not automatically retry or switch to local models. Results use the existing text processing and three-stage injection chain.
+
+`DeepSeekSettingsStore` saves the key in the XDG `settings.yaml` with owner-only permissions. A non-empty stored key takes precedence over `DEEPSEEK_API_KEY`. Connection testing uploads one second of generated silence. See the [DeepSeek guide (Chinese)](deepseek-asr.md).
 
 #### 4.2.3 Data Flow and Concurrency Model
 
@@ -342,9 +342,11 @@ To reduce installation package size, model files use a **"Download-on-Demand"** 
 | :--- | :--- | :--- |
 | Zipformer (int8 and standard weights in one archive) | Streaming recognition | ✅ Archive has an official checksum, verified on download |
 | SenseVoice | Offline recognition | ⚠️ No official checksum published; skipped |
-| silero_vad.onnx | Endpoint detection (single file, SenseVoice engine only) | ⚠️ No official checksum published; skipped |
+| silero_vad.onnx | Endpoint detection (single file, local offline segmentation) | ⚠️ No official checksum published; skipped |
 
-3. **Startup Flow**: App starts → check integrity of required models → if missing, enter the init wizard to download; if present, initialize the engine and enter the main UI. Downloads show progress and support cancellation.
+The table above records the earlier local models. The current default also includes Qwen3-ASR 0.6B; see the [Qwen3-ASR guide](qwen3-asr.md). DeepSeek needs key configuration, with no local model files.
+
+3. **Startup Flow**: App starts → check integrity of required models → if missing, open Models for the user to download or configure an engine; otherwise initialize it. DeepSeek checks key configuration without downloading a model. Downloads show progress and processing stages and support cancellation.
 4. **Model Source**: GitHub Releases (`k2-fsa/sherpa-onnx`).
 5. **Custom URL**: Per-engine (zipformer/sensevoice) custom download URLs supported via config file (fixed 2026-07-09: the SenseVoice field previously had no effect).
 6. **Known Limitation**: Models without official checksums get only existence/structure checks; supply-chain integrity relies on trusting the download source (see §6).
@@ -363,8 +365,17 @@ The settings service provides engine/model selection and advanced configuration 
 ```yaml
 # ~/.config/nextalk/settings.yaml
 model:
-  # ASR engine type: zipformer | sensevoice
-  engine: sensevoice
+  # ASR engine type: qwen3_asr | sensevoice | zipformer | deepseek
+  engine: qwen3_asr
+
+  deepseek:
+    api_key: ""
+
+  qwen3_asr:
+    num_threads: 2
+    max_new_tokens: 128
+    hotwords: ""
+    custom_url: ""
 
   # Zipformer config (streaming engine)
   zipformer:
@@ -389,17 +400,17 @@ audio:
   input_device: default
 ```
 
-**System Tray Integration**:
-* Engine and model variant switching (checkboxes)
-* Audio input device selection (Story 3-9)
-* UI language switching zh/en (Story 3-8)
-* "Open Config Directory" quick action
+**Unified Settings Window and Tray**:
+
+The tray provides Models, Settings, Reconnect Fcitx5, About and Exit; left-click opens Settings. `SettingsWindow` combines model selection, configuration and downloads. `ModelSelectionView` only selects ready engines; saving DeepSeek configuration does not switch engines.
+
+Settings uses a normal opaque focusable window; the capsule stays transparent and does not take focus. `FlutterWindowBackend` and the Linux runner's `nextalk/window` channel switch modes. The recording hotkey shows a notice while Settings is open. After closing it, users select their target input and trigger recording again; closing does not start recording or guarantee focus restoration. Language, audio input, hotkey information and advanced configuration are in Settings.
 
 ## 5. Infrastructure and Build System
 
 ### 5.1 Version Management (v2.1 New)
 
-* **Source of truth**: root `version.yaml` (`app_version` currently 0.3.3, `addon_version` currently 0.3.1; app and plugin versions managed independently).
+* **Source of truth**: root `version.yaml` (`app_version` currently 0.4.0, `addon_version` currently 0.3.1; app and plugin versions managed independently).
 * `scripts/docker-build.sh` reads `version.yaml` and injects via `--dart-define=APP_VERSION`; the `version` field in `pubspec.yaml` is not authoritative for releases.
 * **Known Gap**: `scripts/build-pkg.sh` does not pass `--dart-define` when rebuilding directly, so the resulting binary self-reports version "dev" — release builds should go through docker-build.sh, or build-pkg.sh needs fixing.
 

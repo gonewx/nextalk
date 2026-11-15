@@ -1,6 +1,6 @@
 # Nextalk
 
-**High-performance offline voice input for Linux**
+**High-performance voice input for Linux with local and cloud recognition**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform: Linux](https://img.shields.io/badge/Platform-Linux-orange.svg)]()
@@ -8,7 +8,7 @@
 
 [简体中文](README_zh.md) | English
 
-Convert speech to text in real-time, input to any application via the Fcitx5 input method framework. Runs completely offline to protect your privacy.
+Convert speech to text in real-time, input to any application via the Fcitx5 input method framework. Local models run offline by default. Optionally configure DeepSeek cloud recognition, which uploads audio after recording stops.
 
 ## Features
 
@@ -16,8 +16,10 @@ Convert speech to text in real-time, input to any application via the Fcitx5 inp
 - **Low Latency** - Zipformer streaming engine transcribes as you speak; offline engines output text right after each utterance; text commit path latency < 20ms
 - **Transparent Floating Window** - Borderless capsule UI with breathing animation, minimal workflow disruption
 - **Native Wayland Support** - System shortcuts and text submission both support Wayland
-- **Bilingual UI** - Simplified Chinese / English interface, switchable from the tray menu
-- **Engine & Model Options** - Hot-switch Qwen3-ASR / SenseVoice / Zipformer engines and Zipformer int8/standard variants from the tray menu; Qwen3-ASR supports custom hotwords
+- **Bilingual UI** - Simplified Chinese / English interface, switchable in the unified settings window
+- **Engine & Model Options** - Open Models from the tray to hot-switch Qwen3-ASR / SenseVoice / Zipformer / DeepSeek; select Zipformer int8/standard variants in Settings; Qwen3-ASR supports custom hotwords
+
+Current release: [v0.4.0](https://github.com/gonewx/nextalk/releases/tag/v0.4.0) · [Release notes (Chinese)](CHANGELOG.md)
 
 ## Quick Start
 
@@ -86,7 +88,7 @@ Without the extension enabled, the app automatically falls back to clipboard mod
 3. Trigger: Set to `Super+Z`
 4. Action: `nextalk-toggle`
 
-> The current hotkey mode (Portal / system) is shown as a read-only item in the tray menu.
+> The current hotkey mode (Portal / system) is shown in Settings.
 
 ### Usage
 
@@ -94,12 +96,12 @@ Without the extension enabled, the app automatically falls back to clipboard mod
 2. **Press Hotkey** - Floating window appears and starts recording
 3. **Speak** - Recognized text appears in the capsule (Qwen3-ASR/SenseVoice output ~1–2s after each pause; Zipformer shows text in real time)
 4. **Press Hotkey Again** - Stop recording, text auto-inputs to current app
-5. **Or Wait for Auto-submit** - Text submits automatically after pause
+5. **Or Wait for Auto-submit (local engines)** - Text submits after a pause. DeepSeek uploads and transcribes only after recording stops; it has no live transcript and stops automatically at 120 seconds.
 6. **Press Esc to Cancel** - While recording, Esc discards the input and nothing is typed (captured by the Fcitx5 addon or GNOME extension; Esc behaves normally otherwise)
 
 > **Auto-correction**: Before committing, Nextalk fixes all-caps English, filler words (um, uh, 嗯, 呃), repeated words and half-width punctuation in Chinese text. Tune it under `text:` in `~/.config/nextalk/settings.yaml`, and add your own fixes via `replacements` (e.g. `"get hub": "GitHub"`).
 
-> **First Run**: The app will automatically download the speech recognition model (default Qwen3-ASR ~840MB, needs 1.8GB+ free space; SenseVoice/Zipformer ~200MB). Extraction requires system `tar` and `bzip2`
+> **First Run**: The app opens Models, where you can choose to download a local speech recognition model (default Qwen3-ASR ~840MB, needs 1.8GB+ free space; SenseVoice/Zipformer ~200MB). Extraction requires system `tar` and `bzip2`. Alternatively, configure DeepSeek without downloading a local model.
 
 ### Command Line Options
 
@@ -125,14 +127,15 @@ Without Fcitx5, GNOME + ibus can commit to Wayland-native and X11/XWayland appli
 
 The app supports system tray (on supported desktop environments), right-click menu provides:
 
-- Show/Hide window
-- **Reconnect Fcitx5** - manually reconnect when the input-method channel drops
-- **Hotkey mode (read-only)** - shows the active hotkey path: `Hotkey: Super+Z (Portal auto-registered)` or `Hotkey: System settings (nextalk-toggle)`
-- Model settings - switch ASR engine (Qwen3-ASR / SenseVoice / Zipformer) and Zipformer model version (int8 / standard)
-- Switch UI language (中文 / English)
-- **Audio input device** - Select from available audio input devices
-- Settings - open the config directory
-- Exit app
+- **Models** — select a ready engine or configure/download it using its row button
+- **Settings** — UI language, audio input, hotkey information, Zipformer variant and advanced configuration
+- **Reconnect Fcitx5** — reconnect the input-method channel
+- **About** — version and project URL
+- **Exit**
+
+Left-click the tray icon to open Settings. Model loading shows the target engine and status; downloads show progress, processing stages and cancellation state.
+
+While Settings is open, the recording hotkey shows a notice. Close Settings, click the destination input field, then press the hotkey to record. Closing Settings does not start recording or guarantee restoration of the earlier input focus.
 
 > **Note**: On GNOME the tray icon only shows after installing and enabling the `gnome-shell-extension-appindicator` extension (KDE supports it natively) — see the [FAQ](#system-tray-icon-not-showing-gnomefedora). Without a tray the app still works via the `nextalk --toggle` command.
 
@@ -151,15 +154,20 @@ The app supports system tray (on supported desktop environments), right-click me
 
 ### Engine & Model Settings
 
-Switch via system tray menu:
+Open Models from the tray. Only ready engines can be selected; use the button beside each row to download or configure it. Saving configuration does not switch engines.
 
 | Engine | Description |
 |--------|-------------|
 | `qwen3_asr` (default, recommended) | Qwen3-ASR 0.6B offline engine: recognizes per VAD segment, best accuracy, multilingual plus Chinese dialects, hotwords; text appears ~1–2s after each utterance |
 | `sensevoice` | Offline engine: recognizes per VAD segment, small and fast, auto punctuation, multilingual (zh/en/ja/ko/yue) |
 | `zipformer` | Streaming engine: recognize-while-listening, text appears character by character |
+| `deepseek` | Cloud engine: requires an API key and network; uploads after recording stops, with no local model download |
 
 Zipformer variants: `int8` (faster, smaller memory) / `standard` (higher accuracy).
+
+### DeepSeek Cloud Recognition
+
+Select Configure beside DeepSeek, enter your API key, optionally test the connection, and save. Return to Models to select DeepSeek. The connection test uploads one second of generated silence and incurs a small amount of API usage. Cancelling during recording prevents upload; cancellation after sending is best effort. Errors do not trigger automatic retries or a switch to a local engine. A non-empty key in the config file takes precedence over `DEEPSEEK_API_KEY`. See the [usage guide (Chinese)](docs/deepseek-asr.md).
 
 ### Config File
 
@@ -167,8 +175,11 @@ Advanced configuration: `~/.config/nextalk/settings.yaml`
 
 ```yaml
 model:
-  # ASR engine: qwen3_asr | sensevoice | zipformer
+  # ASR engine: qwen3_asr | sensevoice | zipformer | deepseek
   engine: qwen3_asr
+
+  deepseek:
+    api_key: ""         # Optional; empty uses DEEPSEEK_API_KEY
 
   qwen3_asr:
     num_threads: 2       # Inference threads
@@ -192,7 +203,7 @@ audio:
 **Audio Device Selection:**
 - Use `"default"` to use system default audio device
 - Specify device name (e.g. `"Built-in Audio Analog Stereo"`) to use a specific device
-- Use `nextalk audio` command or system tray menu to select devices interactively
+- Use `nextalk audio` command or Settings to select devices interactively
 
 **Hotkey Configuration:**
 On supported environments the hotkey is auto-registered via XDG Desktop Portal (no config needed); otherwise it is configured through your desktop environment's native settings, not through this config file. See [Configure Hotkey](#configure-hotkey) section for details.
