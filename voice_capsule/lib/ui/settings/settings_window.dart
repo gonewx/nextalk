@@ -310,7 +310,9 @@ class _SettingsWindowState extends State<SettingsWindow> {
                         .listInputDevices(forceRefresh: true);
                   }))),
       DropdownButtonFormField<String>(
-          initialValue: current,
+          // 发布镜像使用 Flutter 3.32，尚不支持 initialValue。
+          // ignore: deprecated_member_use
+          value: current,
           isExpanded: true,
           items: [
             for (final e in names.entries)
