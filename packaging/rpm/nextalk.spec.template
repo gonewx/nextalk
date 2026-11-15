@@ -47,8 +47,8 @@ Nextalk 是一款专为 Linux 设计的高性能离线语音输入应用，
 支持中英文双语语音识别。
 
 %install
-# Content is pre-assembled by build-pkg.sh, just copy
-cp -a %{_builddir}/staging/* %{buildroot}/
+# build-pkg.sh 将文件放在固定目录；新版 RPM 会改写 _builddir。
+cp -a "%{_topdir}/BUILD/staging/." "%{buildroot}/"
 
 # 安装/升级后的收尾放在 %posttrans：RPM 升级顺序是 新包 %post → 旧包 %preun，
 # 旧版 %preun 会删除软链并重启 fcitx5，因此软链与 fcitx5 重启必须在整个事务结束后进行
